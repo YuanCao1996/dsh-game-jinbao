@@ -247,6 +247,14 @@ function heroStatMatches(row,champion){
 }
 const tierText=value=>value!==null&&value!==undefined&&/^(?:T)?\d+$/i.test(String(value).trim())?'T'+String(value).trim().replace(/^T/i,''):'暂无';
 const rosterChampions=state=>[...new Set([state.me.champion,...state.allies.map(p=>p.champion),...state.enemies.map(p=>p.champion),...state.bench.map(p=>p.champion)].filter(v=>typeof v==='string'&&v.trim()))].slice(0,state.phase==='ChampSelect'?30:11);
+// 资料库偶尔把内部文件错误原文当提示语返回，玩家看不懂也不需要看路径，这里统一换成一句人话。
+const friendlyKnowledgeMessage=message=>{
+ const text=String(message??'').trim();
+ if(!text)return '';
+ return /文件不存在|移动或删除|ENOENT|no such file|路径|path/i.test(text)
+  ?'资料库暂无该英雄的数据（不影响本局判断）'
+  :text;
+};
 export function overlayView(state, knowledge = {}) {
   const me = state.me;
   const rows = knowledge.rows ?? [];
@@ -355,7 +363,7 @@ const playerRows = players.map(p => {
   const captureHint=state.augmentCaptureAvailable===false
     ? state.augmentCaptureReason==='chinese_language_unavailable'?'系统未安装中文识别语言包，可在 Windows 设置添加简体中文文字识别；日志中的强化信息仍会同步。':'文字识别暂不可用，正在自动重试；日志中的强化信息仍会同步。'
     : state.augmentCaptureReason==='capture_failed'?'游戏画面暂未采集成功，正在自动重试；日志中的强化信息仍会同步。':'等待识别游戏内三选一面板';
-  const heroStats = (state.game==='lol'?'大乱斗英雄样本胜率\n':'英雄样本胜率\n') + (hero ? `${hero.name??hero.champion} · ${hero.tier!=null?tierText(hero.tier):''} · ${percent(hero.winRate)}${hero.version ? ' · 版本 ' + hero.version : ''}` : knowledge.message || '等待英雄知识检索');
+  const heroStats = (state.game==='lol'?'大乱斗英雄样本胜率\n':'英雄样本胜率\n') + (hero ? `${hero.name??hero.champion} · ${hero.tier!=null?tierText(hero.tier):''} · ${percent(hero.winRate)}${hero.version ? ' · 版本 ' + hero.version : ''}` : friendlyKnowledgeMessage(knowledge.message) || '等待英雄知识检索');
   return {
     game: state.game, mode:state.mode, match: state.match, matchStartedAt:state.matchStartedAt, gameTime: state.game==='generic'?(state.phase==='CapturePaused'?'观察已停止':'观察中'):clock(state.gameSeconds), phase:state.phase, ended: state.ended,
     selfChampion: shortChampion(me.champion),
@@ -377,13 +385,13 @@ const playerRows = players.map(p => {
     // a turn is worth a context read without reading the context.
     ownedAugmentCount: state.ownedAugments.length,
     advice: (state.game==='generic'?[me.genericState?.gameName||'游戏身份待核实',me.genericState?.gameMode,me.genericState?.roundState==='between'?'等待下一局':'当前窗口观察中']:['对局 '+clock(state.gameSeconds),shortChampion(me.champion),me.level!=null?'Lv'+me.level:'',me.k!=null?`${me.k}/${me.d??0}/${me.a??0}`:'',me.gold!=null?'金币 '+me.gold:'']).filter(Boolean).join(' · ')+'\n\n'+(companionLine?companionLine+'\n\n':'')+current+playbook+(state.game==='lol'&&offered.length?'\n\n海克斯推荐 · 当前三选一\n'+candidates.join('\n'):'')+(state.game==='lol'&&state.ownedAugments.length?'\n\n本局已选海克斯\n'+state.ownedAugments.join('、'):'')+(partnerHint?'\n\n'+partnerHint:''),
-    equipment: '当前装备\n' + (own || '等待装备日志') + '\n\n推荐出装\n' + (state.equipment || builds.join('\n\n') || knowledge.message || '进入对局后自动检索并结合装备与海克斯更新建议。')+(!state.ended&&state.equipmentStatus?'\n'+state.equipmentStatus:'')+(state.equipmentAssumptions.length?'\n\n待确认的强化推测\n'+state.equipmentAssumptions.map(a=>`第${a.round}轮暂按 ${a.name} 考虑`).join('\n'):'')+(equipmentUpdates?'\n\n装备动态\n'+equipmentUpdates:''),
+    equipment: '当前装备\n' + (own || '等待装备日志') + '\n\n推荐出装\n' + (state.equipment || builds.join('\n\n') || friendlyKnowledgeMessage(knowledge.message) || '进入对局后自动检索并结合装备与海克斯更新建议。')+(!state.ended&&state.equipmentStatus?'\n'+state.equipmentStatus:'')+(state.equipmentAssumptions.length?'\n\n待确认的强化推测\n'+state.equipmentAssumptions.map(a=>`第${a.round}轮暂按 ${a.name} 考虑`).join('\n'):'')+(equipmentUpdates?'\n\n装备动态\n'+equipmentUpdates:''),
     augments: state.game==='wzry'?'王者荣耀常规对局没有海克斯强化。可在战况页查看建议，或通过聊天咨询当前局势。':
-      (offered.length?augmentTitle+'\n按该英雄适配排名排序\n'+augmentBody+'\n\n':'')+'英雄 Top10 海克斯 · '+(shortChampion(me.champion)||'等待英雄')+'\n'+(ranked.slice(0,10).map(augmentLine).join('\n')||knowledge.message||'正在查询英雄适配排名…')+'\n\n资料库推荐组合 · '+(me.champion||'等待英雄')+'\n'+(combinations.join('\n')||'暂无该英雄的组合记录')+
+      (offered.length?augmentTitle+'\n按该英雄适配排名排序\n'+augmentBody+'\n\n':'')+'英雄 Top10 海克斯 · '+(shortChampion(me.champion)||'等待英雄')+'\n'+(ranked.slice(0,10).map(augmentLine).join('\n')||friendlyKnowledgeMessage(knowledge.message)||'正在查询英雄适配排名…')+'\n\n资料库推荐组合 · '+(me.champion||'等待英雄')+'\n'+(combinations.join('\n')||'暂无该英雄的组合记录')+
       (offered.length?'\n\n本轮已见 '+state.offerHistory.length+'/6':'\n\n'+captureHint)+'\n\n本局已选\n'+(state.ownedAugments.join('、')||'尚未收到强化选择日志')+(augmentUpdates?'\n\n强化动态\n'+augmentUpdates:''),
     players: (teamWinRates?teamWinRates+'\n\n':'')+'英雄胜率 ↓\n'+(roster.join('\n') || '等待双方英雄数据。'),
     teamWinRates,
-    knowledgeStatus:knowledge.failed?knowledge.message:'',
+    knowledgeStatus:knowledge.failed?friendlyKnowledgeMessage(knowledge.message):'',
     leaderboard:knowledge.leaderboard??null,
     teamWinRatesNote:liveEstimate?LIVE_ESTIMATE_NOTE:TEAM_STRENGTH_NOTE,
     liveTeamEstimate:liveEstimate,
@@ -441,6 +449,8 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
   // 等待态总榜（performRefresh 里写入，视图直接读，避免被 knowledge 覆盖丢掉）
   let leaderboardData = null;
   let lastIdleLeaderboardAt = 0;
+  // 启动后先给 5 秒宽限：状态可能是空的，此时不该立刻拉总榜（会白白多两次请求）
+  const bootAt = Date.now();
   let forceRefresh = false, cached = { key: '', rows: [], candidates: new Map(), heroes: new Map() };
   let retryKnowledgeAt=Infinity;
   let lastForcedKnowledgeAt=0;
@@ -580,7 +590,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       // Retrieval failures were invisible: the page only ever said "正在查询" and the log
       // recorded nothing, so a broken lookup looked like a slow one. Persist one line per
       // attempt so the next real match can be explained instead of guessed at.
-      try{await writeFile(join(stateDir,'knowledge-status.json'),JSON.stringify({at:Date.now(),game:state.game,match:state.match,champion:state.me.champion,rows:(knowledge.rows??[]).length,errors,message:knowledge.message??'',failed:!!knowledge.failed}));}catch{}
+      try{await writeFile(join(stateDir,'knowledge-status.json'),JSON.stringify({at:Date.now(),game:state.game,match:state.match,champion:state.me.champion,rows:(knowledge.rows??[]).length,errors,message:friendlyKnowledgeMessage(knowledge.message)??'',failed:!!knowledge.failed}));}catch{}
       updateAugmentRecommendations(state,knowledge.rows??[]);
       await flush();
       if(!stillCurrent()&&rosterChampions(state).length&&Date.now()-state.at<30000)void refresh(false).catch(()=>{});
@@ -626,7 +636,8 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     // 空闲态直接取两份总榜（不经过 refresh：那条链路在无英雄时会被多处条件挡住，
     // 实测断点式排查代价太高）。取到后写回状态文件，两页即可显示总榜。
     // 完全空闲时 state.game 可能是空串（没有任何对局日志），所以不能用 ==='lol' 判断。
-    if (state.game !== 'wzry' && !state.me.champion && !rosterChampions(state).length && !leaderboardData && Date.now() - lastIdleLeaderboardAt > 60000) {
+    if (state.game !== 'wzry' && !state.me.champion && !rosterChampions(state).length && !leaderboardData
+        && Date.now() - bootAt > 5000 && Date.now() - lastIdleLeaderboardAt > 60000) {
       lastIdleLeaderboardAt = Date.now();
       void (async () => {
         try {
