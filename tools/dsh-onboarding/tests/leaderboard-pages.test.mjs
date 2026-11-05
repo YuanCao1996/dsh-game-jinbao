@@ -19,16 +19,18 @@ test('海克斯总榜按列渲染：排名/品质/名称/胜率/选取率/适配
   const page = hextechLeaderboardPage(hextech);
   const lines = page.split('\n');
   assert.match(lines[0], /通用 Top 海克斯 · 总榜（等待开局）/);
-  assert.match(lines[2], /^#1 · T1 · 灵魂虹吸 · 胜率 60\.61% · 选取 19\.57% · 适配 封魔剑魂 永恩$/);
-  assert.match(lines[3], /#2 · T1 · 升级：无尽之刃/);
+  assert.match(lines[2], /^# 01 · T1 · 灵魂虹吸$/);
+  assert.match(lines[3], /胜率 60\.6% · 选取 19\.6% · 适配 封魔剑魂 永恩$/);
+  assert.match(lines[4], /升级：无尽之刃$/);
 });
 
 test('英雄总榜按列渲染：排名/英雄名/称号/T级/胜率/顶级符文', () => {
   const page = heroLeaderboardPage(heroes, {topRune: (row) => (topRuneId(row) === 157 ? '灵魂虹吸' : topRuneId(row) === 27 ? '易损' : '')});
   const lines = page.split('\n');
   assert.match(lines[0], /英雄胜率总榜 · 大乱斗（等待开局）/);
-  assert.match(lines[2], /^#1 · 赫卡里姆「战争之影」 · T1 · 胜率 58\.1% · 顶级符文 灵魂虹吸$/);
-  assert.match(lines[3], /#2 · 亚索「疾风剑豪」 · T2 · 胜率 52\.3% · 顶级符文 易损/);
+  assert.match(lines[2], /^# 01 · T1 · 赫卡里姆「战争之影」$/);
+  assert.match(lines[3], /胜率 58\.1% · 顶级符文 灵魂虹吸$/);
+  assert.match(lines[4], /亚索「疾风剑豪」$/);
 });
 
 test('顶级符文取 augmentStats 里 rank 最小的一条，字符串与数组都支持', () => {
@@ -47,6 +49,30 @@ test('空数据返回空串，交给调用方退回原有文案', () => {
 test('limit 生效且缺失字段不炸', () => {
   const page = hextechLeaderboardPage([{name: '甲'}, {name: '乙'}], {limit: 1});
   const lines = page.split('\n');
-  assert.equal(lines.length, 3, '标题两行 + 一条数据');
-  assert.match(lines[2], /^#1 · — · 甲 · 胜率 — · 选取 —$/);
+  assert.equal(lines.length, 4, '标题两行 + 一条数据（占两行）');
+  assert.match(lines[2], /^# 01 · — · 甲$/);
+  assert.match(lines[3], /胜率 — · 选取 —$/);
+});
+test('名次按胜率重排后重新编号，而不是沿用服务端的 rank', () => {
+  // 服务端的 rank 是"该强化在所属英雄内"的排名，各条都是 1。
+  const rows = [
+    {rank: 1, tier: 'T1', name: '升级：无尽之刃', winRate: 44.22, pickRate: 19.4, champion: '影哨 阿克尚'},
+    {rank: 1, tier: 'T1', name: '术士果汁盒', winRate: 50.56, pickRate: 17.01, champion: '机械公敌 兰博'},
+  ];
+  const lines = hextechLeaderboardPage(rows).split('\n');
+  assert.match(lines[2], /^# 01 · T1 · 术士果汁盒$/);
+  assert.match(lines[4], /^# 02 · T1 · 升级：无尽之刃$/);
+});
+
+test('每条两行：首行名次品质名称，次行缩进对齐的胜率与选取率', () => {
+  const lines = hextechLeaderboardPage(hextech).split('\n');
+  assert.equal(lines.length, 6, '标题两行 + 两条各两行');
+  assert.match(lines[2], /^# 01 · T1 · 灵魂虹吸$/);
+  assert.match(lines[3], /^ {7}胜率 60\.6% · 选取 19\.6% · 适配 封魔剑魂 永恩$/);
+});
+
+test('英雄榜同样两行，顶级符文跟在次行', () => {
+  const lines = heroLeaderboardPage(heroes, {topRune: (row) => (topRuneId(row) === 157 ? '灵魂虹吸' : '')}).split('\n');
+  assert.match(lines[2], /^# 01 · T1 · 赫卡里姆「战争之影」$/);
+  assert.match(lines[3], /^ {7}胜率 58\.1% · 顶级符文 灵魂虹吸$/);
 });
