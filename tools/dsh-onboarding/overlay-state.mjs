@@ -450,7 +450,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
   // 有英雄或进入对局后立即回到原本的本局数据。
   const idleLeaderboard=()=>{
     const book=knowledge.leaderboard??leaderboardData;
-    if(state.game!=='lol'||state.me.champion||rosterChampions(state).length||!book)return null;
+    if(state.game==='wzry'||state.me.champion||rosterChampions(state).length||!book)return null;
     const hex=Array.isArray(book.hextech)?book.hextech:[];
     const heroes=Array.isArray(book.heroes)?book.heroes:[];
     if(!hex.length&&!heroes.length)return null;
@@ -625,7 +625,8 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     // 空闲态（无对局/无英雄）也要取一次总榜：这是唯一在空闲时仍会执行的循环，只靠 performRefresh 内部的看门狗永远不会触发。
     // 空闲态直接取两份总榜（不经过 refresh：那条链路在无英雄时会被多处条件挡住，
     // 实测断点式排查代价太高）。取到后写回状态文件，两页即可显示总榜。
-    if (state.game === 'lol' && !state.me.champion && !rosterChampions(state).length && !leaderboardData && Date.now() - lastIdleLeaderboardAt > 60000) {
+    // 完全空闲时 state.game 可能是空串（没有任何对局日志），所以不能用 ==='lol' 判断。
+    if (state.game !== 'wzry' && !state.me.champion && !rosterChampions(state).length && !leaderboardData && Date.now() - lastIdleLeaderboardAt > 60000) {
       lastIdleLeaderboardAt = Date.now();
       void (async () => {
         try {
