@@ -65,12 +65,18 @@ const unknownNames=new Set();
        if(!/^[\u4e00-\u9fa5]{2,8}$/.test(text)||LABELS.has(text))continue;
        if(!unverified.some(row=>row.slot===line.slot&&row.name===text))unverified.push({...line,name:text,unverified:true});
       }
-      for(const row of unverified){
+      // 实测一局里冒出 85 个「未收录卡名」：面板带里还夹着界面文字，兜底太宽松会把它们
+      // 当成卡名（「装备」就是这样混进三选一的）。只有在同帧至少已认出两张真卡的缺口上，
+      // 才允许用未收录文字补那一个空槽。
+      const verifiedCount=found.filter(line=>line.source==='title'&&Number.isInteger(line.slot)&&line.slot>=0&&line.slot<3).length;
+      const allowUnverified=verifiedCount>=2;
+      const unverifiedAccepted=allowUnverified?unverified:[];
+      for(const row of unverifiedAccepted){
        if(unknownNames.has(row.name))continue;
        unknownNames.add(row.name);
        emit({kind:'augment_name_unknown',t:at,name:row.name,slot:row.slot,method:frame.method??'full'});
       }
-      const titles=[...found.filter(line=>line.source==='title'&&Number.isInteger(line.slot)&&line.slot>=0&&line.slot<3),...unverified];
+      const titles=[...found.filter(line=>line.source==='title'&&Number.isInteger(line.slot)&&line.slot>=0&&line.slot<3),...unverifiedAccepted];
       const candidates=[0,1,2].map(slot=>{
         // A catalogue name always wins over an unverified guess: a merged label such as
         // "速度功能" used to sit next to the real name in the same slot, which made the slot
