@@ -1,20 +1,16 @@
-// 等待态的"总榜"两页渲染：海克斯榜与英雄胜率榜。
+// 等待态的"总榜"两页：海克斯榜与英雄胜率榜。
 //
-// 数据来自桌面网关的整榜接口（契约见 handoff/leaderboard-api.md）：
-//   POST /desktop/agent-preview/knowledge
-//   {game:'lol', query, dataset:'leaderboard', board:'hextech'|'heroes', limit:1..20}
+// 数据来自桌面网关的整榜接口（契约见 handoff/leaderboard-api.md）。
+// 展示要求（按用户口味）：每条一行、不要排名数字与井号、不要选取率、不要"适配"二字、
+// 英雄只显示名字（不带称号），并且各列必须对齐。
 //
-// 两个约定：
-// 1) 服务端返回的 rank 对海克斯榜来说只是"该强化在所属英雄内的排名"，各条都是 #1，
-//    不能直接当榜单名次；这里统一按胜率降序重排、并重新编号。
-// 2) 悬浮窗很窄，长行会被截断或挤在一起，所以每条用两行：首行名次+品质+名称，
-//    次行把胜率/选取率/适配信息缩进对齐，读起来更整齐。
+// 对齐要点：中文占两列宽，所以按"显示宽度"补空格，而不是按字符个数。
 
 const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
 
-const pct = (value, digits = 1) => {
+const pct = (value) => {
   const n = num(value);
-  return n === null ? '—' : n.toFixed(digits) + '%';
+  return n === null ? '—' : n.toFixed(1) + '%';
 };
 
 const quality = (value) => {
@@ -23,8 +19,30 @@ const quality = (value) => {
   return /^[Tt]/.test(text) ? text.toUpperCase() : 'T' + text;
 };
 
-/** 名次统一补成两位，行首对齐。 */
-const rankText = (index) => (index + 1 < 10 ? ' 0' + (index + 1) : ' ' + (index + 1));
+/** 显示宽度：全角/中文按 2 列算。 */
+function displayWidth(text) {
+  let width = 0;
+  for (const ch of String(text ?? '')) {
+    const code = ch.codePointAt(0) ?? 0;
+    width += code > 0x2e80 && code < 0xff65 ? 2 : 1;
+  }
+  return width;
+}
+
+/** 按显示宽度右侧补空格。 */
+export function padDisplay(text, width) {
+  const value = String(text ?? '');
+  const pad = width - displayWidth(value);
+  return pad > 0 ? value + ' '.repeat(pad) : value;
+}
+
+/** "封魔剑魂 永恩" → "永恩"：只留英雄本名，去掉称号。 */
+function heroNameOnly(champion) {
+  const text = String(champion ?? '').trim();
+  if (!text) return '';
+  const parts = text.split(/\s+/).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1] : text;
+}
 
 const byWinRate = (a, b) => (num(b?.winRate) ?? -1) - (num(a?.winRate) ?? -1);
 
@@ -33,10 +51,13 @@ export function hextechLeaderboardPage(rows, { limit = 10 } = {}) {
   if (!list.length) return '';
   const sorted = list.slice().sort(byWinRate).slice(0, limit);
   const lines = ['通用 Top 海克斯 · 总榜（等待开局）', '数据为快照口径；进入对局后切换为本局英雄'];
-  sorted.forEach((row, index) => {
-    lines.push(`#${rankText(index)} · ${quality(row.tier)} · ${row.name ?? '—'}`);
-    const champion = typeof row.champion === 'string' && row.champion ? ' · 适配 ' + row.champion : '';
-    lines.push(`       胜率 ${pct(row.winRate)} · 选取 ${pct(row.pickRate)}${champion}`);
+  sorted.forEach((row) => {
+    lines.push((
+      padDisplay(quality(row.tier), 3) + ' ' +
+      padDisplay(row.name ?? '—', 18) + ' ' +
+      padDisplay(pct(row.winRate), 6) + ' ' +
+      heroNameOnly(row.champion)
+    ).trimEnd());
   });
   return lines.join('\n');
 }
@@ -46,11 +67,14 @@ export function heroLeaderboardPage(rows, { limit = 10, topRune } = {}) {
   if (!list.length) return '';
   const sorted = list.slice().sort(byWinRate).slice(0, limit);
   const lines = ['英雄胜率总榜 · 大乱斗（等待开局）', '数据为快照口径；进入对局后切换为本局双方英雄'];
-  sorted.forEach((row, index) => {
-    const name = [row.name, row.title ? `「${row.title}」` : ''].filter(Boolean).join('') || '—';
-    lines.push(`#${rankText(index)} · ${quality(row.tier)} · ${name}`);
-    const rune = typeof topRune === 'function' ? topRune(row) : '';
-    lines.push(`       胜率 ${pct(row.winRate)}${rune ? ' · 顶级符文 ' + rune : ''}`);
+  sorted.forEach((row) => {
+    const rune = typeof topRune === 'function' ? String(topRune(row) ?? '') : '';
+    lines.push((
+      padDisplay(quality(row.tier), 3) + ' ' +
+      padDisplay(row.name ?? '—', 18) + ' ' +
+      padDisplay(pct(row.winRate), 6) + ' ' +
+      rune
+    ).trimEnd());
   });
   return lines.join('\n');
 }
