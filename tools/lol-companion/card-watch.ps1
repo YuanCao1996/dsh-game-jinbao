@@ -154,8 +154,13 @@ function Invoke-JinbaoCardWatch {
    for($i=0;$i -lt 3;$i++){ if($diff[$i] -gt $max){ $max=$diff[$i];$argmax=$i } }
    $quiet=0
    for($i=0;$i -lt 3;$i++){ if($i -ne $argmax -and $diff[$i] -lt ($max/3)){ $quiet++ } }
+   # 第二名与绝对下限：真实面板里一次选择常让多张卡同时变化，旧的"其它卡必须小于最大值/3"
+   # 太严，实测明明有明显赢家（76.1 比 28.4）也判不出。改为"领先次大值 1.6 倍且高于 12"。
+   $second=0.0
+   for($i=0;$i -lt 3;$i++){ if($i -ne $argmax -and $diff[$i] -gt $second){ $second=$diff[$i] } }
+   $uniqueHover=($max -ge $Threshold -and $max -ge 12.0 -and $max -ge ($second*1.6))
 
-   if($max -ge $Threshold -and $quiet -eq 2){
+   if($uniqueHover){
     # 唯一一张在动：悬停或点击的动画。必须连续两帧都指向同一张才锁定 —— 单帧的
     # 高亮/入场动画不足以说明玩家选了哪张，实况里选中卡与第二名的峰值只差 1.6 倍。
     if($candidate -eq $argmax){ $streak++ } else { $candidate=$argmax;$streak=1 }
