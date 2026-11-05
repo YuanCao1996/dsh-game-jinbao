@@ -353,3 +353,14 @@ test('a finished match is distilled into the store by the service itself', async
   assert.equal(rows.some(r=>r.kind==='recognition'),true,'blind frames become a shared recognition lesson');
  }finally{await service.close();await rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
 });
+
+test('界面通用词不会被当成未收录卡名（真实案例：面板里读到了「装备」）',()=>{
+ const output=[],observer=createAugmentObserver(['灵魂虹吸','甲','乙'],event=>output.push(event));
+ const frame=()=>({available:true,foreground:true,width:1920,height:1080,cardLayout:'stacked-title-regions',
+  titleLines:[{text:'装 备',slot:0,x:600,y:430},{text:'甲',slot:1,x:900,y:430},{text:'乙',slot:2,x:1200,y:430}],lines:[]});
+ for(let i=0;i<4;i+=1)observer.observe(frame());
+ const offer=output.filter(event=>event.kind==='augment_offer').at(-1);
+ assert.ok(offer,'面板仍应被识别');
+ assert.deepEqual(offer.options.map(o=>o.name).sort(),['乙','甲'],'「装备」不得进入候选');
+ assert.deepEqual(offer.missingSlots,[0],'该槽应报缺失而不是编一个名字');
+});
