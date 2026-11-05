@@ -221,6 +221,9 @@ function Update-OverlayRedraw {
  try{$window.UpdateLayout()}catch{}
 }
 
+# 从窄条临时展开成大框时记住要回到窄条，否则收起后用户选的字幕/跑马灯就丢了。
+$script:narrowResume=$false
+
 function Set-Collapsed([bool]$on,[switch]$PreserveMode){
  if($script:collapsed -eq $on){return}
  # 顺序很重要：先把内容切掉再改尺寸，否则整棵界面树会按 56×56 重新排版一次，就是那一下卡顿。
@@ -245,6 +248,7 @@ function Set-Collapsed([bool]$on,[switch]$PreserveMode){
  }
  $script:collapsed=$on
  if($script:displayMode -and !$PreserveMode){if($on){$script:displayMode='silent'}else{$script:displayMode='large'}}
+ if($on -and $script:narrowResume){$script:displayMode='narrow';$script:narrowResume=$false}
  if(!$on -and $PreserveMode -and $script:displayMode -eq 'narrow'){$controls.Expanded.Visibility='Collapsed';$controls.NarrowPanel.Visibility='Visible'}
  # 透明度、指针穿透这些不参与这一帧，放到后台优先级再算。
  try{$window.Dispatcher.BeginInvoke([Windows.Threading.DispatcherPriority]::Background,[Action]{try{Set-BackgroundOpacity;Set-PointerMode $true;Update-OverlayRedraw}catch{}})|Out-Null}catch{}

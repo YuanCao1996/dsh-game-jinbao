@@ -141,7 +141,12 @@ $shortcutMenu=New-Object Windows.Controls.MenuItem;$shortcutMenu.Header='快捷�
 $shortcutLabels=@(@(702,'展开：Ctrl+Alt+↑'),@(703,'收起：Ctrl+Alt+↓'),@(704,'上一页：Ctrl+Alt+←'),@(705,'下一页：Ctrl+Alt+→'),@(701,'交互/穿透：Ctrl+Alt+J'))
 foreach($entry in $shortcutLabels){$hint=New-Object Windows.Controls.MenuItem;$hint.Header=$entry[1];$hint.Tag=$entry[0];$hint.IsEnabled=$false;$shortcutMenu.Items.Add($hint)|Out-Null}
 $settingsMenu.Items.Add($shortcutMenu)|Out-Null
-$controls.NarrowExpand.Add_Click({Set-DisplayMode 'large'})
+$controls.NarrowExpand.Add_Click({
+ # 只是临时展开成大框：记住收起后回到窄条，并把持久偏好留成窄条。
+ $script:narrowResume=$true
+ Set-DisplayMode 'large'
+ $script:displayMode='narrow';Save-DisplayMode;$script:displayMode='large'
+})
 $controls.NarrowClose.Add_Click({$window.Close()})
 $controls.NarrowMenu.Add_Click({$settingsMenu.PlacementTarget=$controls.NarrowMenu;$settingsMenu.IsOpen=$true})
 $controls.NarrowPanel.Add_PreviewMouseLeftButtonDown({param($s,$e) Start-Drag $s $e})
