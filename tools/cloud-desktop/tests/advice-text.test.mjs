@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {condenseAdvice} from '../advice-text.mjs';
+import {condenseAdvice, stripSources} from '../advice-text.mjs';
 
 // 真实数据：66 条播报平均 167 字、最长 533 字，35 条带段落。模型不会遵守"最多两句"，
 // 所以播报正文在这里做确定性收敛。
@@ -34,4 +34,13 @@ test('英文与分号同样被收敛', () => {
   const out = condenseAdvice('Push the wave first. Then recall; buy Wand.');
   assert.ok(!out.includes('\n'));
   assert.equal(out, 'Push the wave first. Then recall; buy Wand.');
+});
+
+test('来源、链接与免责尾巴一律剥离', () => {
+  const raw = '先补虚空之杖，锐雯的魔抗会被吃穿。来源Hexdata Patch 16.21，版本未经核实，仅供参考。\n来源（版本未经核实）：https://hexdata.com.cn/hero/887-gwen';
+  const out = stripSources(raw);
+  assert.doesNotMatch(out, /来源|hexdata|http/);
+  assert.match(out, /先补虚空之杖/);
+  // 收敛后同样干净
+  assert.doesNotMatch(condenseAdvice(raw), /来源|http/);
 });

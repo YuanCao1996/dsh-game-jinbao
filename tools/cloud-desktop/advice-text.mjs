@@ -1,9 +1,23 @@
 // 播报正文的收口：模型经常忽略"最多两句"的指令，真实数据里平均 167 字、最长 533 字，
 // 35/66 条带段落。这里做确定性收敛——去 Markdown、去段落、只留两句话、上限 68 字。
+// 玩家不需要引用来源：实测模型会附上「来源Hexdata Patch 16.21，版本未经核实，仅供参考」
+// 和 hexdata.com.cn 链接。这两类尾巴一律在渲染前剥掉。
+
+export function stripSources(text) {
+  let value = String(text ?? '');
+  if (!value) return '';
+  // 先去掉裸链接与"来源…"整段，再清理残留的方括号/标点
+  value = value.replace(/https?:\/\/\S+/g, ' ');
+  value = value.replace(/(?:来源|数据来源|参考来源)\s*[:：]?\s*[^\n。]*(?:。|$)/g, ' ');
+  value = value.replace(/版本未经核实[^。]*。?/g, ' ');
+  value = value.replace(/仅供参考[^。]*。?/g, ' ');
+  return value.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+}
+
 const SENTENCE_END = /[。！？!?.]/;
 
 export function condenseAdvice(text, { maxChars = 68, maxSentences = 2 } = {}) {
-  let value = String(text ?? '');
+  let value = stripSources(text);
   if (!value.trim()) return '';
   // Markdown 与常见排版噪音
   value = value
