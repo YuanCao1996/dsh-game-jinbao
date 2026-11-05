@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -118,4 +118,32 @@ test('a late announcement confirms its own round, never the panel that is open n
  assert.deepEqual(s.augmentRounds.find(r=>r.id===1).confirmed,['甲'],'the announcement confirms the round it belongs to');
  emit({kind:'augment_picked',roll:2,name:'戊',augment:'戊',who:'self',source:'vision-click',confidence:'high'});
  assert.deepEqual(s.augmentRounds.find(r=>r.id===2).confirmed,['戊']);
+});
+
+test('迟到的公告纠正 OCR 读错的卡名（邦！被读成杀戮时间到了）',()=>{
+ const s=initialOverlayState();
+ let at=1000;const emit=e=>applyOverlayEvent(s,{game:'lol',t:++at,...e},'one');
+ emit({kind:'game_start',me:{champion:'灵罗娃娃',items:[]}});
+ emit({kind:'augment_offer',roll:3,options:['将他们放倒倒倒','杀戮时间到了','过量延伸者']});
+ emit({kind:'augment_picked',roll:3,name:'杀戮时间到了',augment:'杀戮时间到了',who:'self',source:'vision-click',confidence:'high'});
+ emit({kind:'augment_offer_closed',roll:3});
+ assert.deepEqual(s.ownedAugments,['杀戮时间到了']);
+ // 30 秒后聊天公告说出真实名字（且该名字在这一轮候选里出现过）
+ at+=30000;
+ emit({kind:'augment_mutate',augment:'过量延伸者',who:'self',confidence:'high'});
+ assert.deepEqual(s.ownedAugments,['过量延伸者'],'记录被纠正为本轮里的真实名字');
+ const round=s.augmentRounds.find(r=>r.id===3);
+ assert.equal(round.correctedFrom,'杀戮时间到了');
+ assert.deepEqual(round.confirmed,['过量延伸者']);
+});
+test('窗口外的公告不会改动已记录的名字',()=>{
+ const s=initialOverlayState();
+ let at=1000;const emit=e=>applyOverlayEvent(s,{game:'lol',t:++at,...e},'one');
+ emit({kind:'game_start',me:{champion:'灵罗娃娃',items:[]}});
+ emit({kind:'augment_offer',roll:3,options:['甲','乙','丙']});
+ emit({kind:'augment_picked',roll:3,name:'甲',augment:'甲',who:'self',source:'vision-click',confidence:'high'});
+ emit({kind:'augment_offer_closed',roll:3});
+ at+=200000;
+ emit({kind:'augment_mutate',augment:'乙',who:'self',confidence:'high'});
+ assert.deepEqual(s.ownedAugments,['甲','乙'],'超出 90 秒窗口只作为新公告入库，不改旧记录');
 });

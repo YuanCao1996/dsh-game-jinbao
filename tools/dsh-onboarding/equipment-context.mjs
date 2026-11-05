@@ -1,4 +1,4 @@
-import {rankedAugments,offerNames} from './augment-ranking.mjs';
+﻿import {rankedAugments,offerNames} from './augment-ranking.mjs';
 import {isCompletedItem} from '../lol-companion/item-policy.mjs';
 
 export function trackAugmentRound(state,event,previousOwned) {
@@ -19,6 +19,22 @@ export function trackAugmentRound(state,event,previousOwned) {
   if(event.kind==='augment_picked'&&event.who==='self'&&event.source==='countdown-default-confirmed'){
     const round=state.augmentRounds.find(row=>row.id===event.roll);
     if(round){round.assumed=event.augment??event.name;round.confirmationSource=event.source;round.recommended=null;}
+  }
+  // 迟到的公告可以纠正 OCR 读错的卡名：实测「邦！」被读成「杀戮时间到了」，像素判定是对的、
+  // 名字错了。规则：高置信度自己的公告、落在该轮关闭后 90 秒内、且名字在该轮候选里出现过
+  // （或该轮有未读出的槽位），才替换该轮的记录。
+  if(event.kind==='augment_mutate'&&event.who==='self'&&event.confidence==='high'){
+    const announced=event.augment??event.name, at=Number(event.t)||Date.now();
+    if(announced){
+      const round=[...state.augmentRounds].reverse().find(r=>r.closed&&r.closedAt&&at-r.closedAt>=0&&at-r.closedAt<=90000
+        &&r.confirmed.length===1&&r.confirmed[0]!==announced&&(r.options.includes(announced)||r.unreadSlot!==undefined));
+      if(round){
+        // 只把错的名字摘掉，正确名字交给下面的既有逻辑入库（否则会重复添加）。
+        const stale=round.confirmed[0], at2=state.ownedAugments.indexOf(stale);
+        if(at2>=0)state.ownedAugments.splice(at2,1);
+        round.confirmed=[announced];round.correctedFrom=stale;round.correctionAt=at;
+      }
+    }
   }
   const added=state.ownedAugments.filter(n=>!previousOwned.includes(n));
   if(added.length){
