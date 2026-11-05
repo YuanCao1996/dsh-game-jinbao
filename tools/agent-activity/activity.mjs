@@ -76,7 +76,7 @@ export async function createAgentActivity({stateDir,getView=()=>null,now=Date.no
     const label=event.status==='ok'?'已找到匹配的游戏资料':empty?'未找到匹配模式的攻略':event.reason==='rate_limited'?'攻略搜索服务暂时限流':'攻略搜索暂时不可用';
     row(id+':search-summary',task,label,event.status==='ok'?'done':'unavailable');
    }else if(type==='model_start')row(id+':model:'+Number(event.request_index??0),task,'模型正在分析','running');
-   else if(type==='model_end')row(id+':model:'+Number(event.request_index??0),task,event.status>=400?'模型请求失败':'本步模型分析结束',event.status>=400?'failed':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null});
+   else if(type==='model_end')row(id+':model:'+Number(event.request_index??0),task,event.status===429?'云端限流，稍后自动重试':event.status>=400?'模型请求失败':'本步模型分析结束',event.status===429?'queued':event.status>=400?'failed':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null});
    else if(type==='compaction')row(id+':compact',task,'整理本局上下文','running');
    else if(type==='rate_limited')row(id+':wait',task,'请求受限，等待恢复','queued');
    else if(type==='connection_retry')row(id+':connection',task,'连接中断，正在重试','queued');
