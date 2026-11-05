@@ -255,6 +255,24 @@ const friendlyKnowledgeMessage=message=>{
   ?'资料库暂无该英雄的数据（不影响本局判断）'
   :text;
 };
+// 智能体动态兜底：没有活动回合时，把本局事件流（装备/海克斯/团灭…）当作行喂进去，
+// 面板就不会整块空着——这类信息本来就是玩家想看的。
+const EVENT_FALLBACK_LIMIT=6;
+const withEventFallback=(activity,state)=>{
+ const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
+ const rows=Array.isArray(base.rows)?base.rows:[];
+ if(rows.length)return base;
+ const events=Array.isArray(state?.events)?state.events.slice(-EVENT_FALLBACK_LIMIT):[];
+ if(!events.length)return base;
+ return {...base,rows:events.map((event,index)=>({
+  id:'event-'+(event.at??index),
+  task:'events',
+  topic:'本局事件',
+  clock:event.time??'',
+  label:String(event.text??'').slice(0,60),
+  phase:'done'
+ }))};
+};
 export function overlayView(state, knowledge = {}) {
   const me = state.me;
   const rows = knowledge.rows ?? [];
@@ -470,7 +488,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     if(heroes.length)out.players=heroLeaderboardPage(heroes,{topRune:row=>{const id=topRuneId(row);return id===null?'':(names.get(id)??'');}});
     return out;
   };
-  const view=()=>({...overlayView(state,knowledge),...(idleLeaderboard()??{}),agentActivity:activity?.snapshot(state)??{supported:false,enabled:false,revision:0,rows:[]}});
+  const view=()=>({...overlayView(state,knowledge),...(idleLeaderboard()??{}),agentActivity:withEventFallback(activity?.snapshot?.(state),state)});
   async function save() {
     if (closed) return;
     // 局结束时把这一局交给经验库（同一局只会提炼一次；未成交给胜负事实，因此只沉淀与胜负无关的教训）。
