@@ -279,7 +279,7 @@ const withEventFallback=(activity,state)=>{
 const stripViewSources=view=>{
  const out={...view};
  for(const [key,value] of Object.entries(out)){
-  if(typeof value==='string'&&/https?:\/\/|来源/.test(value))out[key]=stripSources(value);
+  if(typeof value==='string'&&/https?:\/\/|来源|\*\*|`/.test(value))out[key]=stripSources(value);
  }
  return out;
 };

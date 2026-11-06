@@ -44,3 +44,12 @@ test('来源、链接与免责尾巴一律剥离', () => {
   // 收敛后同样干净
   assert.doesNotMatch(condenseAdvice(raw), /来源|http/);
 });
+
+test('加粗星号与井号不进入悬浮窗', () => {
+  const raw = '**离群之刺（阿卡丽）**：4/2/4，已到 7 级。\n\n其次**邪法小法师** 2/1/5，控制最多。\n# 顺带提醒';
+  const out = stripSources(raw);
+  assert.doesNotMatch(out, /\*\*/);
+  assert.doesNotMatch(out, /^#/m);
+  assert.match(out, /离群之刺（阿卡丽）：4\/2\/4/);
+  assert.match(out, /邪法小法师/);
+});

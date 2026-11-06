@@ -11,6 +11,10 @@ export function stripSources(text) {
   value = value.replace(/(?:来源|数据来源|参考来源)\s*[:：]?\s*[^\n。]*(?:。|$)/g, ' ');
   value = value.replace(/版本未经核实[^。]*。?/g, ' ');
   value = value.replace(/仅供参考[^。]*。?/g, ' ');
+  // Markdown 星号/井号会原样出现在悬浮窗里（战况页实测出现 **离群之刺（阿卡丽）** 这种），
+  // 这里一并去掉：加粗、斜体、行内代码、标题井号、列表符号。
+  value = value.replace(/\*\*+|__+|`+|^#{1,6}\s+/gm, '');
+  value = value.replace(/^\s*[-*+]\s+/gm, '· ');
   return value.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
 }
 
