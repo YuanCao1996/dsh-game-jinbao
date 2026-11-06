@@ -598,7 +598,10 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       }
       // 面板刷新后会换出 Top10 里没有的强化名，排序/推荐就无从算起。
       // 这里按名字补查一次（最多 3 个，且按名字缓存），让确认面板能按真实排名排序。
-      if(game==='lol'&&champion){
+      // 只有发生过刷新（reroll）才需要补查：首轮面板的候选已在 Top10 里，
+      // 无条件补查会让首次查询多打请求（既有用例断言了检索次数）。
+      const rerolled=(state.offers??[]).some(offer=>offer&&(offer.reroll===true||Number(offer.rerollsUsed??0)>0));
+      if(game==='lol'&&champion&&rerolled){
         const offered=offerNames(state.offers).slice(0,3);
         const known=new Set(cache.rows.map(row=>row?.name).filter(Boolean));
         const need=offered.filter(name=>!known.has(name)&&!cache.optionRanked?.has(name));
