@@ -89,3 +89,36 @@ test('an incompletely recognised panel lists only what is on screen and reports 
  assert.equal(prompt.missing,1,'the unrecognised slot is reported, not filled with 丙 or 甲');
  assert.match(prompt.hint,/1 个卡位未识别/);
 });
+
+test('确认面板按适配排名排序，刷新后换成新候选并重新排序',()=>{
+ const now=Date.now();
+ const state=initialOverlayState();
+ let t=now-5000;
+ const emit=e=>applyOverlayEvent(state,{game:'lol',match:'m1',t:(t+=100),...e},'x');
+ emit({kind:'game_start',me:{champion:'安妮',items:[]}});
+ emit({kind:'augment_offer',roll:1,options:['甲','乙','丙']});
+ emit({kind:'augment_offer_closed',roll:1});
+ // 乙 排名最好（rank 1），甲 次之（rank 3）
+ const rows=[
+  {_type:'augments',champion:'安妮',name:'甲',rank:3},
+  {_type:'augments',champion:'安妮',name:'乙',rank:1},
+  {_type:'augments',champion:'安妮',name:'丙',rank:9},
+ ];
+ let prompt=augmentConfirmation(state,rows,Date.now());
+ assert.ok(prompt,'应出确认面板');
+ assert.deepEqual(prompt.options.map(o=>o.name),['乙','甲','丙'],'按排名升序');
+ assert.match(prompt.options[0].label,/优先推荐/,'第一项标优先推荐');
+ // 玩家点刷新：面板换成新三张
+ emit({kind:'augment_offer',roll:1,options:['丁','戊','己'],reroll:true,options_rerolled:true});
+ emit({kind:'augment_offer_closed',roll:1});
+ const rows2=[
+  ...rows,
+  {_type:'augments',champion:'安妮',name:'丁',rank:12},
+  {_type:'augments',champion:'安妮',name:'戊',rank:2},
+  {_type:'augments',champion:'安妮',name:'己',rank:7},
+ ];
+ prompt=augmentConfirmation(state,rows2,Date.now());
+ assert.ok(prompt,'刷新后仍应出确认面板');
+ assert.deepEqual(prompt.options.map(o=>o.name),['戊','己','丁'],'刷新后的候选按排名重排');
+ assert.deepEqual(prompt.options.some(o=>o.name==='甲'),false,'刷新掉的旧卡不再列出');
+});
