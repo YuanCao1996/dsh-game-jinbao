@@ -20,6 +20,9 @@ public static class JinbaoCardWatch {
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hwnd, out Rect rect);
  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd, ref Point point);
+ [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
+ // PW_RENDERFULLCONTENT=2：抓窗口自身内容，不含覆盖在上面的其它窗口（我们的悬浮窗）。
+ [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
 
@@ -67,9 +70,83 @@ function Get-JinbaoCardRects([int]$width,[int]$height){
  return ,$rects.ToArray()
 }
 
+
+# 我们自己的悬浮窗矩形（判断它是否压在卡面上）。一轮面板期间窗口不动，查一次即可。
+function Get-JinbaoOverlayRect {
+ $wins=Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like '金宝*' }
+ $union=$null
+ foreach($win in $wins){
+  $r=New-Object JinbaoCardWatch+Rect
+  if([JinbaoCardWatch]::GetWindowRect($win.MainWindowHandle,[ref]$r)){
+   $rect=[pscustomobject]@{x=$r.Left;y=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top}
+   if(-not $union){$union=$rect}else{
+    $x1=[Math]::Min($union.x,$rect.x);$y1=[Math]::Min($union.y,$rect.y)
+    $x2=[Math]::Max($union.x+$union.width,$rect.x+$rect.width);$y2=[Math]::Max($union.y+$union.height,$rect.y+$rect.height)
+    $union=[pscustomobject]@{x=$x1;y=$y1;width=$x2-$x1;height=$y2-$y1}
+   }
+  }
+ }
+ return $union
+}
+
+# 两个矩形是否相交
+function Test-JinbaoRectOverlap($a,$b){
+ if(-not $a -or -not $b){return $false}
+ return ($a.x -lt ($b.x+$b.width)) -and (($a.x+$a.width) -gt $b.x) -and ($a.y -lt ($b.y+$b.height)) -and (($a.y+$a.height) -gt $b.y)
+}
+
+# PrintWindow 抓游戏窗口整帧（失败返回 $null，调用方回退屏幕抓取）
+function Get-JinbaoWindowBitmap([IntPtr]$hwnd,[int]$width,[int]$height){
+ try{
+  $bmp=New-Object Drawing.Bitmap $width,$height
+  $g=[Drawing.Graphics]::FromImage($bmp)
+  $ok=$false
+  try{$hdc=$g.GetHdc();try{$ok=[JinbaoCardWatch]::PrintWindow($hwnd,$hdc,2)}finally{$g.ReleaseHdc($hdc)}}finally{$g.Dispose()}
+  if(-not $ok){$bmp.Dispose();return $null}
+  # 全黑说明这个游戏窗口抓不到内容（DX 全屏常见），必须回退屏幕抓取，
+  # 否则选卡判定会退化成"画面没变化"，整局都记不到选择。
+  $dark=$true
+  for($sx=0;$sx -lt $bmp.Width;$sx+=[Math]::Max(1,[int]($bmp.Width/8))){
+   for($sy=0;$sy -lt $bmp.Height;$sy+=[Math]::Max(1,[int]($bmp.Height/8))){
+    $pixel=$bmp.GetPixel($sx,$sy)
+    if(($pixel.R+$pixel.G+$pixel.B) -gt 24){$dark=$false;break}
+   }
+   if(-not $dark){break}
+  }
+  if($dark){$bmp.Dispose();return $null}
+  return $bmp
+ }catch{return $null}
+}
+
+# 从整窗位图裁出三张卡
+function Get-JinbaoCroppedFrame($source,[int]$width,[int]$height){
+ $frame=New-Object System.Collections.ArrayList
+ foreach($rect in (Get-JinbaoCardRects $width $height)){
+  $bmp=New-Object Drawing.Bitmap $rect.width,$rect.height
+  $g=[Drawing.Graphics]::FromImage($bmp)
+  try{$src=New-Object Drawing.Rectangle $rect.x,$rect.y,$rect.width,$rect.height
+      $dst=New-Object Drawing.Rectangle 0,0,$rect.width,$rect.height
+      $g.DrawImage($source,$dst,$src,[Drawing.GraphicsUnit]::Pixel)}finally{$g.Dispose()}
+  [void]$frame.Add($bmp)
+ }
+ return ,$frame.ToArray()
+}
 # 抓一帧的三张卡片。$Copy 可注入（测试用），默认直接 CopyFromScreen。
 function Get-JinbaoCardFrame {
- param([int]$width,[int]$height,[int]$originX,[int]$originY,[scriptblock]$Copy)
+ param([int]$width,[int]$height,[int]$originX,[int]$originY,[scriptblock]$Copy,[IntPtr]$Hwnd,[object]$OverlayRect)
+ # 悬浮窗压住卡面时，屏幕抓取会把我们自己的界面文字读进去（实测读到过「角色与语音」）。
+ # 这时改用 PrintWindow 抓游戏窗口自身内容再裁剪；不相交时仍走快速的屏幕抓取。
+ if($Hwnd -and $Hwnd -ne [IntPtr]::Zero){
+  $hit=$false
+  foreach($r in (Get-JinbaoCardRects $width $height)){
+   $screen=[pscustomobject]@{x=$originX+$r.x;y=$originY+$r.y;width=$r.width;height=$r.height}
+   if(Test-JinbaoRectOverlap $screen $OverlayRect){$hit=$true;break}
+  }
+  if($hit){
+   $whole=Get-JinbaoWindowBitmap $Hwnd $width $height
+   if($whole){try{return ,(Get-JinbaoCroppedFrame $whole $width $height)}finally{$whole.Dispose()}}
+  }
+ }
  $frame=New-Object System.Collections.ArrayList
  foreach($rect in (Get-JinbaoCardRects $width $height)){
   $bmp=[Drawing.Bitmap]::new($rect.width,$rect.height)
@@ -262,8 +339,9 @@ if($MyInvocation.InvocationName -ne '.'){
      if($width -lt 640 -or $height -lt 480){
       $payload.reason='bounds_too_small'
      }else{
+      $overlayRect=Get-JinbaoOverlayRect
       $result=Invoke-JinbaoCardWatch -TimeoutMs $timeoutMs -Threshold $threshold -SleepMs 50 -KeepFrames -Capture {
-       Get-JinbaoCardFrame -width $width -height $height -originX $origin.X -originY $origin.Y
+       Get-JinbaoCardFrame -width $width -height $height -originX $origin.X -originY $origin.Y -Hwnd $handle -OverlayRect $overlayRect
       }
       $payload=[ordered]@{picked=$result.picked;reason=$result.reason;frames=$result.frames;ms=$result.ms;peak=$result.peak}
       # Undecided rounds are always kept because the tie-break needs the frames. Setting
