@@ -20,7 +20,7 @@ export function sanitizeActivityText(value,sensitive=[]){
 
 export async function createAgentActivity({stateDir,getView=()=>null,now=Date.now}={}){
  const instanceId=randomUUID();
- const path=join(stateDir,'agent-activity-settings.json');let enabled=false,revision=0,scope='',rows=[],tasks=new Map(),writes=Promise.resolve(),closed=false;
+ const path=join(stateDir,'agent-activity-settings.json');let lastLiveLabel='',enabled=false,revision=0,scope='',rows=[],tasks=new Map(),writes=Promise.resolve(),closed=false;
  try{const bytes=await readFile(path);if(bytes.length<=1024)enabled=JSON.parse(bytes).enabled===true;}catch{}
  function row(id,task,label,phase,extra={}){
   let entry=rows.find(value=>value.id===id);
@@ -99,7 +99,14 @@ export async function createAgentActivity({stateDir,getView=()=>null,now=Date.no
    const currentScope=(state.game||'lol')+':'+(state.match||'waiting');
    if(scope&&scope!==currentScope){scope=currentScope;rows=[];tasks.clear();revision++;}
    const sensitive=[state.me,...(state.allies??[]),...(state.enemies??[])].filter(Boolean).flatMap(p=>['name','player','riotId','summonerName','puuid'].map(k=>p[k]));
-   return{supported:true,enabled:true,instanceId,revision,rows:rows.map(entry=>({...entry,...(entry.text?{text:sanitizeActivityText(entry.text,sensitive)}:{})}))};
+   // 顶部常驻一行「对局状态」，并让最新的记录排在最上面：面板一直在动，
+  // 玩家一眼能看到当前时间/等级/KDA/金币和最刚发生的那一步。
+  const liveView=getView()?.liveStats??null;
+  const liveLabel=liveView?[liveView.clock?('对局 '+liveView.clock):'',liveView.champion,liveView.level!=null?'Lv'+liveView.level:'',liveView.kda,liveView.gold!=null?liveView.gold+' 金':''].filter(Boolean).join(' · '):'';
+  if(liveLabel!==lastLiveLabel){lastLiveLabel=liveLabel;revision++;}
+  const ordered=rows.slice().reverse();
+  if(liveLabel){ordered.unshift({id:'match-live',task:'match',topic:'对局',clock:liveView.clock??'',label:liveLabel,phase:'live'});}
+  return{supported:true,enabled:true,instanceId,revision,rows:ordered.map(entry=>({...entry,...(entry.text?{text:sanitizeActivityText(entry.text,sensitive)}:{})}))};
   },
   async close(){closed=true;rows=[];tasks.clear();await writes;}
  };return api;

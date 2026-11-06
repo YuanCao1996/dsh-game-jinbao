@@ -435,6 +435,14 @@ const playerRows = players.map(p => {
     leaderboard:knowledge.leaderboard??null,
     teamWinRatesNote:liveEstimate?LIVE_ESTIMATE_NOTE:TEAM_STRENGTH_NOTE,
     liveTeamEstimate:liveEstimate,
+    // 供智能体动态顶部常驻显示：对局时间/等级/KDA/金币，随每次状态刷新跳动。
+    liveStats: state.game==='generic'?null:{
+     clock: clock(state.gameSeconds),
+     champion: shortChampion(me.champion)||'',
+     level: me.level??null,
+     kda: (me.k!=null&&me.d!=null&&me.a!=null)?me.k+'/'+me.d+'/'+me.a:'',
+     gold: me.gold??state.gold??null,
+    },
     confirmation:augmentConfirmation(state,rows),
     heroStats,
     playerRows,
