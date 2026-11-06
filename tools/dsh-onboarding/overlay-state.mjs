@@ -563,7 +563,9 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       const offered = offerNames(state.offers).slice(0,3);
       const base = async () => {
         if(selecting||!champion||(!force&&(cache.baseLoaded||Date.now()<(cache.baseRetryAt??0))))return;
-        cache.baseRetryAt=Date.now()+knowledgeRetryMs;
+        // 选完英雄后首次查询常常落空（名字还没解析好），15 秒的重试间隔让页面空着很久。
+        // 未拿到数据时快速重试；拿到数据后 baseLoaded 会挡住后续重复查询。
+        cache.baseRetryAt=Date.now()+1200;
         const results=await Promise.allSettled(game==='wzry'?[search({game,query:champion,limit:3})]:[
           search({game,query:champion,filter:{_type:'coreBuilds'},limit:3}),
           search({game,query:champion,filter:{_type:'augments'},limit:10}),
