@@ -1,4 +1,4 @@
-import { condenseAdvice } from '../cloud-desktop/advice-text.mjs';
+import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
 import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId } from './leaderboard-pages.mjs';
 import { mkdir, readdir, stat, open, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -273,6 +273,16 @@ const withEventFallback=(activity,state)=>{
   phase:'done'
  }))};
 };
+
+// 战况/出装等页面的正文可能来自模型或资料库，会带「来源…」和链接。视图出口统一剥一次，
+// 这样任何页面都不会再把来源甩给玩家（之前只剥了播报那一条路径）。
+const stripViewSources=view=>{
+ const out={...view};
+ for(const [key,value] of Object.entries(out)){
+  if(typeof value==='string'&&/https?:\/\/|来源/.test(value))out[key]=stripSources(value);
+ }
+ return out;
+};
 export function overlayView(state, knowledge = {}) {
   const me = state.me;
   const rows = knowledge.rows ?? [];
@@ -488,7 +498,8 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     if(heroes.length)out.players=heroLeaderboardPage(heroes,{topRune:row=>{const id=topRuneId(row);return id===null?'':(names.get(id)??'');}});
     return out;
   };
-  const view=()=>({...overlayView(state,knowledge),...(idleLeaderboard()??{}),agentActivity:withEventFallback(activity?.snapshot?.(state),state)});
+  const view=()=>stripViewSources({...overlayView(state,knowledge),...(idleLeaderboard()??{}),agentActivity:withEventFallback(activity?.snapshot?.(state),state)});
+
   async function save() {
     if (closed) return;
     // 局结束时把这一局交给经验库（同一局只会提炼一次；未成交给胜负事实，因此只沉淀与胜负无关的教训）。
