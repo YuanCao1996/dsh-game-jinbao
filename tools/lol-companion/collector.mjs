@@ -140,7 +140,24 @@ const captureTimer=setInterval(async()=>{
 while(running){
  try{
   const credentials=readCredentials();
-  if(credentials.ok){const result=await lcuRequest(credentials,'/lol-gameflow/v1/gameflow-phase');
+  if(credentials.ok){
+   // 强化描述的数值只存在于客户端数据里（服务端索引只有名字与等级）。
+   // 客户端在线时落地一份，供页面展示与后续索引构建使用；六小时刷新一次。
+   if(Date.now()-(globalThis.__jinbaoAugmentsAt??0)>6*3600*1000){
+    globalThis.__jinbaoAugmentsAt=Date.now();
+    void (async()=>{
+     try{
+      const fetched=await lcuRequest(credentials,'/lol-game-data/assets/v1/augments.json',{timeoutMs:15000});
+      if(fetched.status===200&&Array.isArray(fetched.data)&&fetched.data.length){
+       const target=join(process.env.JINBAO_STATE_DIR??dirname(folder),'lcu-augments.json');
+       await writeFile(target+'.tmp',JSON.stringify({fetchedAt:new Date().toISOString(),count:fetched.data.length,rows:fetched.data}));
+       await rename(target+'.tmp',target);
+       log.append({kind:'lcu_augments_landed',count:fetched.data.length});
+      }
+     }catch{}
+    })();
+   }
+   const result=await lcuRequest(credentials,'/lol-gameflow/v1/gameflow-phase');
    if(result.status===200&&result.data!==phase){phase=result.data;log.append({kind:'phase',phase});if(['ChampSelect','EndOfGame','Lobby','None'].includes(phase))nextMatch=true;}
    if(phase==='ChampSelect'){
     const selection=await readSelection(credentials);
