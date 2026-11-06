@@ -113,12 +113,17 @@ const stop=()=>{running=false;stopCardWatch();captureStop.abort();captureWorker.
 process.once('SIGINT',stop);process.once('SIGTERM',stop);
 process.on('message',message=>{if(message?.action==='stop')stop();});
 if(process.connected)process.once('disconnect',stop);
+let lastDeadAt=false;
 const captureTimer=setInterval(async()=>{
  if(!running||capturing||Date.now()<nextCaptureAt||!lastLiveState||!['KIWI','ARAM'].includes(lastLiveState.mode))return;
  capturing=true;nextCaptureAt=Date.now()+500;
  const generation=captureGeneration;
  const captureStarted=Date.now();
  try{
+  // 三选一天然跟在阵亡之后（不是每次阵亡都有）：阵亡上升沿开 25 秒重点窗口，期间只跑标题帧。
+  const deadNow=lastLiveState?.me?.dead===true;
+  if(deadNow&&!lastDeadAt){captureSchedule.boost(25000);log.append({kind:'augment_scan_boost',reason:'death',at:Date.now()});}
+  lastDeadAt=deadNow;
   const frame=await captureWorker.capture(captureStop.signal,{focus:captureSchedule.choose()});
   if(running&&generation===captureGeneration&&lastLiveState){
    observer.observe(frame);

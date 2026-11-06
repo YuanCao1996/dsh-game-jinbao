@@ -46,3 +46,24 @@ test('the interval is configurable for tests and slower machines', () => {
   clock += 1;
   assert.equal(schedule.choose(), 'full');
 });
+
+test('death boost makes the cheap title pass run continuously', () => {
+  // ARAM 的三选一跟在阵亡之后：重点窗口内不再等整屏间隔，直接跑标题帧。
+  let clock = 0;
+  const schedule = createCaptureSchedule({ now: () => clock, fullIntervalMs: 4000 });
+  assert.equal(schedule.choose(), 'full');
+  assert.equal(schedule.choose(), 'titles');
+  clock += 4000;
+  assert.equal(schedule.choose(), 'full');
+  schedule.boost(25000);
+  clock += 10;
+  assert.equal(schedule.hot(), true);
+  // 窗口内即使到了整屏时间点也只跑标题
+  for (const step of [500, 2000, 4000, 8000]) {
+    clock += step;
+    assert.equal(schedule.choose(), 'titles', 'within boost window');
+  }
+  clock += 25000;
+  assert.equal(schedule.hot(), false);
+  assert.equal(schedule.choose(), 'full', 'window expires and the normal cadence resumes');
+});
