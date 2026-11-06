@@ -372,6 +372,10 @@ function Update-Page {
   $value=[string]$script:snapshot.($script:tab)
   $controls.PageText.Text=if($value){$value}else{'等待此页面的数据…'}
   if(Get-Command Set-HighlightedText -ErrorAction SilentlyContinue){Set-HighlightedText $controls.PageText $controls.PageText.Text}
+ }else{
+  # 快照还没到（刚启动或状态文件暂时读不到）时也要清空，否则切标签后仍显示上一页正文，
+  # 看起来就像「海克斯页显示的是战况内容」。
+  $controls.PageText.Text='正在读取对局状态…'
  }
  $tableVisible=$script:tab -eq 'players' -and $null -ne $script:snapshot.playerRows -and @($script:snapshot.playerRows).Count -gt 0
  $controls.PlayersTable.Visibility=if($tableVisible){'Visible'}else{'Collapsed'}
