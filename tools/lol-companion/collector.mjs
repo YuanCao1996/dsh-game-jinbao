@@ -31,7 +31,9 @@ console.log('LoL collector started; waiting for client. Logs: '+folder);
 let running=true,lastLiveState=null,capturing=false,lastCaptureAvailable=null,nextCaptureAt=0,captureGeneration=0;
 const captureStop=new AbortController();
 const captureWorker=createAugmentCaptureWorker();
-const captureSchedule=createCaptureSchedule();
+// 整屏 OCR 每次要 1–2 秒，正好卡在面板出现的瞬间；卡标题只要几百毫秒。
+// 面板出现后能否立刻显示三选一，取决于标题帧多快轮到，所以整屏降到 4 秒一次。
+const captureSchedule=createCaptureSchedule({fullIntervalMs:4000});
 const names=await augmentNames();
 let captureReportBusy=false,lastCaptureReport=0,captureSequence=0;
 const captureReport=async value=>{
