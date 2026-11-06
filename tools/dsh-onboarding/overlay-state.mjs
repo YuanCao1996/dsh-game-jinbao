@@ -276,11 +276,22 @@ const withEventFallback=(activity,state)=>{
 
 // 战况/出装等页面的正文可能来自模型或资料库，会带「来源…」和链接。视图出口统一剥一次，
 // 这样任何页面都不会再把来源甩给玩家（之前只剥了播报那一条路径）。
-const stripViewSources=view=>{
- const out={...view};
- for(const [key,value] of Object.entries(out)){
-  if(typeof value==='string'&&/https?:\/\/|来源|\*\*|`/.test(value))out[key]=stripSources(value);
+const needsStrip=value=>typeof value==='string'&&/https?:\/\/|来源|\*\*|`/.test(value);
+// 视图字段里既有字符串也有对象数组（thread 就是 [{role,text,...}]），
+// 只遍历顶层字符串会漏掉数组里的正文——实测战况页因此还显示「来源 + 链接」。
+const stripDeep=value=>{
+ if(typeof value==='string')return needsStrip(value)?stripSources(value):value;
+ if(Array.isArray(value))return value.map(stripDeep);
+ if(value&&typeof value==='object'){
+  const out={};
+  for(const [key,item] of Object.entries(value))out[key]=stripDeep(item);
+  return out;
  }
+ return value;
+};
+const stripViewSources=view=>{
+ const out={};
+ for(const [key,value] of Object.entries(view))out[key]=stripDeep(value);
  return out;
 };
 export function overlayView(state, knowledge = {}) {

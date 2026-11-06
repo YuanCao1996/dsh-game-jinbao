@@ -84,7 +84,9 @@ function Get-OverlayTagCategory {
   }
   # 4) 保底
   if ($row.role -eq 'user') { $labels = @('提问') }
-  elseif (!$labels -or ($labels.Count -eq 0)) { $labels = @(if ($row.kind -eq 'praise') { '夸奖' } else { '回答' }) }
+  # 没有任何实体命中时不要再打一个"回答"的兜底标签：它没有信息量，而且和正文的相对位置
+  # 随行变化，看起来像标签错乱（实测战况页出现"回答"忽上忽下）。夸奖是有意义的，保留。
+  elseif (!$labels -or ($labels.Count -eq 0)) { $labels = @(if ($row.kind -eq 'praise') { '夸奖' }) }
   elseif ($row.kind -eq 'praise' -and $labels[0] -ne '夸奖') { $labels = @('夸奖') + $labels | Select-Object -First 2 }
 
   $colors = Get-OverlayCategoryColor
