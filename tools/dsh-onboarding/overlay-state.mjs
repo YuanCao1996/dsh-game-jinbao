@@ -596,6 +596,21 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
         if(hexRes.status==='rejected')failed(hexRes.reason);
         if(heroRes.status==='rejected')failed(heroRes.reason);
       }
+      // 面板刷新后会换出 Top10 里没有的强化名，排序/推荐就无从算起。
+      // 这里按名字补查一次（最多 3 个，且按名字缓存），让确认面板能按真实排名排序。
+      if(game==='lol'&&champion){
+        const offered=offerNames(state.offers).slice(0,3);
+        const known=new Set(cache.rows.map(row=>row?.name).filter(Boolean));
+        const need=offered.filter(name=>!known.has(name)&&!cache.optionRanked?.has(name));
+        await Promise.all(need.map(async name=>{
+          try{
+            const result=await search({game,query:name,filter:{_type:'augments'},limit:10});
+            const rows=(result.results??[]).map(item=>item.data).filter(row=>row&&row.name===name);
+            if(rows.length){cache.rows=[...rows,...cache.rows];}
+            cache.optionRanked=cache.optionRanked??new Set();cache.optionRanked.add(name);
+          }catch{}
+        }));
+      }
       await Promise.all([base(),...rosterChampions(state).filter(name=>game==='lol'&&(force||!cache.heroes.has(name))).map(async name=>{
         try{
           const result=await search({game,query:name,dataset:'aram-ranking',limit:1});
