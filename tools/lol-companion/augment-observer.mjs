@@ -8,7 +8,7 @@ const exec = promisify(execFile);
 // the catalogue wrote "质变：棱彩阶", which silently dropped the card from the panel.
 const normalize = value => String(value??'').replace(/[\s:：!！·•・．.。,，;；、—－-]/g,'').replaceAll('亻卜','仆');
 
-export function createAugmentObserver(names, emit, {now=Date.now,maxFrameAgeMs=4000,maxBlindGapMs=15000}={}) {
+export function createAugmentObserver(names, emit, {now=Date.now,maxFrameAgeMs=8000,maxBlindGapMs=15000}={}) {
   const catalog = new Map(names.map(name=>[normalize(name),name]));
   let current=[null,null,null],history=[],round=0,misses=0,slots=[[],[],[]],anchors=null;
   let pending=[null,null,null],suspended=null;
@@ -62,7 +62,10 @@ const unknownNames=new Set();
        if(line.source!=='title'||!Number.isInteger(line.slot)||line.slot<0||line.slot>2)continue;
        if(catalog.get(normalize(line.text)))continue;
        const text=normalize(line.text);
-       if(!/^[\u4e00-\u9fa5]{2,8}$/.test(text)||LABELS.has(text))continue;
+       // 实测候选里混进过玩家名（大乱斗李无敌、一一一恶犬许…）。未收录名字必须更短、
+       // 且不含聊天/名号特征，否则宁可报缺卡。
+       if(!/^[\u4e00-\u9fa5]{2,6}$/.test(text)||LABELS.has(text))continue;
+       if(/大乱斗|无敌|恶犬|先生|小姐|哥哥|姐姐|爸爸|玩家|队友/.test(text))continue;
        if(!unverified.some(row=>row.slot===line.slot&&row.name===text))unverified.push({...line,name:text,unverified:true});
       }
       // 实测一局里冒出 85 个「未收录卡名」：面板带里还夹着界面文字，兜底太宽松会把它们
