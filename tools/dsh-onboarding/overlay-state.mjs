@@ -261,28 +261,22 @@ const EVENT_FALLBACK_LIMIT=6;
 const withEventFallback=(activity,state)=>{
  const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
  let rows=Array.isArray(base.rows)?base.rows:[];
- if(rows.length){
-  // 最新一条排最上面，并在顶部常驻一行对局状态（时间/等级/KDA/金币，随刷新跳动）。
-  // 注意：这里不能用 activity.snapshot() 内部调 getView，那会与本函数互相递归。
-  const me=state.me??{};
-  const live=[state.game==='generic'?null:'对局 '+(state.gameSeconds!=null?clock(state.gameSeconds):'--'),
-   shortChampion(me.champion)||'',me.level!=null?'Lv'+me.level:'',
-   (me.k!=null&&me.d!=null&&me.a!=null)?me.k+'/'+me.d+'/'+me.a:'',
-   me.gold!=null?me.gold+' 金':''].filter(Boolean).join(' · ');
-  const ordered=rows.slice().reverse();
-  if(live)ordered.unshift({id:'match-live',task:'match',topic:'对局',clock:'',label:live,phase:'live'});
-  return {...base,rows:ordered};
+ if(!rows.length){
+  // 没有活动回合时用本局事件流兜底，面板不至于整块空着。
+  rows=(Array.isArray(state?.events)?state.events.slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
+   id:'event-'+(event.at??index),task:'events',topic:'本局事件',
+   clock:event.time??'',label:String(event.text??'').slice(0,60),phase:'done'}));
  }
- const events=Array.isArray(state?.events)?state.events.slice(-EVENT_FALLBACK_LIMIT):[];
- if(!events.length)return base;
- return {...base,rows:events.map((event,index)=>({
-  id:'event-'+(event.at??index),
-  task:'events',
-  topic:'本局事件',
-  clock:event.time??'',
-  label:String(event.text??'').slice(0,60),
-  phase:'done'
- }))};
+ if(!rows.length)return base;
+ // 最新的排最上面；顶部常驻一行对局状态（时间/英雄/等级/KDA/金币），随状态刷新跳动。
+ const me=state.me??{};
+ const live=[state.game==='generic'?null:'对局 '+(state.gameSeconds!=null?clock(state.gameSeconds):'--'),
+  (me.champion??''),me.level!=null?'Lv'+me.level:'',
+  (me.k!=null&&me.d!=null&&me.a!=null)?me.k+'/'+me.d+'/'+me.a:'',
+  me.gold!=null?me.gold+' 金':''].filter(Boolean).join(' · ');
+ const ordered=rows.slice().reverse();
+ if(live)ordered.unshift({id:'match-live',task:'match',topic:'对局',clock:'',label:live,phase:'live'});
+ return {...base,rows:ordered};
 };
 
 // 战况/出装等页面的正文可能来自模型或资料库，会带「来源…」和链接。视图出口统一剥一次，
@@ -449,7 +443,7 @@ const playerRows = players.map(p => {
     // 供智能体动态顶部常驻显示：对局时间/等级/KDA/金币，随每次状态刷新跳动。
     liveStats: state.game==='generic'?null:{
      clock: clock(state.gameSeconds),
-     champion: shortChampion(me.champion)||'',
+     champion: (me.champion??''),
      level: me.level??null,
      kda: (me.k!=null&&me.d!=null&&me.a!=null)?me.k+'/'+me.d+'/'+me.a:'',
      gold: me.gold??state.gold??null,
