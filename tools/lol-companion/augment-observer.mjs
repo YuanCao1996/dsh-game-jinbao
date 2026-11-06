@@ -57,6 +57,18 @@ const unknownNames=new Set();
       // Category labels sit under every card name and would otherwise pass as unverified names.
       const LABELS=new Set(['重型','力量','速度','功能','复原力','伤害','法术','生命','攻击','防御','综合','辅助','护盾','冷却','暴击','移动','韧性','鞭挞','护甲','魔抗','金币','治疗','减速','加速','持续','叠加',// 以下是被 OCR 从界面其他区域读到的通用词，曾把「装备」当成卡名塞进候选：
  '装备','物品','商店','属性','符文','天赋','技能','召唤师','回城','购买','出售','面板','详情','关闭','选择','强化']);
+/** 名字能否被完整拆成两个以上已知标签（例如「伤害功能」= 伤害+功能，「速度复原力」= 速度+复原力）。
+ *  这类字符串是卡面类别标签被 OCR 粘在一起，不是强化名。 */
+function isLabelMerge(text){
+ if(!text||text.length<4)return false;
+ let reach=new Array(text.length+1).fill(0);reach[0]=1;
+ for(let i=0;i<text.length;i+=1){
+  if(!reach[i])continue;
+  for(const label of LABELS){if(text.startsWith(label,i))reach[i+label.length]=Math.max(reach[i+label.length],reach[i]+1);}
+ }
+ return reach[text.length]>=3; // 2 个子串 => 计数 3（起始 1 + 两段）
+}
+
       const unverified=[];
       for(const line of lines){
        if(line.source!=='title'||!Number.isInteger(line.slot)||line.slot<0||line.slot>2)continue;
@@ -66,6 +78,7 @@ const unknownNames=new Set();
        // 且不含聊天/名号特征，否则宁可报缺卡。
        if(!/^[\u4e00-\u9fa5]{2,6}$/.test(text)||LABELS.has(text))continue;
        if(/大乱斗|无敌|恶犬|先生|小姐|哥哥|姐姐|爸爸|玩家|队友/.test(text))continue;
+       if(isLabelMerge(text))continue;
        if(!unverified.some(row=>row.slot===line.slot&&row.name===text))unverified.push({...line,name:text,unverified:true});
       }
       // 实测一局里冒出 85 个「未收录卡名」：面板带里还夹着界面文字，兜底太宽松会把它们

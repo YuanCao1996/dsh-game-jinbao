@@ -376,3 +376,33 @@ test('只认出一张卡时，未收录文字不得成为候选（避免杂物�
  if(offer)assert.equal((offer.options??[]).some(o=>o.name==='看不出的字'),false,'杂物不得成为候选');
  assert.equal(output.filter(e=>e.kind==='augment_name_unknown').length,0,'未收录文字不再上报为缺口');
 });
+
+test('卡面标签被粘连成的名字不得成为候选（伤害功能 / 速度复原力）', () => {
+  // 回测真实帧里出现过：OCR 把卡面类别标签粘成了「伤害功能」「速度复原力」，被当成卡名。
+  const output = [], observer = createAugmentObserver(['术士果汁盒', '面包和果酱'], (event) => output.push(event));
+  const frame = () => ({available: true, foreground: true, width: 1920, height: 1080, cardLayout: 'stacked-title-regions',
+    titleLines: [
+      {text: '术士果汁盒', slot: 0, x: 600, y: 430},
+      {text: '面包和果酱', slot: 1, x: 900, y: 430},
+      {text: '伤害功能', slot: 2, x: 1200, y: 430},
+    ], lines: []});
+  for (let i = 0; i < 4; i += 1) observer.observe(frame());
+  const offer = output.filter((event) => event.kind === 'augment_offer').at(-1);
+  assert.ok(offer, '面板仍应被识别');
+  assert.deepEqual(offer.options.map((option) => option.name).sort(), ['面包和果酱', '术士果汁盒'].sort());
+  assert.ok(offer.missingSlots.includes(2), '粘连标签的那一槽应报缺失');
+});
+
+test('只有部分是标签的名字仍然可以收录（避免误杀真实强化）', () => {
+  const output = [], observer = createAugmentObserver(['甲', '乙'], (event) => output.push(event));
+  const frame = () => ({available: true, foreground: true, width: 1920, height: 1080, cardLayout: 'stacked-title-regions',
+    titleLines: [
+      {text: '甲', slot: 0, x: 600, y: 430},
+      {text: '乙', slot: 1, x: 900, y: 430},
+      {text: '伤害射手', slot: 2, x: 1200, y: 430},
+    ], lines: []});
+  for (let i = 0; i < 4; i += 1) observer.observe(frame());
+  const offer = output.filter((event) => event.kind === 'augment_offer').at(-1);
+  const names = (offer?.options ?? []).map((option) => option.name);
+  assert.ok(names.includes('伤害射手'), '含有标签但整体不全是标签，应保留');
+});
