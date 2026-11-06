@@ -260,8 +260,19 @@ const friendlyKnowledgeMessage=message=>{
 const EVENT_FALLBACK_LIMIT=6;
 const withEventFallback=(activity,state)=>{
  const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
- const rows=Array.isArray(base.rows)?base.rows:[];
- if(rows.length)return base;
+ let rows=Array.isArray(base.rows)?base.rows:[];
+ if(rows.length){
+  // 最新一条排最上面，并在顶部常驻一行对局状态（时间/等级/KDA/金币，随刷新跳动）。
+  // 注意：这里不能用 activity.snapshot() 内部调 getView，那会与本函数互相递归。
+  const me=state.me??{};
+  const live=[state.game==='generic'?null:'对局 '+(state.gameSeconds!=null?clock(state.gameSeconds):'--'),
+   shortChampion(me.champion)||'',me.level!=null?'Lv'+me.level:'',
+   (me.k!=null&&me.d!=null&&me.a!=null)?me.k+'/'+me.d+'/'+me.a:'',
+   me.gold!=null?me.gold+' 金':''].filter(Boolean).join(' · ');
+  const ordered=rows.slice().reverse();
+  if(live)ordered.unshift({id:'match-live',task:'match',topic:'对局',clock:'',label:live,phase:'live'});
+  return {...base,rows:ordered};
+ }
  const events=Array.isArray(state?.events)?state.events.slice(-EVENT_FALLBACK_LIMIT):[];
  if(!events.length)return base;
  return {...base,rows:events.map((event,index)=>({
