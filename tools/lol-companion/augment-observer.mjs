@@ -8,7 +8,7 @@ const exec = promisify(execFile);
 // the catalogue wrote "质变：棱彩阶", which silently dropped the card from the panel.
 const normalize = value => String(value??'').replace(/[\s:：!！·•・．.。,，;；、—－-]/g,'').replaceAll('亻卜','仆');
 
-export function createAugmentObserver(names, emit, {now=Date.now,maxFrameAgeMs=8000,maxBlindGapMs=15000}={}) {
+export function createAugmentObserver(names, emit, {now=Date.now,maxFrameAgeMs=4000,maxBlindGapMs=15000}={}) {
   const catalog = new Map(names.map(name=>[normalize(name),name]));
   let current=[null,null,null],history=[],round=0,misses=0,slots=[[],[],[]],anchors=null;
   let pending=[null,null,null],suspended=null;
