@@ -1,6 +1,6 @@
 ﻿# Display and input policies; the Agent/session implementation remains in DSH.
 foreach($name in @('NarrowPanel','NarrowCanvas','NarrowText','NarrowExpand','NarrowMenu','NarrowClose','BubbleLabel','PreviousSubtitle','OutgoingSubtitle')){$controls[$name]=$window.FindName($name)}
-$script:narrowWidth=360.0;
+$script:narrowWidth=300.0;
 $script:managedSpeech=$false
 try{$voiceStatus=[IO.File]::ReadAllText((Join-Path $StateDir 'speech-status.json'))|ConvertFrom-Json;$script:managedSpeech=$voiceStatus.supported -and ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()-$voiceStatus.at -lt 15000) -and $voiceStatus.state -ne 'stopped'}catch{}
 $script:displayMode='large';$script:subtitleMode=$true;$script:speakEnabled=$false;$script:unread=0
@@ -40,7 +40,7 @@ function Set-DisplayMode([string]$mode){
  if($script:displayMode -eq 'large' -and !$script:collapsed){$script:expandedWidth=$window.Width;$script:expandedHeight=$window.Height}
  if($script:collapsed){Set-Collapsed $false -PreserveMode}
  $controls.NarrowPanel.Visibility='Collapsed';$controls.Expanded.Visibility='Visible'
- $window.MinWidth=420;$window.MinHeight=220;$window.Width=$script:expandedWidth;$window.Height=$script:expandedHeight
+ $window.MinWidth=300;$window.MinHeight=180;$window.Width=$script:expandedWidth;$window.Height=$script:expandedHeight
  $script:displayMode=$mode
  $controls.MainBorder.Padding='12';$controls.MainBorder.BorderThickness=1;Set-BackgroundOpacity
  if($mode -eq 'narrow'){

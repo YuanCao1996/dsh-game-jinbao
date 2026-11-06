@@ -187,7 +187,7 @@ $script:lastThrough=$null
 $script:lastFocusable=$null
 $script:lastControl=0
 $script:closing=$false
-$script:expandedWidth=580.0;$script:expandedHeight=600.0
+$script:expandedWidth=380.0;$script:expandedHeight=520.0
 $script:tray=$null
 $script:testResult=@{}
 $area=[Windows.SystemParameters]::WorkArea
