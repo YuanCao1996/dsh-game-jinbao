@@ -289,7 +289,8 @@ const stripDeep=value=>{
  }
  return value;
 };
-const stripViewSources=view=>{
+// 导出供用例直接验证（避免只靠人工看界面）。
+export const stripViewSources=view=>{
  const out={};
  for(const [key,value] of Object.entries(view))out[key]=stripDeep(value);
  return out;
