@@ -44,7 +44,7 @@ $owned=$false
 try{$owned=$mutex.WaitOne(0)}catch [Threading.AbandonedMutexException]{$owned=$true}
 if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already running.';exit 0}
 [xml]$xaml=@'
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="金宝策略悬浮窗" FontFamily="Segoe UI,Microsoft YaHei UI" UseLayoutRounding="True" SnapsToDevicePixels="True" Width="580" Height="600" MinWidth="420" MinHeight="220" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="CanResize">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="金宝策略悬浮窗" FontFamily="Segoe UI,Microsoft YaHei UI" UseLayoutRounding="True" SnapsToDevicePixels="True" Width="380" Height="520" MinWidth="420" MinHeight="220" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" ShowActivated="False" ResizeMode="CanResize">
  <Window.Resources>
   <Style x:Key="SubtitleText" TargetType="TextBlock"><Setter Property="Foreground" Value="#F8FAFC"/><Setter Property="TextWrapping" Value="NoWrap"/><Setter Property="Effect"><Setter.Value><DropShadowEffect Color="Black" BlurRadius="5" ShadowDepth="1" Opacity="0.9"/></Setter.Value></Setter></Style>
   <Style TargetType="Button">
