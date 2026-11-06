@@ -27,12 +27,17 @@ export function trackAugmentRound(state,event,previousOwned) {
     const announced=event.augment??event.name, at=Number(event.t)||Date.now();
     if(announced){
       const round=[...state.augmentRounds].reverse().find(r=>r.closed&&r.closedAt&&at-r.closedAt>=0&&at-r.closedAt<=90000
-        &&r.confirmed.length===1&&r.confirmed[0]!==announced&&(r.options.includes(announced)||r.unreadSlot!==undefined));
+        &&((r.confirmed.length===1&&r.confirmed[0]!==announced)||r.confirmed.length===0)
+        &&(r.options.includes(announced)||r.unreadSlot!==undefined));
       if(round){
         // 只把错的名字摘掉，正确名字交给下面的既有逻辑入库（否则会重复添加）。
-        const stale=round.confirmed[0], at2=state.ownedAugments.indexOf(stale);
-        if(at2>=0)state.ownedAugments.splice(at2,1);
-        round.confirmed=[announced];round.correctedFrom=stale;round.correctionAt=at;
+        // 视觉没判出来的轮次（confirmed 为空）也能靠公告补齐：这是确定信号，
+        // 比让玩家自己点确认更好。有旧值时才需要摘掉错名字。
+        const stale=round.confirmed[0];
+        if(stale){const at2=state.ownedAugments.indexOf(stale);if(at2>=0)state.ownedAugments.splice(at2,1);}
+        round.confirmed=[announced];
+        round.correctionAt=at;
+        if(stale)round.correctedFrom=stale;
       }
     }
   }

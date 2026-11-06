@@ -147,3 +147,17 @@ test('窗口外的公告不会改动已记录的名字',()=>{
  emit({kind:'augment_mutate',augment:'乙',who:'self',confidence:'high'});
  assert.deepEqual(s.ownedAugments,['甲','乙'],'超出 90 秒窗口只作为新公告入库，不改旧记录');
 });
+
+test('视觉没判出来时，聊天公告把该轮补上（不再需要玩家点确认）',()=>{
+ const s=initialOverlayState();
+ let at=1000;const emit=e=>applyOverlayEvent(s,{game:'lol',t:++at,...e},'one');
+ emit({kind:'game_start',me:{champion:'灵罗娃娃',items:[]}});
+ emit({kind:'augment_offer',roll:2,options:['星界躯体','虚幻武器','坦克引擎']});
+ emit({kind:'augment_offer_closed',roll:2});           // 视觉没判出来：这一轮没有选择记录
+ assert.deepEqual(s.ownedAugments,[]);
+ at+=3000;
+ emit({kind:'augment_mutate',augment:'虚幻武器',who:'self',confidence:'high'});  // 游戏内公告
+ const round=s.augmentRounds.find(r=>r.id===2);
+ assert.deepEqual(round.confirmed,['虚幻武器'],'公告补齐了这一轮');
+ assert.ok(s.ownedAugments.includes('虚幻武器'),'已选里也有它');
+});
