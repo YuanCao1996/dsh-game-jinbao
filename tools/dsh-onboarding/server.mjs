@@ -287,6 +287,13 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
     res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
     res.end(await readFile(new URL('./settings.html',import.meta.url)));return;
    }
+   // 允许本机页面自取 nonce：直接用无 hash 的地址打开时，所有 API 会因为缺 nonce 全部 403。
+   // 只对回环地址开放，跨源请求仍然会被下面的 Origin 校验拦住。
+   if(req.url==='/api/setup-nonce'&&req.method==='GET'){
+    const remote=String(req.socket?.remoteAddress??'');
+    if(!/^(127\.|::1$|::ffff:127\.)/.test(remote))throw error(403);
+    send(res,200,{nonce});return;
+   }
    if(!same(req.headers['x-jinbao-setup'],nonce)){send(res,403,{error:'设置页面已失效，请从金宝重新打开设置页面。'});return;}
    if(req.headers.origin&&req.headers.origin!=='http://'+expectedHost)throw error(403);
    if(teamRoutes&&await teamRoutes(req,res))return;

@@ -44,7 +44,8 @@ try{if(/^[a-f0-9]{64}$/.test(incomingNonce))sessionStorage.setItem('jinbao-setti
 history.replaceState(null,'',location.pathname);
 const el=id=>document.getElementById(id);let savedMode='cloud',latest=null,polling=null,emailChallenge=null,cooldownUntil=0,changing=false,savedModelSettings=null,modelSaving=false;
 function message(text,ok=false){el('message').textContent=text;el('message').className=ok?'ok':text?'error':'';}
-async function api(path,data){const r=await fetch('/api/'+path,{method:data===undefined?'GET':'POST',headers:{'X-Jinbao-Setup':nonce,...(data===undefined?{}:{'Content-Type':'application/json'})},...(data===undefined?{}:{body:JSON.stringify(data)})});const b=await r.json();if(!r.ok)throw Error(b.error);return b;}
+async function api(path,data){if(!nonce){try{const boot=await fetch('/api/setup-nonce');const info=await boot.json();if(info&&info.nonce)nonce=info.nonce;}catch(e){}}
+const r=await fetch('/api/'+path,{method:data===undefined?'GET':'POST',headers:{'X-Jinbao-Setup':nonce,...(data===undefined?{}:{'Content-Type':'application/json'})},...(data===undefined?{}:{body:JSON.stringify(data)})});const b=await r.json();if(!r.ok)throw Error(b.error);return b;}
 async function run(fn){try{await fn();}catch(e){message(e.message);}}
 function readModelSettings(){return {mode:el('mode').value,baseUrl:el('baseUrl').value.trim(),model:el('model').value.trim(),desktopPath:el('desktopPath').value.trim()};}
 function modelDirty(){return !!savedModelSettings&&(JSON.stringify(readModelSettings())!==JSON.stringify(savedModelSettings)||!!el('apiKey').value);}
