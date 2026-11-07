@@ -206,7 +206,7 @@ function Update-OverlaySurface([bool]$force=$false){
   $controls.EventTicker.Visibility=if($tick -and $script:tab -eq 'advice'){'Visible'}else{'Collapsed'}
   $controls.EventTickerPanel.Visibility=$controls.EventTicker.Visibility
  }
- $rich=$controls.RichContent.Children.Count -gt 0 -and $controls.PlayersTable.Visibility -ne 'Visible'
+ $rich=$controls.RichContent.Children.Count -gt 0 -and $controls.PlayersTable.Visibility -ne 'Visible' -and -not $script:leaderboardActive
  $controls.RichContent.Visibility=if($rich){'Visible'}else{'Collapsed'}
  if($rich){$controls.PageText.Visibility='Collapsed'}
 }

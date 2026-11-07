@@ -104,6 +104,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <TextBlock x:Name="PageText" Text="等待新的游戏日志…" TextWrapping="Wrap" Foreground="#E2E8F0" FontSize="14" LineHeight="24" Margin="4"
       FontFamily="Consolas,NSimSun,Microsoft YaHei UI" ToolTip="正文使用等宽字体，保证多列对齐"/>
      <StackPanel x:Name="PlayersTable" Visibility="Collapsed" Margin="4"/>
+      <StackPanel x:Name="LeaderboardTable" Visibility="Collapsed" Margin="2,2,2,0"/>
      </StackPanel>
     </ScrollViewer>
     </DockPanel>
@@ -164,7 +165,7 @@ foreach($name in @('RichContent','ComposerPlaceholder','ModeButton','LatestMessa
 $script:scrollPositions=@{};$script:scrollFollow=@{}
  # 布局改造新增的控件也必须显式注册，否则运行时拿到的是 $null（状态点会静默不更新）。
 foreach($name in @('StatusDot','StatusText','ComposerActions')){$controls[$name]=$window.FindName($name)}
-$controls.PlayersTable=$window.FindName('PlayersTable')
+$controls.PlayersTable=$window.FindName('PlayersTable');$controls.LeaderboardTable=$window.FindName('LeaderboardTable')
 $controls.UpdateText=$window.FindName('UpdateText')
 foreach($name in @('ResizeGrip','AppearancePanel','FontSlider','FontText')){$controls[$name]=$window.FindName($name)}
 foreach($name in @('NarrowText','PreviousSubtitle','OutgoingSubtitle')){$controls[$name]=$window.FindName($name)}
@@ -360,6 +361,30 @@ function Add-PlayerTableRow($values,[bool]$heading,[int]$index) {
 # 底部那行操作提示只在刚启动时有用，几秒后收起，把高度让给内容。
 function Hide-OverlayHint { if($controls.HintText){$controls.HintText.Visibility='Collapsed'} }
 
+
+# 渲染一行总榜。列宽用比例（星号），窗口缩放时各列同比例变化，永远对齐。
+function Add-LeaderboardRow($values,[double[]]$ratios,[int[]]$aligns) {
+ $grid=New-Object Windows.Controls.Grid
+ foreach($r in $ratios){
+  $column=New-Object Windows.Controls.ColumnDefinition
+  $column.Width=[Windows.GridLength]::new($r,[Windows.GridUnitType]::Star)
+  $grid.ColumnDefinitions.Add($column)
+ }
+ for($i=0;$i -lt $values.Count;$i++){
+  $label=New-Object Windows.Controls.TextBlock
+  $label.Text=[string]$values[$i]
+  $label.FontSize=[Math]::Max(11,$controls.FontSlider.Value-3)
+  $label.TextTrimming='CharacterEllipsis'
+  $label.TextWrapping='NoWrap'
+  $label.VerticalAlignment='Center'
+  $label.Margin=if($i -ge 3){'10,2,0,2'}else{'0,2,0,2'}
+  $label.Foreground=if($i -eq 0){'#E7BE79'}else{'#E2E8F0'}
+  if($aligns[$i] -eq 1){$label.TextAlignment='Right'}
+  elseif($aligns[$i] -eq 2){$label.TextAlignment='Center'}
+  [Windows.Controls.Grid]::SetColumn($label,$i);$grid.Children.Add($label) | Out-Null
+ }
+ $controls.LeaderboardTable.Children.Add($grid) | Out-Null
+}
 function Update-Page {
  if(!$script:scrollFollow){$script:scrollFollow=@{}};
  $scroll=$controls.PageScroll
@@ -409,6 +434,35 @@ function Update-Page {
  elseif($script:scrollPositions.ContainsKey($script:tab)){$scroll.ScrollToVerticalOffset($script:scrollPositions[$script:tab])}
  else{$scroll.ScrollToTop()}
  $scroll.UpdateLayout()
+ # 总榜：比例列宽的表格，随窗口缩放保持对齐；与文本页互斥显示。
+ $lbRows=if($script:tab -eq 'augments' -and $script:snapshot.augmentsIsLeaderboard){$script:snapshot.augmentsRows}
+  elseif($script:tab -eq 'players' -and $script:snapshot.playersIsLeaderboard){$script:snapshot.playersRows}else{$null}
+ $lbVisible=($null -ne $lbRows) -and (@($lbRows).Count -gt 0)
+ if($lbVisible){
+  $controls.LeaderboardTable.Children.Clear()
+  $lbChampion=($script:tab -eq 'augments')
+  $ratios=if($lbChampion){@(0.12,0.46,0.20,0.22)}else{@(0.14,0.56,0.30)}
+  $aligns=if($lbChampion){@(2,0,1,0)}else{@(2,0,1)}
+  # 顺序：标题 → 表头 → 数据行（列宽比例完全一致，所以天然对齐）
+  $titleLine=New-Object Windows.Controls.TextBlock
+  $titleLine.Text=if($lbChampion){'通用 Top 海克斯 · 总榜'}else{'英雄胜率总榜 · 大乱斗'}
+  $titleLine.FontSize=[Math]::Max(12,$controls.FontSlider.Value-2);$titleLine.FontWeight='SemiBold';$titleLine.Foreground='#E7BE79';$titleLine.Margin='0,0,0,4'
+  $controls.LeaderboardTable.Children.Add($titleLine) | Out-Null
+  $headValues=if($lbChampion){@('品质','名称','胜率','适配英雄')}else{@('品质','英雄','胜率')}
+  Add-LeaderboardRow $headValues $ratios $aligns
+  foreach($lbRow in @($lbRows)){
+   $values=if($lbChampion){@($lbRow.tier,$lbRow.name,$lbRow.winRate,$lbRow.champion)}else{@($lbRow.tier,$lbRow.name,$lbRow.winRate)}
+   Add-LeaderboardRow $values $ratios $aligns
+  }
+  $controls.LeaderboardTable.Visibility='Visible'
+  $script:leaderboardActive=$true
+  if($controls.RichContent){$controls.RichContent.Visibility='Collapsed'}
+  $controls.PageText.Visibility='Collapsed';$controls.PageText.Text=''
+  $controls.PlayersTable.Visibility='Collapsed'
+ }else{
+  $script:leaderboardActive=$false
+  $controls.LeaderboardTable.Visibility='Collapsed'
+ }
  $script:renderedTab=$script:tab
 }
 function Set-Tab([string]$name){
