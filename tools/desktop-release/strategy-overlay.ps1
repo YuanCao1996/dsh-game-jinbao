@@ -106,18 +106,18 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      </StackPanel>
     </ScrollViewer>
     </DockPanel>
-    <Grid x:Name="ChatPanel" Grid.Row="4" Margin="0,4,0,0" Visibility="Collapsed">
+    <Grid x:Name="ChatPanel" Grid.Row="4" Margin="0,2,0,0" Visibility="Collapsed">
      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <TextBox x:Name="QuestionBox" Grid.Column="0" MaxLength="1000" MinHeight="26" AcceptsReturn="False" TextWrapping="NoWrap" MaxHeight="26" Padding="5,3" FontSize="13" Background="#19212A" Foreground="#F1F5F9" BorderBrush="#394A59" ToolTip="Enter 发送；Shift+Enter 换行"/>
-     <TextBlock x:Name="ComposerPlaceholder" Grid.Column="0" Text="问问教练 · Enter 发送" Foreground="#8E9DAE" FontSize="12" Margin="11,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+     <TextBox x:Name="QuestionBox" Grid.Column="0" MaxLength="1000" MinHeight="22" AcceptsReturn="False" TextWrapping="NoWrap" MaxHeight="22" Padding="4,1" FontSize="12" Background="#19212A" Foreground="#F1F5F9" BorderBrush="#394A59" ToolTip="Enter 发送；Shift+Enter 换行"/>
+     <TextBlock x:Name="ComposerPlaceholder" Grid.Column="0" Text="问问教练 · Enter 发送" Foreground="#8E9DAE" FontSize="11" Margin="9,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
      <StackPanel x:Name="ComposerActions" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,4,0">
       <Button x:Name="TeamModeButton" Content="个人" FontSize="11" Padding="6,2" ToolTip="切换个人与队伍聊天" Visibility="Collapsed"/>
       <Button x:Name="TeamManageButton" Content="队伍" FontSize="11" Padding="6,2" ToolTip="队伍管理" Visibility="Collapsed"/>
       <TextBlock x:Name="ChatStatusText" Foreground="#E7BE79" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="120" Margin="4,0,0,0" Visibility="Collapsed"/>
      </StackPanel>
-     <Button x:Name="SendButton" Grid.Column="2" Content="发送" Background="#CBA86C" Foreground="#151A20" BorderBrush="#E7BE79" MinWidth="48" MinHeight="26" Padding="8,2" FontWeight="SemiBold"/>
+     <Button x:Name="SendButton" Grid.Column="2" Content="发送" Background="#CBA86C" Foreground="#151A20" BorderBrush="#E7BE79" MinWidth="40" MinHeight="22" Padding="6,1" FontWeight="SemiBold"/>
     </Grid>
-    <StackPanel x:Name="Footer" Grid.Row="5" Margin="0,8,0,0">
+    <StackPanel x:Name="Footer" Grid.Row="5" Margin="0,4,0,0">
      <StackPanel x:Name="AppearancePanel" Visibility="Collapsed">
      <StackPanel Orientation="Horizontal" Margin="4,5,4,0">
       <TextBlock Text="背景不透明度" Foreground="#94A3B8" FontSize="11" VerticalAlignment="Center"/>
@@ -130,7 +130,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
       <TextBlock x:Name="FontText" Foreground="#E2E8F0" FontSize="11" VerticalAlignment="Center"/>
      </StackPanel>
      </StackPanel>
-     <TextBlock x:Name="HintText" Text="右下角拖动缩放 · Ctrl+滚轮调整正文" Foreground="#94A3B8" FontSize="10" TextTrimming="CharacterEllipsis" Margin="4,3,18,0"/>
+     <TextBlock x:Name="HintText" Text="右下角拖动缩放 · Ctrl+滚轮调整正文" Foreground="#94A3B8" FontSize="10" TextTrimming="CharacterEllipsis" Margin="3,1,16,0"/>
     </StackPanel>
    </Grid>
    <Grid x:Name="NarrowPanel" Visibility="Collapsed" Background="#01000000">
