@@ -224,7 +224,15 @@ const xpSaveButton=document.getElementById('xpSave');
 if(xpSaveButton&&typeof xpSaveButton.addEventListener==='function'){xpSaveButton.addEventListener('click',xpSave);}
 </script><script>
 (async()=>{
- const nonce=(()=>{try{return sessionStorage.getItem('jinbao-settings-setup')||''}catch{return ''}})();
+ const nonce=(()=>{
+  // 优先用地址栏里的 nonce（每次启动都会变）；sessionStorage 可能是上一次的旧值，会 403。
+  const fromHash=(location.hash||'').replace(/^#/,'');
+  if(/^[a-f0-9]{64}$/.test(fromHash))return fromHash;
+  const q=new URLSearchParams(location.search);
+  const fromQuery=q.get('n')||'';
+  if(/^[a-f0-9]{64}$/.test(fromQuery))return fromQuery;
+  try{return sessionStorage.getItem('jinbao-settings-setup')||''}catch{return ''}
+ })();
  const call=async(path,data)=>{const r=await fetch('/api/'+path,{method:data===undefined?'GET':'POST',headers:{'X-Jinbao-Setup':nonce,...(data===undefined?{}:{'Content-Type':'application/json'})},...(data===undefined?{}:{body:JSON.stringify(data)})});return r.json();};
  const mode=document.getElementById('displayMode'),sub=document.getElementById('displaySubtitle'),sp=document.getElementById('displaySpeech'),st=document.getElementById('displayStatus');
  if(!mode)return;
