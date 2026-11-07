@@ -69,13 +69,27 @@ const pickOf = (list, pick) => {
   return list[index];
 };
 
-export function praiseText({ streak, side = 'self', role = 'jinbao', hero = '', pick = 0 } = {}) {
+export function praiseText({ streak, side = 'self', role = 'jinbao', hero = '', pick = 0, victims = [], revenge = [] } = {}) {
   const byRole = (side === 'ally' ? ALLY : SELF);
   const table = byRole[role] ?? byRole.jinbao;
   const list = table?.[streak];
   if (!list || !list.length) return '';
   const raw = pickOf(list, pick);
-  if (side !== 'ally') return raw;
+  // 复仇优先：这波里干掉的敌人此前杀过你，文案直接给爽感。
+  const revenged = (Array.isArray(revenge) ? revenge : []).filter(Boolean).slice(0, 2);
+  const killed = (Array.isArray(victims) ? victims : []).filter(Boolean).slice(0, 3);
+  if (side !== 'ally') {
+    if (revenged.length) {
+      const name = String(revenged[0]).slice(0, 12);
+      const prefix = String(raw).replace(/[。！!]+$/, '');
+      return `${prefix}，${name}那笔仇报了！`;
+    }
+    if (killed.length) {
+      const prefix = String(raw).replace(/[。！!]+$/, '');
+      return `${prefix}（${killed.join('、')}）。`;
+    }
+    return raw;
+  }
   const name = String(hero ?? '').trim().slice(0, 12);
   return name ? raw.replace('{hero}', name) : raw.replace(/\{hero\}/g, '').trim();
 }
@@ -117,7 +131,7 @@ export function whoKilled(state, event) {
 
 const chainKey = (side, hero) => (side === 'ally' ? `ally:${String(hero ?? '')}` : 'self');
 
-export function recordMultikill(state, { streak, side = 'self', hero = '', at, now } = {}) {
+export function recordMultikill(state, { streak, side = 'self', hero = '', at, now, victims = [], revenge = [] } = {}) {
   const level = Number(streak);
   const minimum = side === 'ally' ? ALLY_MIN_STREAK : 2;
   if (!Number.isInteger(level) || level < minimum || level > PRAISE_MAX_STREAK) return false;
@@ -136,6 +150,9 @@ export function recordMultikill(state, { streak, side = 'self', hero = '', at, n
     // The settle delay already waits for the chain's real final level.
     settled: sameChain ? prior.settled === true : false,
     variant: (prior?.variant ?? -1) + 1,
+    // 同一波连杀里逐个累积击杀对象；复仇名单只保留本波命中的。
+    victims: [...new Set([...(sameChain ? prior.victims ?? [] : []), ...(Array.isArray(victims) ? victims : [])])].slice(0, 5),
+    revenge: [...new Set([...(sameChain ? prior.revenge ?? [] : []), ...(Array.isArray(revenge) ? revenge : [])])].slice(0, 3),
   };
   return true;
 }
@@ -152,7 +169,7 @@ export function settlePraise(state, now = Date.now(), {
     const quiet = now - chain.lastAt >= settleMs;
     const stalled = now - chain.chainAt >= maxWaitMs;
     if (!quiet && !stalled) continue;
-    const text = praiseText({ streak: chain.streak, side: chain.side, role, hero: chain.hero, pick: chain.variant });
+    const text = praiseText({ streak: chain.streak, side: chain.side, role, hero: chain.hero, pick: chain.variant, victims: chain.victims ?? [], revenge: chain.revenge ?? [] });
     if (!text) continue;
     const id = `${chain.key}@${chain.chainAt}`;
     state.broadcasts = (state.broadcasts ?? []).filter(reply => reply.praiseChain !== id);
@@ -171,4 +188,27 @@ export function settlePraise(state, now = Date.now(), {
 
 export function resetPraise(state) {
   if (state) state.praiseChains = {};
+}
+
+// 从最近的击杀事件里取“这波我杀了谁”，并标出此前杀过我的人（复仇）。
+// events: [{name:'ChampionKill', killer, victim, at/time}]，killedMeBefore: 本局杀过我的敌人名。
+export function killInfoFromEvents({ events = [], me = '', killedMeBefore = [], windowMs = 10_000, now = Date.now() } = {}) {
+ const names = new Set([String(me ?? '').trim()].filter(Boolean));
+ const victims = [];
+ const revenge = [];
+ for (const event of events) {
+  const name = String(event?.name ?? event?.EventName ?? '');
+  if (name !== 'ChampionKill') continue;
+  const at = Number(event?.at ?? event?.time ?? 0);
+  if (Number.isFinite(at) && now - at > windowMs) continue;
+  const killer = String(event?.killer ?? event?.KillerName ?? '').trim();
+  const victim = String(event?.victim ?? event?.VictimName ?? '').trim();
+  if (!killer || !victim) continue;
+  if (![...names].some(candidate => candidate && (killer.includes(candidate) || candidate.includes(killer)))) continue;
+  if (!victims.includes(victim)) victims.push(victim);
+  if (killedMeBefore.some(who => who && (victim.includes(who) || who.includes(victim)))) {
+   if (!revenge.includes(victim)) revenge.push(victim);
+  }
+ }
+ return { victims: victims.slice(0, 3), revenge: revenge.slice(0, 2) };
 }

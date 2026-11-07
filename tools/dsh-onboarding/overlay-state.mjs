@@ -18,7 +18,7 @@ import {suggestOverlayQuestion} from './chat-suggestion.mjs';
 import {adviceIsValid,createAdviceValidity} from '../dsh-coach-server/lib/lol-coaching-plan.js';
 import {eventWindow} from '../dsh-coach-server/lib/event-window.mjs';
 import {createCompanion} from '../dsh-coach-server/lib/companion.mjs';
-import {whoKilled,recordMultikill,settlePraise,PRAISE_ROLES} from './multikill-praise.mjs';
+import {whoKilled,recordMultikill,settlePraise,PRAISE_ROLES,killInfoFromEvents} from './multikill-praise.mjs';
 import {champSelectPartnerText} from '../lol-companion/partner-index.mjs';
 import {createKnowledgeSearch} from './knowledge-search.mjs';
 import {isCompletedItem} from '../lol-companion/item-policy.mjs';
@@ -158,7 +158,27 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     if (name === 'Multikill') {
       const killed = whoKilled(state, event);
       if (killed.side !== 'other') {
-        recordMultikill(state, { streak: event.KillStreak ?? event.killStreak, side: killed.side, hero: killed.hero, at, now: at });
+        // 带上“这波杀了谁”，以及其中此前杀过我的敌人（复仇播报用）。
+    const killInfo=(killed.side==='self')?killInfoFromEvents({
+      events:(state.events??[]).map(e=>({name:e.kind==='kill'?'ChampionKill':(e.name??''),killer:e.killer,victim:e.victim,at:e.at})),
+      me:state.me?.champion??'',
+      // 本局杀过我的敌人：从事件里的“我被击杀”反推，无需额外状态字段。
+      killedMeBefore:(()=>{
+       const mine=String(state.me?.champion??'').trim();
+       if(!mine)return [];
+       const who=[];
+       for(const e of (state.events??[])){
+        const kind=String(e?.kind??'');
+        const victim=String(e?.victim??'');
+        const killer=String(e?.killer??'');
+        if(!victim||!killer)continue;
+        if(kind!=='kill'&&kind!=='death'&&kind!=='ChampionKill')continue;
+        if(victim.includes(mine)||mine.includes(victim)){if(!who.includes(killer))who.push(killer);}
+       }
+       return who.slice(0,5);
+      })(), now:at }):{victims:[],revenge:[]};
+    recordMultikill(state, { streak: event.KillStreak ?? event.killStreak, side: killed.side, hero: killed.hero, at, now: at,
+     victims:killInfo.victims, revenge:killInfo.revenge });
       }
     }
     const label=Object.hasOwn(keyEventLabels,name)?keyEventLabels[name]:null;
