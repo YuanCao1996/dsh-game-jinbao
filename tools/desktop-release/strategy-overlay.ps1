@@ -68,7 +68,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
       <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#4B5563" VerticalAlignment="Center"/>
       <TextBlock x:Name="StatusText" Text="等待对局" Foreground="#94A3B8" FontSize="11" VerticalAlignment="Center" Margin="5,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="140" ToolTip="采集与模型状态"/>
      </StackPanel>
-     <Button x:Name="SettingsButton" Grid.Column="2" Style="{StaticResource WindowAction}" Content="&#xE713;" ToolTip="设置 · 显示模式、外观与快捷键"/>
+     <Button x:Name="SettingsButton" Grid.Column="2" Style="{StaticResource WindowAction}" Content="&#xE713;" Visibility="Collapsed" ToolTip="设置已移到网页设置页"/>
      <Button x:Name="CollapseButton" Grid.Column="3" Style="{StaticResource WindowAction}" Content="&#xE921;" ToolTip="收起到屏幕右侧 · Ctrl+Alt+↓"/>
      <Button x:Name="CloseButton" Grid.Column="4" Style="{StaticResource WindowAction}" Content="&#xE8BB;" ToolTip="退出金宝悬浮窗"/>
     </Grid>
