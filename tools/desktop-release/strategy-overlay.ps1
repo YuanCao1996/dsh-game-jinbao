@@ -363,11 +363,15 @@ function Hide-OverlayHint { if($controls.HintText){$controls.HintText.Visibility
 
 
 # 渲染一行总榜。列宽用比例（星号），窗口缩放时各列同比例变化，永远对齐。
-function Add-LeaderboardRow($values,[double[]]$ratios,[int[]]$aligns) {
+function Add-LeaderboardRow($values,[double[]]$ratios,[int[]]$aligns,[int[]]$autos,[int[]]$fixeds) {
  $grid=New-Object Windows.Controls.Grid
- foreach($r in $ratios){
+ for($ci=0;$ci -lt $ratios.Count;$ci++){
   $column=New-Object Windows.Controls.ColumnDefinition
-  $column.Width=[Windows.GridLength]::new($r,[Windows.GridUnitType]::Star)
+  # 品质列给固定像素（否则自适应会与名称贴死）；中间名称列吃满剩余；数值列自适应并留左边距。
+  $fixed=if($fixeds -and $fixeds.Count -gt $ci){$fixeds[$ci]}else{0}
+  $column.Width=if($fixed -gt 0){[Windows.GridLength]::new([double]$fixed,[Windows.GridUnitType]::Pixel)}
+   elseif($autos -and $autos[$ci] -eq 1){[Windows.GridLength]::Auto}
+   else{[Windows.GridLength]::new($ratios[$ci],[Windows.GridUnitType]::Star)}
   $grid.ColumnDefinitions.Add($column)
  }
  for($i=0;$i -lt $values.Count;$i++){
@@ -377,7 +381,7 @@ function Add-LeaderboardRow($values,[double[]]$ratios,[int[]]$aligns) {
   $label.TextTrimming='CharacterEllipsis'
   $label.TextWrapping='NoWrap'
   $label.VerticalAlignment='Center'
-  $label.Margin=if($i -ge 3){'10,2,0,2'}else{'0,2,0,2'}
+  $label.Margin=if($i -ge 2){'10,2,0,2'}else{'0,2,0,2'}
   $label.Foreground=if($i -eq 0){'#E7BE79'}else{'#E2E8F0'}
   if($aligns[$i] -eq 1){$label.TextAlignment='Right'}
   elseif($aligns[$i] -eq 2){$label.TextAlignment='Center'}
@@ -441,18 +445,21 @@ function Update-Page {
  if($lbVisible){
   $controls.LeaderboardTable.Children.Clear()
   $lbChampion=($script:tab -eq 'augments')
-  $ratios=if($lbChampion){@(0.12,0.46,0.20,0.22)}else{@(0.14,0.56,0.30)}
-  $aligns=if($lbChampion){@(2,0,1,0)}else{@(2,0,1)}
+  $ratios=if($lbChampion){@(0.12,0.40,0.22,0.26)}else{@(0.16,0.46,0.38)}
+  # 数值列左对齐：紧接名称列，既保持列对齐，也不会被推到窗口最右。
+  $aligns=if($lbChampion){@(2,0,0,0)}else{@(2,0,0)}
+  $autos=if($lbChampion){@(0,0,0,0)}else{@(0,0,0)}
   # 顺序：标题 → 表头 → 数据行（列宽比例完全一致，所以天然对齐）
   $titleLine=New-Object Windows.Controls.TextBlock
   $titleLine.Text=if($lbChampion){'通用 Top 海克斯 · 总榜'}else{'英雄胜率总榜 · 大乱斗'}
   $titleLine.FontSize=[Math]::Max(12,$controls.FontSlider.Value-2);$titleLine.FontWeight='SemiBold';$titleLine.Foreground='#E7BE79';$titleLine.Margin='0,0,0,4'
   $controls.LeaderboardTable.Children.Add($titleLine) | Out-Null
   $headValues=if($lbChampion){@('品质','名称','胜率','适配英雄')}else{@('品质','英雄','胜率')}
-  Add-LeaderboardRow $headValues $ratios $aligns
+  $fixeds=if($lbChampion){@(34,0,0,0)}else{@(34,0,0)}
+  Add-LeaderboardRow $headValues $ratios $aligns $autos $fixeds
   foreach($lbRow in @($lbRows)){
    $values=if($lbChampion){@($lbRow.tier,$lbRow.name,$lbRow.winRate,$lbRow.champion)}else{@($lbRow.tier,$lbRow.name,$lbRow.winRate)}
-   Add-LeaderboardRow $values $ratios $aligns
+   Add-LeaderboardRow $values $ratios $aligns $autos $fixeds
   }
   $controls.LeaderboardTable.Visibility='Visible'
   $script:leaderboardActive=$true
