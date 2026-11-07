@@ -554,8 +554,12 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
   const view=()=>{
    const idle=idleLeaderboard();
    // 胜率页默认渲染的是英雄表格；空闲总榜是文本，需要显式告诉渲染层改用文本。
-   return stripViewSources({...overlayView(state,knowledge),...(idle??{}),playersIsLeaderboard:!!idle?.players,
+   const built=stripViewSources({...overlayView(state,knowledge),...(idle??{}),playersIsLeaderboard:!!idle?.players,
     agentActivity:withEventFallback(activity?.snapshot?.(state),state)});
+   // 正文开头的“对局 12:56 · 英雄 · Lv · KDA · 金币”这行已经并入智能体动态那条，
+   // 再留在正文里就变成上下两行重复（实测被指出是重复占位）。
+   if(built&&typeof built.advice==='string')built.advice=built.advice.replace(/^对局 [^\n]*\n+/,'');
+   return built;
   };
 
   async function save() {
