@@ -45,12 +45,9 @@ function Watch-DisplaySettings {
   $script:displayWatchAt=$stamp
   $saved=[IO.File]::ReadAllText($displayFile)|ConvertFrom-Json
   if($saved.collapseStyle){$script:collapseStyle=[string]$saved.collapseStyle}
-  $wantMode=[string]$saved.mode
-  if($wantMode -and $wantMode -ne $script:displayMode -and $wantMode -in @('large','narrow','silent')){
-   $script:displayMode=''
-   Set-DisplayMode $wantMode
-   return
-  }
+  # 模式（大框/窄条/小球）不再由网页设置控制：用户点窄条展开、点收起按钮收起。
+  # 之前这里会用文件里的 mode 强行套回去，导致"点开后又被收起"。
+
   if($null -ne $saved.subtitle -and ([bool]$saved.subtitle) -ne $script:subtitleMode){
    $script:subtitleMode=[bool]$saved.subtitle
    if($script:displayMode -eq 'narrow'){Set-NarrowMetrics;Update-OverlaySurface $true}
