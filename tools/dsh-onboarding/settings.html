@@ -42,6 +42,27 @@
 const incomingNonce=location.hash.slice(1);let nonce=incomingNonce;
 try{if(/^[a-f0-9]{64}$/.test(incomingNonce))sessionStorage.setItem('jinbao-settings-setup',incomingNonce);else if(!incomingNonce)nonce=sessionStorage.getItem('jinbao-settings-setup')||'';}catch{}
 history.replaceState(null,'',location.pathname);
+// 统一 nonce 注入：设置页里有不少早期代码是裸 fetch('/api/...')，从未带
+// X-Jinbao-Setup，任何只改 api() 的修复都覆盖不到（实测 /api/experience 稳定 403）。
+// 这里在源头包装 fetch：缺 nonce 的 /api/ 请求先取最新 nonce 再发，403 自动重试一次。
+const __rawFetch=window.fetch.bind(window);let __nonceBoot=null;
+function __freshNonce(force){
+ if(!__nonceBoot||force)__nonceBoot=__rawFetch('/api/setup-nonce',{cache:'no-store'}).then(r=>r.ok?r.json():{}).then(info=>{if(info&&/^[a-f0-9]{64}$/.test(info.nonce||''))nonce=info.nonce;}).catch(()=>{});
+ return __nonceBoot;
+}
+__freshNonce();
+window.fetch=function(input,init){
+ let path='';let method='GET';
+ try{const u=typeof input==='string'?input:(input&&input.url)||'';method=String((init&&init.method)||(input&&input.method)||'GET').toUpperCase();if(u.indexOf(location.origin)===0)u=u.slice(location.origin.length);if(u.indexOf('/api/')===0)path=u;}catch(_){}
+ if(!path||path==='/api/setup-nonce')return __rawFetch(input,init);
+ // 已经显式带 nonce 的调用方（如 api()）不重复处理，403 重试由调用方自己负责。
+ try{if(init&&init.headers&&init.headers['X-Jinbao-Setup'])return __rawFetch(input,init);}catch(_){}
+ const headers={...((init&&init.headers)||{}),'X-Jinbao-Setup':nonce};
+ return __freshNonce().then(()=>__rawFetch(path,{...(init||{}),headers})).then(async r=>{
+  if(r.status===403&&method!=='POST'){await __freshNonce(true);return __rawFetch(path,{...(init||{}),headers:{...(init&&init.headers)||{},'X-Jinbao-Setup':nonce}});}
+  return r;
+ });
+};
 const el=id=>document.getElementById(id);let savedMode='cloud',latest=null,polling=null,emailChallenge=null,cooldownUntil=0,changing=false,savedModelSettings=null,modelSaving=false;
 function message(text,ok=false){el('message').textContent=text;el('message').className=ok?'ok':text?'error':'';}
 let __nonceBoot=null;
