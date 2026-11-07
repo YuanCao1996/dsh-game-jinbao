@@ -6,9 +6,10 @@ import { buildPraisePrompt, shortPraise } from './multikill-praise.mjs';
 export function firstSentence(text, limit = 40) {
   const raw = String(text ?? '').replace(/\s+/g, ' ').trim();
   if (!raw) return '';
-  const cut = raw.split(/(?<=[。！？!?])/)[0] ?? raw;
-  const sentence = (cut || raw).trim();
-  return sentence.length > limit ? sentence.slice(0, limit) : sentence;
+  // 不要按第一个感叹号截断——中文点评常写成“三杀！锐雯那笔仇报得漂亮。”
+  // 那样截完就只剩“三杀！”，等于丢了云端生成的内容。改为整句保留 + 限长。
+  const first = raw.split(/\n+/)[0].replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
+  return first.length > limit ? first.slice(0, limit) : first;
 }
 
 /**
