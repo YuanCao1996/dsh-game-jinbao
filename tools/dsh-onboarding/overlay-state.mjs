@@ -514,9 +514,14 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
   const baseContextKey = () => state.game+':'+state.match+':'+state.matchStartedAt+':'+(state.phase==='ChampSelect'?'selection':state.me.champion);
   // 等待态（大厅空闲、没有当前英雄也没有备选席）用总榜填满两页，避免空着；
   // 有英雄或进入对局后立即回到原本的本局数据。
+  // 什么算"没有对局"：结算/大厅/无对局都算。之前用"没有当前英雄"判断，
+  // 打完一局后英雄名会一直留着，于是总榜永远不出现（实测结算态两页仍是本局数据）。
+  const idleNoMatch=()=>state.game!=='wzry'&&(state.ended===true
+   ||['EndOfGame','None','Lobby','WaitingForStats','Matchmaking','PreEndOfGame'].includes(String(state.phase??''))
+   ||(!state.match&&!state.me.champion));
   const idleLeaderboard=()=>{
     const book=knowledge.leaderboard??leaderboardData;
-    if(state.game==='wzry'||state.me.champion||rosterChampions(state).length||!book)return null;
+    if(!idleNoMatch()||!book)return null;
     const hex=Array.isArray(book.hextech)?book.hextech:[];
     const heroes=Array.isArray(book.heroes)?book.heroes:[];
     if(!hex.length&&!heroes.length)return null;
@@ -713,7 +718,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     // 空闲态直接取两份总榜（不经过 refresh：那条链路在无英雄时会被多处条件挡住，
     // 实测断点式排查代价太高）。取到后写回状态文件，两页即可显示总榜。
     // 完全空闲时 state.game 可能是空串（没有任何对局日志），所以不能用 ==='lol' 判断。
-    if (state.game !== 'wzry' && !state.me.champion && !rosterChampions(state).length && !leaderboardData
+    if (state.game !== 'wzry' && idleNoMatch() && (!leaderboardData || Date.now()-(leaderboardData.at??0)>600000)
         && Date.now() - bootAt > 5000 && Date.now() - lastIdleLeaderboardAt > 60000) {
       lastIdleLeaderboardAt = Date.now();
       void (async () => {
@@ -724,7 +729,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
           ]);
           const pick = res => res.status === 'fulfilled' ? (res.value.results ?? []).map(item => item.data) : [];
           const hex = pick(hexRes), heroes = pick(heroRes);
-          if (hex.length || heroes.length) { leaderboardData = {hextech: hex, heroes}; flush(); }
+        if(hexRows.length||heroRows.length){leaderboardData={hextech:hexRows,heroes:heroRows,at:Date.now()};flush();}
         } catch {}
       })();
     }
