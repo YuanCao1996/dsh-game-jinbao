@@ -128,7 +128,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      </StackPanel>
      <StackPanel Orientation="Horizontal" Margin="4,5,4,4">
       <TextBlock Text="正文大小" Foreground="#94A3B8" FontSize="11" VerticalAlignment="Center"/>
-      <Slider x:Name="FontSlider" Minimum="11" Maximum="22" Value="14" Width="140" Margin="32,0,10,0" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" ToolTip="也可在正文区按住 Ctrl 滚动滚轮"/>
+      <Slider x:Name="FontSlider" Visibility="Collapsed" Minimum="11" Maximum="22" Value="14" Width="140" Margin="32,0,10,0" TickFrequency="1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" ToolTip="也可在正文区按住 Ctrl 滚动滚轮"/>
       <TextBlock x:Name="FontText" Foreground="#E2E8F0" FontSize="11" VerticalAlignment="Center"/>
      </StackPanel>
      </StackPanel>
@@ -277,6 +277,15 @@ function Set-BackgroundOpacity {
  $controls.OpacityText.Text=([string]$percent)+'%'
  if(Get-Command Update-OverlaySurface -ErrorAction SilentlyContinue){Update-OverlaySurface}
 }
+
+# 字号随悬浮窗宽度自动缩放：以 380 宽为基准 14 号，线性缩放并限制在 11~20。
+function Update-AutoFontSize {
+ $width=if($window.ActualWidth -gt 0){[double]$window.ActualWidth}else{380}
+ $size=[Math]::Round(14*($width/380.0),1)
+ $size=[Math]::Max(11,[Math]::Min(20,$size))
+ if([Math]::Abs([double]$controls.FontSlider.Value-$size) -lt 0.4){return}
+ $controls.FontSlider.Value=$size
+}
 function Set-BodyFontSize {
  $size=[Math]::Round($controls.FontSlider.Value)
  $controls.PageText.FontSize=$size;$controls.PageText.LineHeight=[Math]::Round($size*1.65)
@@ -291,12 +300,14 @@ try{
  # Earlier releases saved capture exclusion by default; migrate once.
  $script:showInCapture=if($preferences.capturePreferenceVersion -ge 2){$preferences.showInCapture -ne $false}else{$true}
  if($preferences.backgroundOpacity -ge 20 -and $preferences.backgroundOpacity -le 100){$controls.OpacitySlider.Value=[double]$preferences.backgroundOpacity}
- if($preferences.bodyFontSize -ge 11 -and $preferences.bodyFontSize -le 22){$controls.FontSlider.Value=[double]$preferences.bodyFontSize}
+ # 字号不再由用户设置，改为随窗口大小自适应（见 Update-AutoFontSize）
 }catch{}
 Set-BackgroundOpacity
 Set-BodyFontSize
 $controls.OpacitySlider.Add_ValueChanged({Set-BackgroundOpacity;Save-Preferences})
 $controls.FontSlider.Add_ValueChanged({Set-BodyFontSize;Save-Preferences})
+$window.Add_SizeChanged({Update-AutoFontSize})
+Update-AutoFontSize
 $settingsMenu=New-Object Windows.Controls.ContextMenu
 $controls.AppearanceMenuItem=New-Object Windows.Controls.MenuItem
 $controls.AppearanceMenuItem.Header='外观'
@@ -320,7 +331,7 @@ $controls.SettingsButton.ContextMenu=$settingsMenu
 $controls.AppearanceMenuItem.Add_Click({if($script:displayMode -eq 'narrow'){Set-DisplayMode 'large'};$controls.AppearancePanel.Visibility=if($controls.AppearancePanel.Visibility -eq 'Visible'){'Collapsed'}else{'Visible'}})
 $controls.PageScroll.Add_PreviewMouseWheel({param($sender,$eventArgs)
  if(([Windows.Input.Keyboard]::Modifiers -band [Windows.Input.ModifierKeys]::Control) -ne 0){
-  $controls.FontSlider.Value=[Math]::Max(11,[Math]::Min(22,$controls.FontSlider.Value+[Math]::Sign($eventArgs.Delta)))
+  # 字号随窗口自适应，不再响应 Ctrl+滚轮
   $eventArgs.Handled=$true
  }
 })
