@@ -138,9 +138,9 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
    <Grid x:Name="NarrowPanel" Visibility="Collapsed" Background="#01000000">
     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <Canvas x:Name="NarrowCanvas" ClipToBounds="True" Margin="0,2,4,0"><TextBlock x:Name="OutgoingSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="PreviousSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="NarrowText" Style="{StaticResource SubtitleText}" FontSize="14"/></Canvas>
-    <Button x:Name="NarrowExpand" Grid.Column="1" Content="▣" ToolTip="展开大框 · Ctrl+Alt+↑" Padding="5,0" VerticalAlignment="Center" Height="28"/>
-    <Button x:Name="NarrowMenu" Grid.Column="2" Content="⋯" ToolTip="显示模式" Padding="5,0" VerticalAlignment="Center" Height="28"/>
-    <Button x:Name="NarrowClose" Grid.Column="3" Content="×" ToolTip="退出悬浮窗" Padding="5,0" VerticalAlignment="Center" Height="28"/>
+    <Button x:Name="NarrowExpand" Grid.Column="1" Content="▣" ToolTip="展开大框 · Ctrl+Alt+↑" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
+    <Button x:Name="NarrowMenu" Grid.Column="2" Content="⋯" ToolTip="显示模式" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
+    <Button x:Name="NarrowClose" Grid.Column="3" Content="×" ToolTip="退出悬浮窗" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
    </Grid>
    <Thumb x:Name="ResizeGrip" Width="26" Height="26" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-8,-8" Cursor="SizeNWSE" ToolTip="拖动调整窗口大小，会记住你的尺寸">
     <Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="#01000000"><Path Data="M 7,22 L 22,7 M 14,22 L 22,14 M 21,22 L 22,21" Stroke="#B39A71" StrokeThickness="1.5"/></Grid></ControlTemplate></Thumb.Template>

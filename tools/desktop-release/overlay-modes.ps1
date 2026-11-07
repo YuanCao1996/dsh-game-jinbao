@@ -33,6 +33,29 @@ function Save-DisplayMode {
  if($SelfTest){return}
  [IO.File]::WriteAllText($displayFile,(@{mode=$script:displayMode;subtitle=$script:subtitleMode;speech=$script:speakEnabled;width=$script:narrowWidth;widthVersion=1}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
 }
+
+# 监听 overlay-display.json：网页设置页改动后即时生效。
+$script:displayWatchAt=0.0
+function Watch-DisplaySettings {
+ if($SelfTest){return}
+ try{
+  $stamp=[IO.File]::GetLastWriteTimeUtc($displayFile).Ticks
+  if($stamp -eq $script:displayWatchAt){return}
+  $script:displayWatchAt=$stamp
+  $saved=[IO.File]::ReadAllText($displayFile)|ConvertFrom-Json
+  $wantMode=[string]$saved.mode
+  if($wantMode -and $wantMode -ne $script:displayMode -and $wantMode -in @('large','narrow','silent')){
+   $script:displayMode=''
+   Set-DisplayMode $wantMode
+   return
+  }
+  if($null -ne $saved.subtitle -and ([bool]$saved.subtitle) -ne $script:subtitleMode){
+   $script:subtitleMode=[bool]$saved.subtitle
+   if($script:displayMode -eq 'narrow'){Set-NarrowMetrics;Update-OverlaySurface $true}
+  }
+  if($null -ne $saved.speech -and ([bool]$saved.speech) -ne $script:speakEnabled){$script:speakEnabled=[bool]$saved.speech}
+ }catch{}
+}
 function Set-DisplayMode([string]$mode){
  if($mode -notin @('large','narrow','silent')){return}
  $quickConfirm.IsOpen=$false;$script:popupConfirmId=''
@@ -149,7 +172,15 @@ $controls.NarrowExpand.Add_Click({
 })
 $controls.NarrowClose.Add_Click({$window.Close()})
 $controls.NarrowMenu.Add_Click({$settingsMenu.PlacementTarget=$controls.NarrowMenu;$settingsMenu.IsOpen=$true})
+$script:displayWatchTimer=New-Object Windows.Threading.DispatcherTimer;$script:displayWatchTimer.Interval=[TimeSpan]::FromMilliseconds(1200);$script:displayWatchTimer.Add_Tick({Watch-DisplaySettings});$script:displayWatchTimer.Start()
 $controls.NarrowPanel.Add_PreviewMouseLeftButtonDown({param($s,$e) Start-Drag $s $e})
+# 窄条整条可点：点一下展开成大框（拖动仍然是移动窗口）。
+$controls.NarrowPanel.Add_MouseLeftButtonUp({param($s,$e)
+ if($script:moved){return}
+ $script:narrowResume=$true
+ Set-DisplayMode 'large'
+ $script:displayMode='narrow';Save-DisplayMode;$script:displayMode='large'
+})
 $mic=New-Object Windows.Controls.Button;$mic.Content='语音';$mic.ToolTip='点击开始，最长20秒，识别后可编辑再发送；再次点击取消'
 [Windows.Controls.Grid]::SetColumn($controls.SendButton,2);$controls.ComposerActions.Children.Add($mic)|Out-Null
 $mic.Add_Click({

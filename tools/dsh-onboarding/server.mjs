@@ -359,6 +359,29 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
    const memoryPage=/^\/api\/memory\/(lol|wzry|generic)$/.exec(req.url);
    if(memoryPage&&req.method==='GET'){send(res,200,{game:memoryPage[1],preferences:await memories.list(memoryPage[1])});return;}
    if(req.url==='/api/overlay'&&req.method==='GET'){send(res,200,overlay.view());return;}
+   // 显示设置：网页设置页读写，悬浮窗监听文件变化即时生效。
+   if(req.url==='/api/display'&&req.method==='GET'){
+    let value={mode:'large',subtitle:true,speech:false,width:300};
+    try{value=JSON.parse(await readFile(join(stateDir,'overlay-display.json'),'utf8'));}catch{}
+    send(res,200,value);return;
+   }
+   if(req.url==='/api/display'&&req.method==='POST'){
+    if(!String(req.headers['content-type']).startsWith('application/json'))throw error(400);
+    const input=await body(req,1024);
+    const allowed=new Set(['mode','subtitle','speech','width']);
+    if(Object.keys(input).some((key)=>!allowed.has(key)))throw error(400);
+    if(input.mode!==undefined&&!['large','narrow','silent'].includes(input.mode))throw error(400);
+    if(input.subtitle!==undefined&&typeof input.subtitle!=='boolean')throw error(400);
+    if(input.speech!==undefined&&typeof input.speech!=='boolean')throw error(400);
+    if(input.width!==undefined&&!(Number.isInteger(input.width)&&input.width>=220&&input.width<=900))throw error(400);
+    let current={mode:'large',subtitle:true,speech:false,width:300};
+    try{current=JSON.parse(await readFile(join(stateDir,'overlay-display.json'),'utf8'));}catch{}
+    const next={...current,...input,widthVersion:2};
+    const target=join(stateDir,'overlay-display.json');
+    const temp=target+'.'+Date.now()+'.tmp';
+    await writeFile(temp,JSON.stringify(next));await rename(temp,target);
+    send(res,200,next);return;
+   }
    if(req.url==='/api/agent-activity'&&req.method==='GET'){send(res,200,activity?.status()??{supported:false,enabled:false});return;}
    if(req.url==='/api/agent-activity'&&req.method==='POST'){
     if(!activity)throw error(409);if(!String(req.headers['content-type']).startsWith('application/json'))throw error(400);
