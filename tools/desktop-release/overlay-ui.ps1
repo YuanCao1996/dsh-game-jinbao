@@ -188,7 +188,7 @@ function Update-OverlaySurface([bool]$force=$false){
     $body=New-OverlayLabel $value $font '#DDE5EE';Set-HighlightedText $body $value;[Windows.Controls.Grid]::SetColumn($body,1);$row.Children.Add($body)|Out-Null
     $edge=New-Object Windows.Controls.Border;$edge.BorderBrush='#26313D';$edge.BorderThickness='0,0,0,1';$edge.Padding='0,9';$edge.Child=$row;$controls.RichContent.Children.Add($edge)|Out-Null
    }
-  }elseif($script:tab -ne 'chat' -and $script:tab -ne 'players'){
+  }elseif($script:tab -eq 'advice'){
    $index=0
    foreach($part in ($controls.PageText.Text -split "`r?`n`r?`n"|Where-Object {$_.Trim()})){
     if($script:tab -eq 'advice' -and $index -eq 0 -and $part -match '^对局 '){$meta=New-OverlayLabel $part 11 '#9CAABA';$meta.Margin='2,0,2,12';$controls.RichContent.Children.Add($meta)|Out-Null;$index++;continue}
@@ -209,7 +209,9 @@ function Update-OverlaySurface([bool]$force=$false){
  $controls.EventTicker.Visibility=if($tick -and $script:tab -eq 'advice' -and -not $activityOn){'Visible'}else{'Collapsed'}
   $controls.EventTickerPanel.Visibility=$controls.EventTicker.Visibility
  }
- $rich=$controls.RichContent.Children.Count -gt 0 -and $controls.PlayersTable.Visibility -ne 'Visible' -and -not $script:leaderboardActive
+ # 卡片只属于“战况”页：之前不判标签页，切到海克斯/胜率仍显示上次的回答，
+ # 还把页面正文 Visibility 设为 Collapsed，导致海克斯页看起来“内容不对”。
+ $rich=$script:tab -eq 'advice' -and $controls.RichContent.Children.Count -gt 0 -and $controls.PlayersTable.Visibility -ne 'Visible' -and -not $script:leaderboardActive
  $controls.RichContent.Visibility=if($rich){'Visible'}else{'Collapsed'}
  if($rich){$controls.PageText.Visibility='Collapsed'}
 }
