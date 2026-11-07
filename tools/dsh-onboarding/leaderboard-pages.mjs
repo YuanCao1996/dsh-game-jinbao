@@ -36,6 +36,13 @@ export function padDisplay(text, width) {
   return pad > 0 ? value + ' '.repeat(pad) : value;
 }
 
+
+/** 左侧补空格（数值右对齐，让小数点对齐）。 */
+export function padDisplayLeft(text, width) {
+  const value = String(text ?? '');
+  const pad = width - displayWidth(value);
+  return pad > 0 ? ' '.repeat(pad) + value : value;
+}
 /** "封魔剑魂 永恩" → "永恩"：只留英雄本名，去掉称号。 */
 function heroNameOnly(champion) {
   const text = String(champion ?? '').trim();
@@ -61,8 +68,8 @@ export function hextechLeaderboardPage(rows, { limit = 10 } = {}) {
     lines.push((
       padDisplay(quality(row.tier), 3) + ' ' +
       padDisplay(row.name ?? '—', 18) + ' ' +
-      padDisplay(pct(row.winRate), 6) + ' ' +
-      heroNameOnly(row.champion)
+      padDisplayLeft(pct(row.winRate), 6) + '  ' +
+      padDisplay(heroNameOnly(row.champion), 10)
     ).trimEnd());
   });
   return lines.join('\n');
@@ -83,7 +90,7 @@ export function heroLeaderboardPage(rows, { limit = 10, topRune } = {}) {
     lines.push((
       padDisplay(quality(row.tier), 3) + ' ' +
       padDisplay(row.name ?? '—', 18) + ' ' +
-      padDisplay(pct(row.winRate), 6) + ' ' +
+      padDisplayLeft(pct(row.winRate), 6) + '  ' +
       rune
     ).trimEnd());
   });
