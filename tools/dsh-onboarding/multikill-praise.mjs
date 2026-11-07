@@ -212,3 +212,25 @@ export function killInfoFromEvents({ events = [], me = '', killedMeBefore = [], 
  }
  return { victims: victims.slice(0, 3), revenge: revenge.slice(0, 2) };
 }
+
+// 极短兜底：云端失败时才用，不算固定句式（只有连杀级别）。
+export function shortPraise(streak) {
+ const level = Number(streak);
+ if (!Number.isInteger(level) || level < 2) return '';
+ const words = { 2: '双杀！', 3: '三杀！', 4: '四杀！', 5: '五杀！' };
+ return words[Math.min(level, 5)] ?? (level + '连杀！');
+}
+
+// 交给云端的一句话点评请求：要求不开思考、只输出一句、不超过 40 字。
+export function buildPraisePrompt({ streak, victims = [], revenge = [], hero = '', role = 'jinbao' } = {}) {
+ const level = Number(streak) || 0;
+ const killed = (Array.isArray(victims) ? victims : []).filter(Boolean);
+ const revenged = (Array.isArray(revenge) ? revenge : []).filter(Boolean);
+ const lines = [];
+ lines.push('刚刚拿到' + level + '连杀' + (hero ? '（' + hero + '）' : '') + '。');
+ if (killed.length) lines.push('这一波击杀：' + killed.join('、') + '。');
+ if (revenged.length) lines.push('其中' + revenged.join('、') + '此前击杀过我，这是复仇。');
+ lines.push('用教练口吻点评一句，可以有复仇的爽感，但不要煽情。');
+ lines.push('硬性要求：只输出一句话，不超过 40 个字，不要解释、不要列举、不要换行、不要表情符号。');
+ return lines.join('');
+}
