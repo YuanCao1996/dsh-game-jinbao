@@ -153,7 +153,14 @@ function isLabelMerge(text){
       candidates.forEach((name,slot)=>{
         if(!name||name===current[slot]){pending[slot]=null;return;}
         pending[slot]=pending[slot]?.name===name?{name,count:pending[slot].count+1}:{name,count:1};
-        if(pending[slot].count>=(stableFirstFrame||corroborated.includes(slot)?1:2)&&slots[slot].length<2){next[slot]=name;changed.push(slot);}
+        // 重掷（该槽已有效名字）比首次识别更容易被动画误读：卡片悬停放大、淡入期间
+        // 同一槽会在相邻两帧读成不同名字，实测一轮面板出现过 6 个不同名字。
+        // 因此重掷要求：连续 3 帧同名，且旧名字在本帧已完全不可见。
+        const isReroll=!!current[slot];
+        const oldGone=!titles.some(title=>title.slot===slot&&title.name===current[slot]);
+        const need=isReroll?3:(stableFirstFrame||corroborated.includes(slot)?1:2);
+        const ok=isReroll?(oldGone&&pending[slot].count>=need):pending[slot].count>=need;
+        if(ok&&slots[slot].length<2){next[slot]=name;changed.push(slot);}
       });
       // Ambiguous or duplicate titles must not consume a slot's only reroll.
       const accepted=changed.filter(slot=>next.filter(name=>name===next[slot]).length===1);
