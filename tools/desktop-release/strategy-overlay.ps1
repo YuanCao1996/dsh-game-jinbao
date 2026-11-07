@@ -456,7 +456,7 @@ function Update-Page {
  if($lbVisible){
   $controls.LeaderboardTable.Children.Clear()
   $lbChampion=($script:tab -eq 'augments')
-  $ratios=if($lbChampion){@(0.14,0.38,0.22,0.26)}else{@(0.16,0.44,0.40)}
+  $ratios=if($lbChampion){@(0.14,0.30,0.24,0.32)}else{@(0.16,0.34,0.50)}
   # 数值列左对齐：紧接名称列，既保持列对齐，也不会被推到窗口最右。
   $aligns=if($lbChampion){@(2,0,0,0)}else{@(2,0,0)}
   $autos=if($lbChampion){@(0,0,0,0)}else{@(0,0,0)}
