@@ -171,6 +171,22 @@ const publicExperienceUrl=String(process.env.JINBAO_PUBLIC_EXPERIENCE_URL??'').t
 if(publicExperienceUrl){
  const syncOnce=()=>{syncPublicMemory({store:experienceStore,dir:join(stateDir,'experience'),baseUrl:publicExperienceUrl,patch:String(process.env.JINBAO_GAME_PATCH??'')||null}).catch(()=>{});};
  const syncTimer=setInterval(syncOnce,30*60*1000);
+ // 局内自动探索打点：此前 markSuggestion 只有接口、没有任何调用方，
+ // 于是玩多少局图鉴都是空的。这里在每局确认英雄后自动记一次英雄与模式。
+ const markedMatches=new Set();
+ const markTimer=setInterval(()=>{void (async()=>{
+  try{
+   const view=overlay.view();
+   const hero=currentHeroSuggestion(view);
+   if(!hero||!hero.matchKey||markedMatches.has(hero.matchKey))return;
+   await exploration.mark('lol_pc','','英雄',hero.entity,true);
+   const mode=currentModeSuggestion(view);
+   if(mode)await exploration.mark('lol_pc','','模式',mode.entity,true);
+   markedMatches.add(hero.matchKey);
+   if(markedMatches.size>200)markedMatches.clear();
+  }catch{}
+ })();},20000);markTimer.unref();
+
  syncTimer.unref?.();
  setTimeout(syncOnce,5000).unref?.();
 }
