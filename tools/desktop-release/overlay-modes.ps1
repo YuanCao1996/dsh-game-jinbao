@@ -1,6 +1,7 @@
 ﻿# Display and input policies; the Agent/session implementation remains in DSH.
 foreach($name in @('NarrowPanel','NarrowCanvas','NarrowText','NarrowExpand','NarrowMenu','NarrowClose','BubbleLabel','PreviousSubtitle','OutgoingSubtitle')){$controls[$name]=$window.FindName($name)}
 $script:narrowWidth=300.0;
+$script:collapseStyle='ball'
 $script:managedSpeech=$false
 try{$voiceStatus=[IO.File]::ReadAllText((Join-Path $StateDir 'speech-status.json'))|ConvertFrom-Json;$script:managedSpeech=$voiceStatus.supported -and ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()-$voiceStatus.at -lt 15000) -and $voiceStatus.state -ne 'stopped'}catch{}
 $script:displayMode='large';$script:subtitleMode=$true;$script:speakEnabled=$false;$script:unread=0
@@ -43,6 +44,7 @@ function Watch-DisplaySettings {
   if($stamp -eq $script:displayWatchAt){return}
   $script:displayWatchAt=$stamp
   $saved=[IO.File]::ReadAllText($displayFile)|ConvertFrom-Json
+  if($saved.collapseStyle){$script:collapseStyle=[string]$saved.collapseStyle}
   $wantMode=[string]$saved.mode
   if($wantMode -and $wantMode -ne $script:displayMode -and $wantMode -in @('large','narrow','silent')){
    $script:displayMode=''
@@ -188,4 +190,4 @@ $mic.Add_Click({
  $script:speechJob=Start-Job -ScriptBlock {try{Add-Type -AssemblyName System.Speech;$info=[Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers()|Where-Object {$_.Culture.Name -eq 'zh-CN'}|Select-Object -First 1;if(!$info){throw 'Chinese recognizer unavailable'};$recognizer=[Speech.Recognition.SpeechRecognitionEngine]::new($info);try{$recognizer.LoadGrammar((New-Object Speech.Recognition.DictationGrammar));$recognizer.SetInputToDefaultAudioDevice();$result=$recognizer.Recognize([TimeSpan]::FromSeconds(20));@{text=[string]$result.Text}}finally{$recognizer.Dispose()}}catch{@{text=''}}}
  $mic.Content='取消';$controls.HintText.Text='正在听，请说话；完成后可编辑再发送。'
 })
-if(!$SelfTest){try{$savedDisplay=[IO.File]::ReadAllText($displayFile)|ConvertFrom-Json;$script:subtitleMode=$savedDisplay.subtitle -ne $false;$script:speakEnabled=$savedDisplay.speech -eq $true;if($savedDisplay.width -ge 260 -and $savedDisplay.width -le 1200){$script:narrowWidth=if(!$savedDisplay.widthVersion -and $savedDisplay.width -eq 600){360.0}else{[double]$savedDisplay.width}};Set-DisplayMode ([string]$savedDisplay.mode)}catch{}}
+if(!$SelfTest){try{$savedDisplay=[IO.File]::ReadAllText($displayFile)|ConvertFrom-Json;if($savedDisplay.collapseStyle){$script:collapseStyle=[string]$savedDisplay.collapseStyle};$script:subtitleMode=$savedDisplay.subtitle -ne $false;$script:speakEnabled=$savedDisplay.speech -eq $true;if($savedDisplay.width -ge 260 -and $savedDisplay.width -le 1200){$script:narrowWidth=if(!$savedDisplay.widthVersion -and $savedDisplay.width -eq 600){360.0}else{[double]$savedDisplay.width}};Set-DisplayMode ([string]$savedDisplay.mode)}catch{}}

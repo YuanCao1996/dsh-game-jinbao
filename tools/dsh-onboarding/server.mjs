@@ -375,7 +375,7 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
    if(req.url==='/api/display'&&req.method==='POST'){
     if(!String(req.headers['content-type']).startsWith('application/json'))throw error(400);
     const input=await body(req,1024);
-    const allowed=new Set(['mode','subtitle','speech','width']);
+    const allowed=new Set(['mode','subtitle','speech','width','collapseStyle']);
     if(Object.keys(input).some((key)=>!allowed.has(key)))throw error(400);
     if(input.mode!==undefined&&!['large','narrow','silent'].includes(input.mode))throw error(400);
     if(input.subtitle!==undefined&&typeof input.subtitle!=='boolean')throw error(400);
@@ -384,6 +384,12 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
     let current={mode:'large',subtitle:true,speech:false,width:300};
     try{current=JSON.parse(await readFile(join(stateDir,'overlay-display.json'),'utf8'));}catch{}
     const next={...current,...input,widthVersion:2};
+    // 收起后形态：ball=圆形小球，bar-subtitle=窄条字幕，bar-scroll=窄条跑马灯
+    if(input.collapseStyle!==undefined){
+     if(!['ball','bar-subtitle','bar-scroll'].includes(input.collapseStyle))throw error(400);
+     next.mode=input.collapseStyle==='ball'?'silent':'narrow';
+     next.subtitle=input.collapseStyle!=='bar-scroll';
+    }
     const target=join(stateDir,'overlay-display.json');
     const temp=target+'.'+Date.now()+'.tmp';
     await writeFile(temp,JSON.stringify(next));await rename(temp,target);
