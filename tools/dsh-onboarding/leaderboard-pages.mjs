@@ -49,8 +49,14 @@ const byWinRate = (a, b) => (num(b?.winRate) ?? -1) - (num(a?.winRate) ?? -1);
 export function hextechLeaderboardPage(rows, { limit = 10 } = {}) {
   const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
   if (!list.length) return '';
-  const sorted = list.slice().sort(byWinRate).slice(0, limit);
-  const lines = ['通用 Top 海克斯 · 总榜（等待开局）', '数据为快照口径；进入对局后切换为本局英雄'];
+  // 服务端返回的是「强化 × 英雄」组合榜，同名会重复；按名字去重，保留胜率最高的一条。
+  const seen = new Map();
+  for (const row of list.slice().sort(byWinRate)) {
+    const key = String(row.name ?? '');
+    if (key && !seen.has(key)) seen.set(key, row);
+  }
+  const sorted = [...seen.values()].slice(0, limit);
+  const lines = ['通用 Top 海克斯 · 总榜', '快照数据 · 进对局自动切换为本局英雄'];
   sorted.forEach((row) => {
     lines.push((
       padDisplay(quality(row.tier), 3) + ' ' +
@@ -65,8 +71,13 @@ export function hextechLeaderboardPage(rows, { limit = 10 } = {}) {
 export function heroLeaderboardPage(rows, { limit = 10, topRune } = {}) {
   const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
   if (!list.length) return '';
-  const sorted = list.slice().sort(byWinRate).slice(0, limit);
-  const lines = ['英雄胜率总榜 · 大乱斗（等待开局）', '数据为快照口径；进入对局后切换为本局双方英雄'];
+  const seen = new Map();
+  for (const row of list.slice().sort(byWinRate)) {
+    const key = String(row.name ?? '');
+    if (key && !seen.has(key)) seen.set(key, row);
+  }
+  const sorted = [...seen.values()].slice(0, limit);
+  const lines = ['英雄胜率总榜 · 大乱斗', '快照数据 · 进对局自动切换为双方英雄'];
   sorted.forEach((row) => {
     const rune = typeof topRune === 'function' ? String(topRune(row) ?? '') : '';
     lines.push((

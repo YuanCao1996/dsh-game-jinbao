@@ -57,3 +57,15 @@ test('顶级符文取 augmentStats 里 rank 最小的一条', () => {
   assert.equal(topRuneId(heroes[1]), 27);
   assert.equal(topRuneId({augmentStats: 'not-json'}), null);
 });
+
+test('同名强化只出现一次（整榜是强化×英雄组合，会重复）', () => {
+  const rows = [
+    {tier: 'T1', name: '术士果汁盒', winRate: 51.5, champion: '奥瑞利安·索尔'},
+    {tier: 'T1', name: '术士果汁盒', winRate: 50.6, champion: '兰博'},
+    {tier: 'T1', name: '灵魂虹吸', winRate: 59.1, champion: '永恩'},
+  ];
+  const lines = hextechLeaderboardPage(rows).split('\n').slice(2);
+  const names = lines.map((line) => line.split(/\s+/)[1]);
+  assert.equal(names.filter((name) => name === '术士果汁盒').length, 1, '术士果汁盒只保留一次');
+  assert.ok(lines.some((line) => line.includes('灵魂虹吸')));
+});
