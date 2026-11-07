@@ -249,7 +249,8 @@ const xpLoadButton=document.getElementById('xpLoad');
 if(xpLoadButton&&typeof xpLoadButton.addEventListener==='function'){xpLoadButton.addEventListener('click',xpLoad);}
 const xpSaveButton=document.getElementById('xpSave');
 if(xpSaveButton&&typeof xpSaveButton.addEventListener==='function'){xpSaveButton.addEventListener('click',xpSave);}
-</script><script>
+
+
 (async()=>{
  const call=(path,data)=>api(path,data);
  const sub=document.getElementById('displaySubtitle'),sp=document.getElementById('displaySpeech'),st=document.getElementById('displayStatus');
@@ -257,5 +258,6 @@ if(xpSaveButton&&typeof xpSaveButton.addEventListener==='function'){xpSaveButton
  try{const d=await call('display');sub.value=d.subtitle===false?'scroll':'subtitle';sp.checked=d.speech===true;}catch(e){}
  document.getElementById('displaySave').onclick=async()=>{st.textContent='保存中…';try{await call('display',{subtitle:sub.value!=='scroll',speech:sp.checked});st.textContent='已保存，约 1 秒生效';}catch(e){st.textContent='保存失败';}};
 })();
+
 </script>
 </body></html>

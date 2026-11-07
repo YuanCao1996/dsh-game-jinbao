@@ -532,8 +532,9 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
    ||['EndOfGame','None','Lobby','WaitingForStats','Matchmaking','PreEndOfGame'].includes(String(state.phase??''))
    ||(!state.match&&!state.me.champion));
   const idleLeaderboard=()=>{
+  const forceIdle=typeof staleForIdle!=='undefined'&&staleForIdle;
     const book=knowledge.leaderboard??leaderboardData;
-    if(!idleNoMatch()||!book)return null;
+    if(!(idleNoMatch()||forceIdle)||!book)return null;
     const hex=Array.isArray(book.hextech)?book.hextech:[];
     const heroes=Array.isArray(book.heroes)?book.heroes:[];
     if(!hex.length&&!heroes.length)return null;
@@ -551,7 +552,16 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     }
     return out;
   };
+  // 静止判定：日志停更（如对局结束时客户端退回大厅、或采集被打断）后，
+  // 状态里的 phase 可能还残留在 InProgress，导致总榜不显示。用一个指纹判定“还在动”。
+  let stateFingerprint='';let stateChangedAt=Date.now();
+  let staleForIdle=false;
+  // 日志总量与最后一次增长时间：日志不再变长才是真的“没在对局里”。
+  let logBytes=-1;let logGrewAt=Date.now();
   const view=()=>{
+   const fp=[state.phase,state.gameSeconds,state.match,state.me?.champion,state.me?.level,state.me?.k,state.me?.d,state.me?.a,state.me?.gold].join('|');
+   if(fp!==stateFingerprint){stateFingerprint=fp;stateChangedAt=Date.now();}
+   staleForIdle=Date.now()-stateChangedAt>150000;
    const idle=idleLeaderboard();
    // 胜率页默认渲染的是英雄表格；空闲总榜是文本，需要显式告诉渲染层改用文本。
    const built=stripViewSources({...overlayView(state,knowledge),...(idle??{}),playersIsLeaderboard:!!idle?.players,
@@ -747,7 +757,17 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     // 空闲态直接取两份总榜（不经过 refresh：那条链路在无英雄时会被多处条件挡住，
     // 实测断点式排查代价太高）。取到后写回状态文件，两页即可显示总榜。
     // 完全空闲时 state.game 可能是空串（没有任何对局日志），所以不能用 ==='lol' 判断。
-    if (state.game !== 'wzry' && idleNoMatch() && (!leaderboardData || Date.now()-(leaderboardData.at??0)>600000)
+    // 用“日志是否还在增长”判断是否真的在对局中：对局结束后日志停止增长，
+    // 但状态里的 phase 可能长期残留在 InProgress（重放旧日志也会不断刷新状态文件）。
+    try{
+     let total=0;
+     for(const f of (await readdir(logs)).filter(x=>x.endsWith('.jsonl')&&!x.includes('overlay-chat'))){
+      try{total+=(await stat(join(logs,f))).size;}catch{}
+     }
+     if(total!==logBytes){logBytes=total;logGrewAt=Date.now();}
+     else if(Date.now()-logGrewAt>120000){staleForIdle=true;}
+    }catch{}
+    if (state.game !== 'wzry' && (idleNoMatch()||staleForIdle) && (!leaderboardData || Date.now()-(leaderboardData.at??0)>600000)
         && Date.now() - bootAt > 5000 && Date.now() - lastIdleLeaderboardAt > 60000) {
       lastIdleLeaderboardAt = Date.now();
       void (async () => {
@@ -760,7 +780,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
           const hex = pick(hexRes), heroes = pick(heroRes);
         if(hex.length||heroes.length){leaderboardData={hextech:hex,heroes,at:Date.now()};flush();}
         try{await writeFile(join(stateDir,'leaderboard-status.json'),JSON.stringify({at:Date.now(),
-         idle:idleNoMatch(),phase:state.phase,ended:state.ended,champion:state.me.champion,
+         idle:idleNoMatch()||staleForIdle,phase:state.phase,ended:state.ended,champion:state.me.champion,
          hex:hex.length,heroes:heroes.length,
          hexErr:hexRes.status==='rejected'?String(hexRes.reason?.status??hexRes.reason?.message??'x').slice(0,80):'',
          heroErr:heroRes.status==='rejected'?String(heroRes.reason?.status??heroRes.reason?.message??'x').slice(0,80):''}));}catch{}
