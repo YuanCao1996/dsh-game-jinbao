@@ -44,8 +44,19 @@ try{if(/^[a-f0-9]{64}$/.test(incomingNonce))sessionStorage.setItem('jinbao-setti
 history.replaceState(null,'',location.pathname);
 const el=id=>document.getElementById(id);let savedMode='cloud',latest=null,polling=null,emailChallenge=null,cooldownUntil=0,changing=false,savedModelSettings=null,modelSaving=false;
 function message(text,ok=false){el('message').textContent=text;el('message').className=ok?'ok':text?'error':'';}
-async function api(path,data){if(!window.__jinbaoNonceFresh){window.__jinbaoNonceFresh=true;try{const boot=await fetch('/api/setup-nonce');const info=await boot.json();if(info&&info.nonce)nonce=info.nonce;}catch(e){}}
-const r=await fetch('/api/'+path,{method:data===undefined?'GET':'POST',headers:{'X-Jinbao-Setup':nonce,...(data===undefined?{}:{'Content-Type':'application/json'})},...(data===undefined?{}:{body:JSON.stringify(data)})});const b=await r.json();if(!r.ok)throw Error(b.error);return b;}
+let __nonceBoot=null;
+async function ensureFreshNonce(force){
+ // 并发初始化会同时发多个 api()：必须共享同一个引导动作，否则后发的请求
+ // 用旧 nonce 直接 403（实测 experience 稳定失败就是这个竞态）。
+ if(force||!__nonceBoot)__nonceBoot=fetch('/api/setup-nonce',{cache:'no-store'}).then(r=>r.ok?r.json():{}).then(info=>{if(info&&typeof info.nonce==='string'&&/^[a-f0-9]{64}$/.test(info.nonce))nonce=info.nonce;}).catch(()=>{});
+ return __nonceBoot;
+}
+async function api(path,data,retried){
+ await ensureFreshNonce();
+ const r=await fetch('/api/'+path,{method:data===undefined?'GET':'POST',headers:{'X-Jinbao-Setup':nonce,...(data===undefined?{}:{'Content-Type':'application/json'})},...(data===undefined?{}:{body:JSON.stringify(data)})});
+ if(r.status===403&&!retried){await ensureFreshNonce(true);return api(path,data,true);}
+ const b=await r.json();if(!r.ok)throw Error(b.error);return b;
+}
 async function run(fn){try{await fn();}catch(e){message(e.message);}}
 function readModelSettings(){return {mode:el('mode').value,baseUrl:el('baseUrl').value.trim(),model:el('model').value.trim(),desktopPath:el('desktopPath').value.trim()};}
 function modelDirty(){return !!savedModelSettings&&(JSON.stringify(readModelSettings())!==JSON.stringify(savedModelSettings)||!!el('apiKey').value);}
@@ -225,16 +236,7 @@ const xpSaveButton=document.getElementById('xpSave');
 if(xpSaveButton&&typeof xpSaveButton.addEventListener==='function'){xpSaveButton.addEventListener('click',xpSave);}
 </script><script>
 (async()=>{
- const nonce=(()=>{
-  // 优先用地址栏里的 nonce（每次启动都会变）；sessionStorage 可能是上一次的旧值，会 403。
-  const fromHash=(location.hash||'').replace(/^#/,'');
-  if(/^[a-f0-9]{64}$/.test(fromHash))return fromHash;
-  const q=new URLSearchParams(location.search);
-  const fromQuery=q.get('n')||'';
-  if(/^[a-f0-9]{64}$/.test(fromQuery))return fromQuery;
-  try{return sessionStorage.getItem('jinbao-settings-setup')||''}catch{return ''}
- })();
- const call=async(path,data)=>{const r=await fetch('/api/'+path,{method:data===undefined?'GET':'POST',headers:{'X-Jinbao-Setup':nonce,...(data===undefined?{}:{'Content-Type':'application/json'})},...(data===undefined?{}:{body:JSON.stringify(data)})});return r.json();};
+ const call=(path,data)=>api(path,data);
  const mode=document.getElementById('displayMode'),sub=document.getElementById('displaySubtitle'),sp=document.getElementById('displaySpeech'),st=document.getElementById('displayStatus');
  if(!mode)return;
  try{const d=await call('display');if(d.mode)mode.value=d.mode;sub.checked=d.subtitle!==false;sp.checked=d.speech===true;}catch(e){}
