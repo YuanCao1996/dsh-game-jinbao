@@ -15,6 +15,6 @@ export function rankedAugments(rows, champion) {
 }
 export function augmentLine(row) {
   const rank = Number(row.rank) > 0 && Number.isFinite(Number(row.rank)) ? '#'+Number(row.rank) : '排名暂无';
-  const rate = row.winRate != null && row.winRate !== '' && Number.isFinite(Number(row.winRate)) ? Number(row.winRate)+'%' : '暂无';
-  return [rank, row.name, row.tier, '胜率 '+rate].filter(Boolean).join(' · ');
+  // 用户要求：这一列只显示该英雄的排名与品质，不显示胜率。
+  return [rank, row.name, row.tier].filter(Boolean).join(' · ');
 }
