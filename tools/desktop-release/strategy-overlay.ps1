@@ -656,10 +656,8 @@ $controls.QuestionBox.Add_PreviewKeyDown({param($sender,$eventArgs)
  if($eventArgs.Key -eq [Windows.Input.Key]::Return -and ([Windows.Input.Keyboard]::Modifiers -band [Windows.Input.ModifierKeys]::Shift) -eq 0){Send-Question;$eventArgs.Handled=$true}
 })
 # 收起形态由网页设置决定：小球 / 窄条字幕 / 窄条跑马灯。
-$controls.CollapseButton.Add_Click({
- if($script:collapseStyle -eq 'ball' -or -not $script:collapseStyle){Set-Collapsed $true}
- else{Set-DisplayMode 'narrow'}
-})
+# 收起固定为窄条；是字幕还是跑马灯由网页设置的「窄条形式」决定。
+$controls.CollapseButton.Add_Click({Set-DisplayMode 'narrow'})
 $controls.CloseButton.Add_Click({$window.Close()})
 # The collapsed ball deliberately has no close button: a click expands it and the tray menu exits.
 $controls.ActionButton.Add_Click({

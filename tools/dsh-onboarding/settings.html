@@ -10,7 +10,7 @@
 @media(pointer:coarse){button{min-height:44px}input,select{font-size:16px}}
 @media(prefers-reduced-motion:reduce){*,*:after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 </style></head><body><div class="settings-shell"><aside class="settings-sidebar"><div class="settings-brand"><span aria-hidden="true">金</span><div><strong>金宝</strong><small>桌面端设置</small></div></div><nav class="settings-nav" aria-label="设置分类"><button type="button" data-settings-page="account" aria-current="page">账号与额度</button><button type="button" data-settings-page="model">模型服务</button><button type="button" data-settings-page="games">游戏与观察</button><button type="button" data-settings-page="display">显示与播报</button><button type="button" data-settings-page="phone">手机连接</button><button type="button" data-settings-page="voice">角色与语音</button><button type="button" data-settings-page="memory">记忆与展示</button><button type="button" data-settings-page="updates">更新与诊断</button></nav><small>Windows 桌面版 · 本地设置</small></aside><main>
-<section id="displaySettings" data-settings-group="display"><h2>显示与播报</h2><p>悬浮窗点一下可展开/收起。以下选项保存后约 1 秒生效。</p><label for="displayMode">收起后显示</label><select id="displayMode"><option value="ball">圆形小球（点击恢复大框）</option><option value="bar-subtitle">窄条 · 字幕两行推进</option><option value="bar-scroll">窄条 · 跑马灯横向滚动</option></select><label><input id="displaySpeech" type="checkbox"> 语音播报</label><button id="displaySave">保存显示设置</button><span id="displayStatus"></span></section>
+<section id="displaySettings" data-settings-group="display"><h2>显示与播报</h2><p>悬浮窗点一下可展开/收起。以下选项保存后约 1 秒生效。</p><label for="displaySubtitle">窄条形式（收起后显示）</label><select id="displaySubtitle"><option value="subtitle">字幕 · 两行向上推进</option><option value="scroll">跑马灯 · 横向滚动</option></select><label><input id="displaySpeech" type="checkbox"> 语音播报</label><button id="displaySave">保存显示设置</button><span id="displayStatus"></span></section>
 <header class="settings-heading"><small>偏好设置</small><h1 id="settingsPageTitle">账号与额度</h1><p id="settingsPageDescription">管理当前电脑的登录账号与官方模型额度。</p></header><details style="margin:0 0 18px;border:1px solid #e6ded2;border-radius:16px;background:#fffaf3;overflow:hidden"><summary style="padding:10px 16px;cursor:pointer;color:#805536">探索的旅程 · 展开欢迎卡片</summary><div style="display:flex;align-items:center;gap:20px;padding:0 16px 16px"><img src="/exploration-poster.jpg" alt="举剑向前的探索者" style="width:92px;height:130px;object-fit:cover;border-radius:10px"><div><strong>今天，探索新的可能</strong><p>和你一起探索未至之境。</p></div></div></details><p id="runtimeNotice" hidden>独立桌面版：官方云端服务无需 DSH Desktop；自己的 API Key 使用本机 DSH 原生 Agent。</p><div id="message" role="status" aria-live="polite"></div>
 <footer id="modelActions" data-settings-group="model"><span id="modelSaveState" role="status" aria-live="polite">正在读取设置…</span><div class="model-buttons"><button type="button" id="discardModel" class="secondary" hidden>放弃更改</button></div></footer>
 <section id="updateNotice" class="success" role="status" hidden><h2 id="updateNoticeTitle"></h2><p id="updateNoticeMessage"></p><pre id="updateNoticeNotes"></pre><button id="updateAck" class="secondary">知道了</button></section>
@@ -252,10 +252,10 @@ if(xpSaveButton&&typeof xpSaveButton.addEventListener==='function'){xpSaveButton
 </script><script>
 (async()=>{
  const call=(path,data)=>api(path,data);
- const mode=document.getElementById('displayMode'),sp=document.getElementById('displaySpeech'),st=document.getElementById('displayStatus');
+ const sub=document.getElementById('displaySubtitle'),sp=document.getElementById('displaySpeech'),st=document.getElementById('displayStatus');
  if(!mode)return;
- try{const d=await call('display');mode.value=d.mode==='silent'?'ball':(d.subtitle===false?'bar-scroll':'bar-subtitle');sp.checked=d.speech===true;}catch(e){}
- document.getElementById('displaySave').onclick=async()=>{st.textContent='保存中…';try{await call('display',{collapseStyle:mode.value,speech:sp.checked});st.textContent='已保存，约 1 秒生效';}catch(e){st.textContent='保存失败';}};
+ try{const d=await call('display');sub.value=d.subtitle===false?'scroll':'subtitle';sp.checked=d.speech===true;}catch(e){}
+ document.getElementById('displaySave').onclick=async()=>{st.textContent='保存中…';try{await call('display',{subtitle:sub.value!=='scroll',speech:sp.checked});st.textContent='已保存，约 1 秒生效';}catch(e){st.textContent='保存失败';}};
 })();
 </script>
 </body></html>
