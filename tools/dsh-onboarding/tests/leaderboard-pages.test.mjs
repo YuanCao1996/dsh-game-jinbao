@@ -1,71 +1,73 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hextechLeaderboardPage, heroLeaderboardPage, topRuneId, padDisplay} from '../leaderboard-pages.mjs';
+import {
+  hextechLeaderboardPage,
+  heroLeaderboardPage,
+  topRuneId,
+  padDisplay,
+  padDisplayLeft,
+  leaderboardRowData,
+} from '../leaderboard-pages.mjs';
 
-// 夹具取自生产真实返回（见 handoff/leaderboard-api.md）。
-
+// 夹具取自生产真实返回。
 const hextech = [
-  {rank: 1, tier: 'T1', name: '升级：无尽之刃', winRate: 44.22, pickRate: 19.4, champion: '影哨 阿克尚'},
-  {rank: 1, tier: 'T1', name: '灵魂虹吸', winRate: 60.61, pickRate: 19.57, champion: '封魔剑魂 永恩'},
+  {rank: 1, tier: 'T1', name: '灵魂虹吸', winRate: 60.61, champion: '封魔剑魂 永恩'},
+  {rank: 2, tier: 'T1', name: '升级：无尽之刃', winRate: 44.22, champion: '影哨 阿克尚'},
+  {rank: 3, tier: 'T1', name: '灵魂虹吸', winRate: 51.0, champion: '机械公敌 兰博'},
 ];
 
 const heroes = [
-  {rank: 1, name: '亚索', title: '疾风剑豪', tier: 2, winRate: 52.3, augmentStats: '[{"augmentId":157,"rank":1}]'},
-  {rank: 1, name: '赫卡里姆', title: '战争之影', tier: 1, winRate: 58.1, augmentStats: [{augmentId: 27, rank: 1}]},
+  {rank: 1, name: '赫卡里姆', title: '战争之影', tier: 1, winRate: 58.1},
+  {rank: 2, name: '亚索', title: '疾风剑豪', tier: 2, winRate: 9.9},
 ];
 
-test('海克斯榜：一行一条，无排名/井号/选取率/适配二字，只看英雄名', () => {
+test('海克斯总榜：单行结构「品质 + 名称 · 胜率」，无井号/选取率/适配二字', () => {
   const lines = hextechLeaderboardPage(hextech).split('\n');
-  assert.equal(lines.length, 4, '标题两行 + 两条数据');
-  assert.doesNotMatch(lines[2], /#/);
-  assert.doesNotMatch(lines[2], /选取/);
-  assert.doesNotMatch(lines[2], /适配/);
-  assert.match(lines[2], /^T1 +灵魂虹吸 +60\.6% +永恩$/);
-  assert.match(lines[3], /^T1 +升级：无尽之刃 +44\.2% +阿克尚$/);
+  assert.equal(lines.length, 4, '标题两行 + 两条（同名去重后）');
+  assert.match(lines[2], /^T1 +灵魂虹吸 · 60\.6%$/);
+  assert.doesNotMatch(lines[2], /#|选取|适配/);
+  assert.match(lines[3], /^T1 +升级：无尽之刃 · 44\.2%$/);
 });
 
-test('英雄榜：一行一条，不显示称号，带顶级符文', () => {
-  const page = heroLeaderboardPage(heroes, {topRune: (row) => (topRuneId(row) === 157 ? '灵魂虹吸' : '易损')});
-  const lines = page.split('\n');
-  assert.match(lines[2], /^T1 +赫卡里姆 +58\.1% +易损$/);
-  assert.match(lines[3], /^T2 +亚索 +52\.3% +灵魂虹吸$/);
-  assert.doesNotMatch(page, /战争之影|疾风剑豪/);
+test('英雄总榜：同样单行结构，不显示称号', () => {
+  const lines = heroLeaderboardPage(heroes).split('\n');
+  assert.match(lines[2], /^T1 +赫卡里姆 · 58\.1%$/);
+  assert.match(lines[3], /^T2 +亚索 · 9\.9%$/);
+  assert.doesNotMatch(lines.join('\n'), /战争之影|疾风剑豪/);
 });
 
-test('按显示宽度对齐：同列起始位置一致（中文占两列）', () => {
-  const lines = heroLeaderboardPage(heroes, {topRune: () => '符'}).split('\n').slice(2);
-  const width = (s) => [...s].reduce((n, ch) => n + ((ch.codePointAt(0) ?? 0) > 0x2e80 ? 2 : 1), 0);
-  const prefix = (s) => width(s.slice(0, s.indexOf(' ' + s.trim().split(/ +/)[2])));
-  assert.equal(width(lines[0]), width(lines[1]), '两行总宽（含中文）应一致');
-  const padded = padDisplay('亚索', 18);
-  assert.equal(padded.length, 16, '两个汉字占 4 列，补 14 个空格 = 16 个字符');
-  assert.equal(width(padded), 18, '补完后显示宽度正好 18 列');
+test('品质列宽度固定：T1 与 T3 后面的名称起始位置一致', () => {
+  const lines = heroLeaderboardPage(heroes).split('\n').slice(2);
+  const starts = lines.map((line) => line.indexOf('赫') >= 0 ? line.indexOf('赫') : line.indexOf('亚'));
+  assert.equal(new Set(starts).size, 1, '名称列起点一致');
+  assert.equal(padDisplay('亚索', 18).length, 16, '两个汉字补到 18 显示列 = 16 字符');
+  assert.equal(padDisplayLeft('9.9%', 6), '  9.9%', '数值右对齐');
 });
 
 test('缺字段时用 — 占位，不崩', () => {
   const lines = hextechLeaderboardPage([{name: '甲'}]).split('\n');
-  assert.match(lines[2], /^— +甲 +—/);
+  assert.match(lines[2], /^— +甲 · —$/);
 });
 
-test('空数据返回空串，交给调用方退回原文案', () => {
+test('空数据返回空串', () => {
   assert.equal(hextechLeaderboardPage([]), '');
   assert.equal(heroLeaderboardPage(null), '');
 });
 
-test('顶级符文取 augmentStats 里 rank 最小的一条', () => {
-  assert.equal(topRuneId(heroes[0]), 157);
-  assert.equal(topRuneId(heroes[1]), 27);
-  assert.equal(topRuneId({augmentStats: 'not-json'}), null);
+test('同名强化只出现一次（整榜是强化×英雄组合）', () => {
+  const lines = hextechLeaderboardPage(hextech).split('\n').slice(2);
+  assert.equal(lines.filter((line) => line.includes('灵魂虹吸')).length, 1);
 });
 
-test('同名强化只出现一次（整榜是强化×英雄组合，会重复）', () => {
-  const rows = [
-    {tier: 'T1', name: '术士果汁盒', winRate: 51.5, champion: '奥瑞利安·索尔'},
-    {tier: 'T1', name: '术士果汁盒', winRate: 50.6, champion: '兰博'},
-    {tier: 'T1', name: '灵魂虹吸', winRate: 59.1, champion: '永恩'},
-  ];
-  const lines = hextechLeaderboardPage(rows).split('\n').slice(2);
-  const names = lines.map((line) => line.split(/\s+/)[1]);
-  assert.equal(names.filter((name) => name === '术士果汁盒').length, 1, '术士果汁盒只保留一次');
-  assert.ok(lines.some((line) => line.includes('灵魂虹吸')));
+test('顶级符文取 augmentStats 里 rank 最小的一条', () => {
+  assert.equal(topRuneId({augmentStats: '[{"augmentId":157,"rank":1}]'}), 157);
+  assert.equal(topRuneId({augmentStats: 'not-json'}), null);
+  assert.equal(topRuneId(null), null);
+});
+
+test('表格行数据：去重、降序、可带适配英雄', () => {
+  const rows = leaderboardRowData(hextech, {limit: 10, withChampion: true});
+  assert.deepEqual(rows.map((row) => row.name), ['灵魂虹吸', '升级：无尽之刃']);
+  assert.equal(rows[0].winRate, '60.6%');
+  assert.equal(rows[0].champion, '永恩');
 });

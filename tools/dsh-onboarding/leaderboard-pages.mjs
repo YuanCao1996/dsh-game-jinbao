@@ -1,10 +1,9 @@
-// 等待态的"总榜"两页：海克斯榜与英雄胜率榜。
+// 等待态的两页「总榜」与列排版工具。
 //
-// 数据来自桌面网关的整榜接口（契约见 handoff/leaderboard-api.md）。
-// 展示要求（按用户口味）：每条一行、不要排名数字与井号、不要选取率、不要"适配"二字、
-// 英雄只显示名字（不带称号），并且各列必须对齐。
-//
-// 对齐要点：中文占两列宽，所以按"显示宽度"补空格，而不是按字符个数。
+// 设计取舍：跨列对齐依赖等宽字体与空格宽度，比例字体下必然漂移，因此行渲染采用
+// 「品质 + 名称 · 胜率」的单行结构——只保留一个固定宽度的品质列，其余自然连写，
+// 在任意字体下都不会错位。padDisplay/padDisplayLeft/alignedColumns 仍然导出，
+// 供对局内列表等需要列对齐的地方复用。
 
 const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
 
@@ -36,14 +35,23 @@ export function padDisplay(text, width) {
   return pad > 0 ? value + ' '.repeat(pad) : value;
 }
 
-
-/** 左侧补空格（数值右对齐，让小数点对齐）。 */
+/** 左侧补空格（数值右对齐）。 */
 export function padDisplayLeft(text, width) {
   const value = String(text ?? '');
   const pad = width - displayWidth(value);
   return pad > 0 ? ' '.repeat(pad) + value : value;
 }
-/** "封魔剑魂 永恩" → "永恩"：只留英雄本名，去掉称号。 */
+
+/** 通用列：品质 · 名称 · 数值，按显示宽度补齐。 */
+export function alignedColumns(tier, name, value, {nameWidth = 18, valueWidth = 6} = {}) {
+  return (
+    padDisplay(quality(tier), 3) + ' ' +
+    padDisplay(String(name ?? '—'), nameWidth) + ' ' +
+    padDisplayLeft(String(value ?? ''), valueWidth)
+  ).trimEnd();
+}
+
+/** "封魔剑魂 永恩" → "永恩"。 */
 function heroNameOnly(champion) {
   const text = String(champion ?? '').trim();
   if (!text) return '';
@@ -51,53 +59,61 @@ function heroNameOnly(champion) {
   return parts.length > 1 ? parts[parts.length - 1] : text;
 }
 
+/** 强化行：品质 · 名称 · 胜率 */
+export function alignedAugmentRow(row) {
+  const rate = row?.winRate != null && row.winRate !== '' ? pct(row.winRate) : '—';
+  return alignedColumns(row?.tier, row?.name, rate);
+}
+
+/** 英雄行：品质 · 名称 · 胜率 */
+export function alignedHeroRow(row) {
+  const rate = row?.winRate != null && row.winRate !== '' ? pct(row.winRate) : '—';
+  return alignedColumns(row?.tier, row?.name ?? row?.champion, rate);
+}
+
 const byWinRate = (a, b) => (num(b?.winRate) ?? -1) - (num(a?.winRate) ?? -1);
 
+/** 去重（整榜是"强化 × 英雄"组合，同名会重复）+ 按胜率降序 + 截断。 */
+function uniqueByWinRate(rows, limit) {
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
+  const seen = new Map();
+  for (const row of list.slice().sort(byWinRate)) {
+    const key = String(row.name ?? '');
+    if (key && !seen.has(key)) seen.set(key, row);
+  }
+  return [...seen.values()].slice(0, limit);
+}
+
+/** 整理成可直接渲染的行数据（表格用）。 */
+export function leaderboardRowData(rows, {limit = 10, withChampion = false} = {}) {
+  return uniqueByWinRate(rows, limit).map((row) => ({
+    tier: quality(row.tier),
+    name: String(row.name ?? '—'),
+    winRate: pct(row.winRate),
+    ...(withChampion ? {champion: heroNameOnly(row.champion)} : {}),
+  }));
+}
+
+/** 单行：品质 + 名称 · 胜率 */
+const singleRow = (row) => padDisplay(quality(row?.tier), 3) + ' ' + String(row?.name ?? '—') + ' · ' + pct(row?.winRate);
+
 export function hextechLeaderboardPage(rows, { limit = 10 } = {}) {
-  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
+  const list = uniqueByWinRate(rows, limit);
   if (!list.length) return '';
-  // 服务端返回的是「强化 × 英雄」组合榜，同名会重复；按名字去重，保留胜率最高的一条。
-  const seen = new Map();
-  for (const row of list.slice().sort(byWinRate)) {
-    const key = String(row.name ?? '');
-    if (key && !seen.has(key)) seen.set(key, row);
-  }
-  const sorted = [...seen.values()].slice(0, limit);
   const lines = ['通用 Top 海克斯 · 总榜', '快照数据 · 进对局自动切换为本局英雄'];
-  sorted.forEach((row) => {
-    lines.push((
-      padDisplay(quality(row.tier), 3) + ' ' +
-      padDisplay(row.name ?? '—', 18) + ' ' +
-      padDisplayLeft(pct(row.winRate), 6) + '  ' +
-      padDisplay(heroNameOnly(row.champion), 10)
-    ).trimEnd());
-  });
+  for (const row of list) lines.push(singleRow(row));
   return lines.join('\n');
 }
 
-export function heroLeaderboardPage(rows, { limit = 10, topRune } = {}) {
-  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object');
+export function heroLeaderboardPage(rows, { limit = 10 } = {}) {
+  const list = uniqueByWinRate(rows, limit);
   if (!list.length) return '';
-  const seen = new Map();
-  for (const row of list.slice().sort(byWinRate)) {
-    const key = String(row.name ?? '');
-    if (key && !seen.has(key)) seen.set(key, row);
-  }
-  const sorted = [...seen.values()].slice(0, limit);
   const lines = ['英雄胜率总榜 · 大乱斗', '快照数据 · 进对局自动切换为双方英雄'];
-  sorted.forEach((row) => {
-    const rune = typeof topRune === 'function' ? String(topRune(row) ?? '') : '';
-    lines.push((
-      padDisplay(quality(row.tier), 3) + ' ' +
-      padDisplay(row.name ?? '—', 18) + ' ' +
-      padDisplayLeft(pct(row.winRate), 6) + '  ' +
-      rune
-    ).trimEnd());
-  });
+  for (const row of list) lines.push(singleRow(row));
   return lines.join('\n');
 }
 
-/** 从英雄行里取"顶级符文"对应的强化 id（augmentStats 可能是 JSON 字符串或数组）。 */
+/** 从英雄行里取"顶级符文"对应的强化 id。 */
 export function topRuneId(row) {
   if (!row) return null;
   let stats = row.augmentStats;
