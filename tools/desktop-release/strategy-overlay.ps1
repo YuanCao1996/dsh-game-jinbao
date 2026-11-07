@@ -377,7 +377,7 @@ function Update-Page {
   # 看起来就像「海克斯页显示的是战况内容」。
   $controls.PageText.Text='正在读取对局状态…'
  }
- $tableVisible=$script:tab -eq 'players' -and $null -ne $script:snapshot.playerRows -and @($script:snapshot.playerRows).Count -gt 0
+ $tableVisible=$script:tab -eq 'players' -and -not $script:snapshot.playersIsLeaderboard -and $null -ne $script:snapshot.playerRows -and @($script:snapshot.playerRows).Count -gt 0
  $controls.PlayersTable.Visibility=if($tableVisible){'Visible'}else{'Collapsed'}
  $controls.PageText.Visibility=if($tableVisible){'Collapsed'}else{'Visible'}
  if($tableVisible){

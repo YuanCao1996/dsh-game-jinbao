@@ -531,7 +531,12 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     if(heroes.length)out.players=heroLeaderboardPage(heroes,{topRune:row=>{const id=topRuneId(row);return id===null?'':(names.get(id)??'');}});
     return out;
   };
-  const view=()=>stripViewSources({...overlayView(state,knowledge),...(idleLeaderboard()??{}),agentActivity:withEventFallback(activity?.snapshot?.(state),state)});
+  const view=()=>{
+   const idle=idleLeaderboard();
+   // 胜率页默认渲染的是英雄表格；空闲总榜是文本，需要显式告诉渲染层改用文本。
+   return stripViewSources({...overlayView(state,knowledge),...(idle??{}),playersIsLeaderboard:!!idle?.players,
+    agentActivity:withEventFallback(activity?.snapshot?.(state),state)});
+  };
 
   async function save() {
     if (closed) return;
@@ -729,7 +734,12 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
           ]);
           const pick = res => res.status === 'fulfilled' ? (res.value.results ?? []).map(item => item.data) : [];
           const hex = pick(hexRes), heroes = pick(heroRes);
-        if(hexRows.length||heroRows.length){leaderboardData={hextech:hexRows,heroes:heroRows,at:Date.now()};flush();}
+        if(hex.length||heroes.length){leaderboardData={hextech:hex,heroes,at:Date.now()};flush();}
+        try{await writeFile(join(stateDir,'leaderboard-status.json'),JSON.stringify({at:Date.now(),
+         idle:idleNoMatch(),phase:state.phase,ended:state.ended,champion:state.me.champion,
+         hex:hex.length,heroes:heroes.length,
+         hexErr:hexRes.status==='rejected'?String(hexRes.reason?.status??hexRes.reason?.message??'x').slice(0,80):'',
+         heroErr:heroRes.status==='rejected'?String(heroRes.reason?.status??heroRes.reason?.message??'x').slice(0,80):''}));}catch{}
         } catch {}
       })();
     }
