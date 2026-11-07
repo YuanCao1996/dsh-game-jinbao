@@ -57,13 +57,13 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
   <Style TargetType="ScrollBar"><Setter Property="Width" Value="7"/><Setter Property="Background" Value="Transparent"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar"><Track x:Name="PART_Track" IsDirectionReversed="True" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" ViewportSize="{TemplateBinding ViewportSize}" Value="{Binding Value,RelativeSource={RelativeSource TemplatedParent},Mode=TwoWay}"><Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="#566575" CornerRadius="3" Margin="1"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb></Track></ControlTemplate></Setter.Value></Setter></Style>
   <Style TargetType="TextBox"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox"><Border x:Name="InputOutline" CornerRadius="8" BorderThickness="1" BorderBrush="{TemplateBinding BorderBrush}" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"><ScrollViewer x:Name="PART_ContentHost"/></Border><ControlTemplate.Triggers><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="InputOutline" Property="BorderBrush" Value="#CBA86C"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
  </Window.Resources>
- <Border x:Name="MainBorder" Background="#E810151B" BorderBrush="#39434F" BorderThickness="1" CornerRadius="14" Padding="12">
+ <Border x:Name="MainBorder" Background="#E810151B" BorderBrush="#39434F" BorderThickness="1" CornerRadius="12" Padding="8">
   <Grid>
    <Grid x:Name="Expanded">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <Grid x:Name="Header" Background="#01000000" Cursor="SizeAll">
      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <TextBlock x:Name="TitleText" Text="金宝 · 游戏教练" Foreground="#F1F5F9" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Margin="2,0,8,0" TextTrimming="CharacterEllipsis"/>
+     <TextBlock x:Name="TitleText" Text="金宝 · 游戏教练" Foreground="#F1F5F9" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="2,0,8,0" TextTrimming="CharacterEllipsis"/>
      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
       <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#4B5563" VerticalAlignment="Center"/>
       <TextBlock x:Name="StatusText" Text="等待对局" Foreground="#94A3B8" FontSize="11" VerticalAlignment="Center" Margin="5,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="140" ToolTip="采集与模型状态"/>
@@ -72,7 +72,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <Button x:Name="CollapseButton" Grid.Column="3" Style="{StaticResource WindowAction}" Content="&#xE921;" ToolTip="收起到屏幕右侧 · Ctrl+Alt+↓"/>
      <Button x:Name="CloseButton" Grid.Column="4" Style="{StaticResource WindowAction}" Content="&#xE8BB;" ToolTip="退出金宝悬浮窗"/>
     </Grid>
-    <StackPanel Grid.Row="1" Margin="3,4,3,2">
+    <StackPanel Grid.Row="1" Margin="2,2,2,0">
      <WrapPanel Visibility="Collapsed">
      <TextBlock x:Name="TimeText" Text="等待进入游戏" Foreground="#93C5FD" FontSize="14"/>
      <TextBlock x:Name="SummaryText" Text="正在检测游戏和教练服务…" Foreground="#94A3B8" FontSize="12" TextWrapping="Wrap" Margin="8,2,0,0"/>
@@ -81,7 +81,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <TextBlock x:Name="UpdateText" Foreground="#94A3B8" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
      <Button x:Name="ActionButton" Content="微信登录" HorizontalAlignment="Left" Visibility="Collapsed"/>
     </StackPanel>
-    <UniformGrid x:Name="Tabs" Grid.Row="2" Rows="1" Margin="0,6,0,10"/>
+    <UniformGrid x:Name="Tabs" Grid.Row="2" Rows="1" Margin="0,2,0,4"/>
     <DockPanel Grid.Row="3">
     <StackPanel x:Name="ConfirmationPanel" DockPanel.Dock="Top" Visibility="Collapsed" Margin="4,2,4,6">
      <TextBlock x:Name="ConfirmationTitle" Foreground="#FBBF24" FontSize="12" TextWrapping="Wrap"/>
@@ -91,9 +91,9 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <TextBlock x:Name="EventTicker" Foreground="#9CAABA" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="最新一条对局事件，随事件更新"/>
     </Border>
     <Button x:Name="LatestMessageButton" DockPanel.Dock="Bottom" Content="回到最新消息 ↓" FontSize="11" HorizontalAlignment="Center" Visibility="Collapsed" Margin="0,4"/>
-    <Border x:Name="AgentActivityPanel" DockPanel.Dock="Top" Visibility="Collapsed" BorderBrush="#34424F" BorderThickness="0,0,0,1" Margin="4,0,4,6" Padding="0,0,0,6">
-     <DockPanel MaxHeight="180">
-      <TextBlock DockPanel.Dock="Top" Text="智能体动态 · 实时" Foreground="#D6B278" FontSize="11" Margin="0,0,0,4"/>
+    <Border x:Name="AgentActivityPanel" DockPanel.Dock="Top" Visibility="Collapsed" BorderBrush="#34424F" BorderThickness="0,0,0,1" Margin="2,0,2,4" Padding="0,0,0,4">
+     <DockPanel MaxHeight="132">
+      <TextBlock DockPanel.Dock="Top" Text="智能体动态 · 实时" Foreground="#D6B278" FontSize="10" Margin="0,0,0,2"/>
       <Button x:Name="AgentActivityLatest" DockPanel.Dock="Bottom" Content="回到最新过程 ↓" FontSize="10" Padding="6,2" HorizontalAlignment="Center" Visibility="Collapsed"/>
       <ScrollViewer x:Name="AgentActivityScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"><StackPanel x:Name="AgentActivityRows"/></ScrollViewer>
      </DockPanel>
@@ -424,7 +424,7 @@ function Set-Tab([string]$name){
 }
 foreach($entry in @(@('advice','战况'),@('augments','海克斯'),@('players','胜率'))){
  $button=New-Object Windows.Controls.Button
- $button.Tag=$entry[0];$button.Content=$entry[1];$button.FontSize=12;$button.Padding='4,6';$button.ToolTip='切换到'+$entry[1]
+ $button.Tag=$entry[0];$button.Content=$entry[1];$button.FontSize=11;$button.Padding='2,4';$button.ToolTip='切换到'+$entry[1]
  $button.Add_Click({param($sender,$eventArgs) Set-Tab ([string]$sender.Tag)})
  $controls.Tabs.Children.Add($button) | Out-Null
 }

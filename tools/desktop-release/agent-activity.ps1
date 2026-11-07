@@ -52,7 +52,7 @@ function Update-AgentActivity {
  if(!$script:activityJob){$controls.ActivityMenuItem.IsChecked=$activity.enabled -eq $true}
  $visible=$activity.enabled -eq $true -and $script:tab -eq 'advice' -and $script:displayMode -eq 'large' -and !$script:collapsed
  $controls.AgentActivityPanel.Visibility=if($visible){'Visible'}else{'Collapsed'}
- $controls.AgentActivityPanel.MaxHeight=[Math]::Min(180,[Math]::Max(48,$window.ActualHeight*0.28))
+ $controls.AgentActivityPanel.MaxHeight=[Math]::Min(132,[Math]::Max(44,$window.ActualHeight*0.22))
  if(!$activity.enabled){$controls.AgentActivityRows.Children.Clear();$script:activityNodes=@{};$script:activityRevision=-1;return}
  if(!$visible -or $script:activityRevision -eq $activity.revision){return}
  $script:activityRevision=$activity.revision;$scroll=$controls.AgentActivityScroll;$offset=$scroll.VerticalOffset
@@ -62,7 +62,7 @@ function Update-AgentActivity {
   foreach($row in $rows){
    $id=[string]$row.id;$ids[$id]=$true
    if(!$script:activityNodes.ContainsKey($id)){
-    $line=New-Object Windows.Controls.TextBlock;$line.TextWrapping='NoWrap';$line.TextTrimming='CharacterEllipsis';$line.FontSize=11;$line.LineHeight=18;$line.Margin='0,2,6,3'
+    $line=New-Object Windows.Controls.TextBlock;$line.TextWrapping='NoWrap';$line.TextTrimming='CharacterEllipsis';$line.FontSize=10.5;$line.LineHeight=15;$line.Margin='0,2,6,3'
     $script:activityNodes[$id]=$line;$controls.AgentActivityRows.Children.Add($line)|Out-Null
    }
    $line=$script:activityNodes[$id]
