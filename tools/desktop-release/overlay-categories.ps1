@@ -91,5 +91,8 @@ function Get-OverlayTagCategory {
 
   $colors = Get-OverlayCategoryColor
   $tags = @($labels | ForEach-Object { [pscustomobject]@{ label = $_; color = $colors[$_] } })
-  [pscustomobject]@{ label = $labels[0]; labels = $labels; tags = $tags; color = $colors[$labels[0]] }
+  # labels 可能为空（没有实体命中的普通回答不打标签），这里必须防越界：
+ # 之前直接写 $labels[0] 会在严格模式下抛 "Index operation failed"，把整个悬浮窗拖崩。
+ $primary = if ($labels -and $labels.Count -gt 0) { [string]$labels[0] } else { '' }
+ [pscustomobject]@{ label = $primary; labels = @($labels); tags = $tags; color = if ($primary) { $colors[$primary] } else { $null } }
 }
