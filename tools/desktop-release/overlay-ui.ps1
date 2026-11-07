@@ -203,7 +203,10 @@ function Update-OverlaySurface([bool]$force=$false){
   # Events stay a single updating line instead of a page of their own.
   $tick=[string]$script:snapshot.eventTicker
   $controls.EventTicker.Text=$tick
-  $controls.EventTicker.Visibility=if($tick -and $script:tab -eq 'advice'){'Visible'}else{'Collapsed'}
+  # 智能体动态已经在显示"刚发生了什么"，底部再挂一行装备更新属于重复占行；
+ # 只有动态区收起时才用 ticker 兜底。
+ $activityOn=$controls.AgentActivityPanel -and $controls.AgentActivityPanel.Visibility -eq 'Visible'
+ $controls.EventTicker.Visibility=if($tick -and $script:tab -eq 'advice' -and -not $activityOn){'Visible'}else{'Collapsed'}
   $controls.EventTickerPanel.Visibility=$controls.EventTicker.Visibility
  }
  $rich=$controls.RichContent.Children.Count -gt 0 -and $controls.PlayersTable.Visibility -ne 'Visible' -and -not $script:leaderboardActive

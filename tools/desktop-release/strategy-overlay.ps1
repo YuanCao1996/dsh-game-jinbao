@@ -93,7 +93,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
     <Button x:Name="LatestMessageButton" DockPanel.Dock="Bottom" Content="回到最新消息 ↓" FontSize="11" HorizontalAlignment="Center" Visibility="Collapsed" Margin="0,4"/>
     <Border x:Name="AgentActivityPanel" DockPanel.Dock="Top" Visibility="Collapsed" BorderBrush="#34424F" BorderThickness="0,0,0,1" Margin="2,0,2,4" Padding="0,0,0,4">
      <DockPanel MaxHeight="132">
-      <TextBlock DockPanel.Dock="Top" Text="智能体动态 · 实时" Foreground="#D6B278" FontSize="10" Margin="0,0,0,2"/>
+      <TextBlock DockPanel.Dock="Top" Text="智能体动态 · 实时" Foreground="#D6B278" FontSize="10" Margin="0,0,0,2" Visibility="Collapsed"/>
       <Button x:Name="AgentActivityLatest" DockPanel.Dock="Bottom" Content="回到最新过程 ↓" FontSize="10" Padding="6,2" HorizontalAlignment="Center" Visibility="Collapsed"/>
       <ScrollViewer x:Name="AgentActivityScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"><StackPanel x:Name="AgentActivityRows"/></ScrollViewer>
      </DockPanel>
