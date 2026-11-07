@@ -16,7 +16,7 @@ import {createAllyUltimateObserver} from './ally-ultimates.mjs';
 import { homedir } from 'node:os';
 import { join,dirname } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import {writeFile,rename} from 'node:fs/promises';
+import {writeFile,rename,readdir,stat} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const folder=process.env.JINBAO_LOG_DIR??join(homedir(),'.dsh','jinbao','logs');
@@ -48,13 +48,32 @@ const cardWatchScript=fileURLToPath(new URL('./card-watch.ps1',import.meta.url))
 let cardWatch=null;
 const stopCardWatch=()=>{if(cardWatch){const owned=cardWatch;cardWatch=null;try{owned.kill()}catch{}}};
 const decidedRolls=new Set();
+
+ // 把本轮信息写到抓帧目录，事后可核对“帧 ↔ 识别结果”。
+ const writeCardWatchMeta=async meta=>{
+  try{
+   const root=process.env.JINBAO_STATE_DIR??dirname(folder);
+   const entries=await readdir(root,{withFileTypes:true});
+   for(const e of entries){
+    if(!e.isDirectory()||!e.name.startsWith('card-watch-'))continue;
+    const dirPath=join(root,e.name);
+    try{const info=await stat(dirPath);if(info.mtimeMs<meta.startedAt-2000)continue;}catch{continue;}
+    await writeFile(join(dirPath,'meta.json'),JSON.stringify({...meta,endedAt:Date.now(),dir:e.name}));
+   }
+  }catch{}
+ };
 const startCardWatch=offer=>{
  stopCardWatch();
+ // 抓帧元数据：这一轮开始时刻 + 当时识别到的名字，事后可核对帧与识别结果。
+ const watchMeta={roll:offer?.roll??null,names:(Array.isArray(offer?.options)?offer.options:[]).map(o=>o?.name).filter(Boolean),startedAt:Date.now(),startedGameTime:lastLiveState?.gameTime??gameTime??null};
  const powershell=join(process.env.SystemRoot??'C:/Windows','System32/WindowsPowerShell/v1.0/powershell.exe');
  let child;
  try{child=spawn(powershell,['-NoProfile','-ExecutionPolicy','Bypass','-File',cardWatchScript,'-Watch','-TimeoutMs','45000'],{windowsHide:true,stdio:['ignore','pipe','ignore']});}catch{return;}
  cardWatch=child;
- const finish=()=>{if(cardWatch===child)cardWatch=null;};
+ const finish=()=>{
+  if(cardWatch===child)cardWatch=null;
+  void writeCardWatchMeta(watchMeta);
+ };
  let buffer='';
  const onLine=line=>{
   let result;try{result=JSON.parse(line);}catch{return;}
