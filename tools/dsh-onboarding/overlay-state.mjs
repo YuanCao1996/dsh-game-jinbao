@@ -625,8 +625,8 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       const idleWait=game==='lol'&&!champion&&!rosterChampions(state).length;
       if(idleWait&&(force||!cache.leaderboard||Date.now()-(cache.leaderboardAt??0)>600000)){
         const [hexRes,heroRes]=await Promise.allSettled([
-          search({game,query:'大乱斗',dataset:'leaderboard',board:'hextech',limit:10}),
-          search({game,query:'大乱斗',dataset:'leaderboard',board:'heroes',limit:10}),
+          search({game,query:'大乱斗',dataset:'leaderboard',board:'hextech',limit:20}),
+          search({game,query:'大乱斗',dataset:'leaderboard',board:'heroes',limit:20}),
         ]);
         const pick=res=>res.status==='fulfilled'?(res.value.results??[]).map(item=>item.data):[];
         const hexRows=pick(hexRes),heroRows=pick(heroRes);
