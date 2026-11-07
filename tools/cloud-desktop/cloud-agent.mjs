@@ -13,6 +13,16 @@ export function agentQuestion(request){
  if(role&&message.length+role.length+1>2000)throw fail(413,'Agent message exceeds the bounded task budget');
  return role?message+'\n'+role:message;
 }
+// 本局实体名 → 检索关键词，随请求带给后端预加载使用。
+function localKnowledgeNames(c){
+ const names=[];
+ const push=v=>{const s=String(v??'').trim();if(s&&!names.includes(s))names.push(s);};
+ push(c?.me?.champion);
+ for(const offer of (Array.isArray(c?.offers)?c.offers:[]))push(typeof offer==='string'?offer:offer?.name);
+ for(const aug of (Array.isArray(c?.ownedAugments)?c.ownedAugments:[]))push(typeof aug==='string'?aug:aug?.name);
+ for(const item of (Array.isArray(c?.me?.items)?c.me.items:[]))push(typeof item==='string'?item:item?.name);
+ return names.slice(0,12).join('、');
+}
 export function cloudContext(memory,game,match,{eventQuery=false,observationPlan=false,userMemory=false}={}){
  const c=memory.current;
  if(c&&(c.game!==game||c.match!==match))throw fail(409,'Match changed');
@@ -40,7 +50,9 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
  function transportContext(memory,request){
   const value=cloudContext(memory,request.game,request.match,{eventQuery:!!queryEvents,observationPlan:!!observationPlan,userMemory:!!memoryTools});
   if(getActivityEnabled())value.client_context.capabilities.agent_activity_v1=true;
-  value.client_context.task={automatic:request.automatic===true,topic:['advice','equipment','chat'].includes(request.topic)?request.topic:'chat'};
+  value.client_context.task={automatic:request.automatic===true,topic:['advice','equipment','chat'].includes(request.topic)?request.topic:'chat'}
+   const lk=localKnowledgeNames(memory);
+   if(lk)value.client_context.local_knowledge=lk;;
   if(value.current_match_state.status==='unknown')delete value.current_match_state.captured_at_ms;
   const key=JSON.stringify(value);
   if(key!==wireKey){wireRevision=Math.max(Date.now(),wireRevision+1);value.current_match_state.source_revision=value.current_match_state.revision;value.current_match_state.revision=wireRevision;wireKey=key;wireValue=value;}
