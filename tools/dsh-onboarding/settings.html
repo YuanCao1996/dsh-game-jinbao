@@ -65,13 +65,7 @@ window.fetch=function(input,init){
 };
 const el=id=>document.getElementById(id);let savedMode='cloud',latest=null,polling=null,emailChallenge=null,cooldownUntil=0,changing=false,savedModelSettings=null,modelSaving=false;
 function message(text,ok=false){el('message').textContent=text;el('message').className=ok?'ok':text?'error':'';}
-let __nonceBoot=null;
-async function ensureFreshNonce(force){
- // 并发初始化会同时发多个 api()：必须共享同一个引导动作，否则后发的请求
- // 用旧 nonce 直接 403（实测 experience 稳定失败就是这个竞态）。
- if(force||!__nonceBoot)__nonceBoot=fetch('/api/setup-nonce',{cache:'no-store'}).then(r=>r.ok?r.json():{}).then(info=>{if(info&&typeof info.nonce==='string'&&/^[a-f0-9]{64}$/.test(info.nonce))nonce=info.nonce;}).catch(()=>{});
- return __nonceBoot;
-}
+async function ensureFreshNonce(force){return typeof __freshNonce==='function'?__freshNonce(force):Promise.resolve();}
 async function api(path,data,retried){
  await ensureFreshNonce();
  const r=await fetch('/api/'+path,{method:data===undefined?'GET':'POST',headers:{'X-Jinbao-Setup':nonce,...(data===undefined?{}:{'Content-Type':'application/json'})},...(data===undefined?{}:{body:JSON.stringify(data)})});
