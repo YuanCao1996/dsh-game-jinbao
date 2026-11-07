@@ -258,6 +258,8 @@ const friendlyKnowledgeMessage=message=>{
 // 智能体动态兜底：没有活动回合时，把本局事件流（装备/海克斯/团灭…）当作行喂进去，
 // 面板就不会整块空着——这类信息本来就是玩家想看的。
 const EVENT_FALLBACK_LIMIT=6;
+// 对局状态“只在变化时露一次”：记住上次的英雄/等级/KDA 组合与显示截止时间。
+let liveStatsKey='';let liveStatsUntil=0;
 const withEventFallback=(activity,state)=>{
  const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
  let rows=Array.isArray(base.rows)?base.rows:[];
@@ -273,10 +275,14 @@ const withEventFallback=(activity,state)=>{
  if(!rows.length)return base;
  // 最新的排最上面；顶部常驻一行对局状态（时间/英雄/等级/KDA/金币），随状态刷新跳动。
  const me=state.me??{};
- const live=[state.game==='generic'?null:'对局 '+(state.gameSeconds!=null?clock(state.gameSeconds):'--'),
+ // 英雄/等级/KDA 任一变化才把这段状态露出来（金币每时每刻都在变，不参与触发）。
+ const statsKey=[state.match??'',me.champion??'',me.level??'',me.k??'',me.d??'',me.a??''].join('|');
+ if(statsKey!==liveStatsKey){liveStatsKey=statsKey;liveStatsUntil=Date.now()+20000;}
+ const showLive=state.game!=='generic'&&Date.now()<liveStatsUntil;
+ const live=showLive?['对局 '+(state.gameSeconds!=null?clock(state.gameSeconds):'--'),
   (me.champion??''),me.level!=null?'Lv'+me.level:'',
   (me.k!=null&&me.d!=null&&me.a!=null)?me.k+'/'+me.d+'/'+me.a:'',
-  me.gold!=null?me.gold+' 金':''].filter(Boolean).join(' · ');
+  me.gold!=null?me.gold+' 金':''].filter(Boolean).join(' · '):'';
  const ordered=rows.slice().reverse();
  // 对局状态不再单独占一行：直接拼到最新那条事件前面（实测两行会被认为是重复占位）。
  if(live&&ordered.length){
