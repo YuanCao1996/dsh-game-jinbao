@@ -1,5 +1,5 @@
 import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
-import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId } from './leaderboard-pages.mjs';
+import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId, leaderboardRowData } from './leaderboard-pages.mjs';
 import { mkdir, readdir, stat, open, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { WZRY_ADAPTER } from '../dsh-coach-server/lib/adapters/wzry.js';
@@ -278,7 +278,13 @@ const withEventFallback=(activity,state)=>{
   (me.k!=null&&me.d!=null&&me.a!=null)?me.k+'/'+me.d+'/'+me.a:'',
   me.gold!=null?me.gold+' 金':''].filter(Boolean).join(' · ');
  const ordered=rows.slice().reverse();
- if(live)ordered.unshift({id:'match-live',task:'match',topic:'对局',clock:'',label:live,phase:'live'});
+ // 对局状态不再单独占一行：直接拼到最新那条事件前面（实测两行会被认为是重复占位）。
+ if(live&&ordered.length){
+  const head=ordered[0];
+  ordered[0]={...head,label:live+' · '+String(head.label??'')};
+ }else if(live){
+  ordered.push({id:'match-live',task:'match',topic:'对局',clock:'',label:live,phase:'live'});
+ }
  return {...base,rows:ordered};
 };
 
@@ -527,8 +533,16 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     if(!hex.length&&!heroes.length)return null;
     const names=new Map((knowledge.rows??[]).filter(row=>Number.isInteger(Number(row?.id))).map(row=>[Number(row.id),row.name]));
     const out={};
-    if(hex.length)out.augments=hextechLeaderboardPage(hex);
-    if(heroes.length)out.players=heroLeaderboardPage(heroes,{topRune:row=>{const id=topRuneId(row);return id===null?'':(names.get(id)??'');}});
+    if(hex.length){
+     out.augments=hextechLeaderboardPage(hex);
+     out.augmentsRows=leaderboardRowData(hex,{limit:10,withChampion:true});
+     out.augmentsIsLeaderboard=true;
+    }
+    if(heroes.length){
+     out.players=heroLeaderboardPage(heroes,{topRune:row=>{const id=topRuneId(row);return id===null?'':(names.get(id)??'');}});
+     out.playersRows=leaderboardRowData(heroes,{limit:10});
+     out.playersIsLeaderboard=true;
+    }
     return out;
   };
   const view=()=>{
