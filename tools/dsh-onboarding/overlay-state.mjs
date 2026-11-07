@@ -263,7 +263,10 @@ const withEventFallback=(activity,state)=>{
  let rows=Array.isArray(base.rows)?base.rows:[];
  if(!rows.length){
   // 没有活动回合时用本局事件流兜底，面板不至于整块空着。
-  rows=(Array.isArray(state?.events)?state.events.slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
+  // 开局/结束这类状态事件不进事件流：它们不是"发生了什么"，
+  // 而且终局后会占掉最新一行（实测出现「对局结束 · 胜利」）。
+  const stateKinds=new Set(['GameStart','GameEnd']);
+  rows=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
    id:'event-'+(event.at??index),task:'events',topic:'本局事件',
    clock:event.time??'',label:String(event.text??'').slice(0,60),phase:'done'}));
  }
