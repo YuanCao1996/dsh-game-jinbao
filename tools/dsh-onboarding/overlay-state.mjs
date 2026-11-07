@@ -418,6 +418,9 @@ const playerRows = players.map(p => {
     : '';
   const augmentTitle='当前三选一 · '+(me.champion||'等待英雄')+(knowledge.loading?' · 刷新中…':'');
   const augmentBody=candidates.join('\n')+(offered.length<3?'\n已识别 '+offered.length+'/3 个位置，其余卡片继续识别中…':'');
+  // 刷新次数：候选里最大的 rerollsUsed（同一轮三张一致），让玩家能回看是否刷过。
+  const rerollCount=Math.max(0,...(Array.isArray(state.offers)?state.offers:[]).map(o=>Number(o?.rerollsUsed)||0));
+  const rerollLine=rerollCount>0?'\n已刷新 '+rerollCount+' 次':'';
   const equipmentUpdates=state.events.filter(e=>e.topic==='equipment').slice(-12).map(e=>`${e.time} ${e.text}`).join('\n');
   const augmentUpdates=state.events.filter(e=>e.topic==='augment-selection').slice(-8).map(e=>`${e.time} ${e.text}`).join('\n');
   const captureHint=state.augmentCaptureAvailable===false
@@ -447,7 +450,7 @@ const playerRows = players.map(p => {
     advice: (state.game==='generic'?[me.genericState?.gameName||'游戏身份待核实',me.genericState?.gameMode,me.genericState?.roundState==='between'?'等待下一局':'当前窗口观察中']:['对局 '+clock(state.gameSeconds),shortChampion(me.champion),me.level!=null?'Lv'+me.level:'',me.k!=null?`${me.k}/${me.d??0}/${me.a??0}`:'',me.gold!=null?'金币 '+me.gold:'']).filter(Boolean).join(' · ')+'\n\n'+(companionLine?companionLine+'\n\n':'')+current+playbook+(state.game==='lol'&&offered.length?'\n\n海克斯推荐 · 当前三选一\n'+candidates.join('\n'):'')+(state.game==='lol'&&state.ownedAugments.length?'\n\n本局已选海克斯\n'+state.ownedAugments.join('、'):'')+(partnerHint?'\n\n'+partnerHint:''),
     equipment: '当前装备\n' + (own || '等待装备日志') + '\n\n推荐出装\n' + (state.equipment || builds.join('\n\n') || friendlyKnowledgeMessage(knowledge.message) || '进入对局后自动检索并结合装备与海克斯更新建议。')+(!state.ended&&state.equipmentStatus?'\n'+state.equipmentStatus:'')+(state.equipmentAssumptions.length?'\n\n待确认的强化推测\n'+state.equipmentAssumptions.map(a=>`第${a.round}轮暂按 ${a.name} 考虑`).join('\n'):'')+(equipmentUpdates?'\n\n装备动态\n'+equipmentUpdates:''),
     augments: state.game==='wzry'?'王者荣耀常规对局没有海克斯强化。可在战况页查看建议，或通过聊天咨询当前局势。':
-      (offered.length?augmentTitle+'\n按该英雄适配排名排序\n'+augmentBody+'\n\n':'')+'英雄 Top10 海克斯 · '+(shortChampion(me.champion)||'等待英雄')+'\n'+(ranked.slice(0,10).map(augmentLine).join('\n')||friendlyKnowledgeMessage(knowledge.message)||'正在查询英雄适配排名…')+'\n\n资料库推荐组合 · '+(me.champion||'等待英雄')+'\n'+(combinations.join('\n')||'暂无该英雄的组合记录')+
+      (offered.length?augmentTitle+'\n按该英雄适配排名排序\n'+augmentBody+rerollLine+'\n\n':'')+'英雄 Top10 海克斯 · '+(shortChampion(me.champion)||'等待英雄')+'\n'+(ranked.slice(0,10).map(augmentLine).join('\n')||friendlyKnowledgeMessage(knowledge.message)||'正在查询英雄适配排名…')+'\n\n资料库推荐组合 · '+(me.champion||'等待英雄')+'\n'+(combinations.join('\n')||'暂无该英雄的组合记录')+
       (offered.length?'\n\n本轮已见 '+state.offerHistory.length+'/6':'\n\n'+captureHint)+'\n\n本局已选\n'+(state.ownedAugments.join('、')||'尚未收到强化选择日志')+(augmentUpdates?'\n\n强化动态\n'+augmentUpdates:''),
     players: (teamWinRates?teamWinRates+'\n\n':'')+'英雄胜率 ↓\n'+(roster.join('\n') || '等待双方英雄数据。'),
     teamWinRates,
