@@ -456,7 +456,7 @@ function Update-Page {
  if($lbVisible){
   $controls.LeaderboardTable.Children.Clear()
   $lbChampion=($script:tab -eq 'augments')
-  $ratios=if($lbChampion){@(0.12,0.40,0.22,0.26)}else{@(0.16,0.46,0.38)}
+  $ratios=if($lbChampion){@(0.14,0.38,0.22,0.26)}else{@(0.16,0.44,0.40)}
   # 数值列左对齐：紧接名称列，既保持列对齐，也不会被推到窗口最右。
   $aligns=if($lbChampion){@(2,0,0,0)}else{@(2,0,0)}
   $autos=if($lbChampion){@(0,0,0,0)}else{@(0,0,0)}
@@ -466,7 +466,7 @@ function Update-Page {
   $titleLine.FontSize=[Math]::Max(12,$controls.FontSlider.Value-2);$titleLine.FontWeight='SemiBold';$titleLine.Foreground='#E7BE79';$titleLine.Margin='0,0,0,4'
   $controls.LeaderboardTable.Children.Add($titleLine) | Out-Null
   $headValues=if($lbChampion){@('品质','名称','胜率','适配英雄')}else{@('品质','英雄','胜率')}
-  $fixeds=if($lbChampion){@(34,0,0,0)}else{@(34,0,0)}
+  $fixeds=if($lbChampion){@(0,0,0,0)}else{@(0,0,0)}
   Add-LeaderboardRow $headValues $ratios $aligns $autos $fixeds
   foreach($lbRow in @($lbRows)){
    $values=if($lbChampion){@($lbRow.tier,$lbRow.name,$lbRow.winRate,$lbRow.champion)}else{@($lbRow.tier,$lbRow.name,$lbRow.winRate)}
