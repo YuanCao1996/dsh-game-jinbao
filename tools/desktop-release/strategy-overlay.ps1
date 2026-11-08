@@ -514,13 +514,9 @@ function Set-Tab([string]$name){
  Update-Page
  if($focusComposer -and $window.IsVisible){$window.Activate() | Out-Null;$controls.QuestionBox.Focus() | Out-Null;[Windows.Input.Keyboard]::Focus($controls.QuestionBox) | Out-Null}
 }
-# 只保留战况页：海克斯/胜率的内容改为在战况时间线里按时机出现（新消息 + 窄条速览）。
-# 原「海克斯」「胜率」页签已取消（恢复点见 commit 4ec5a40）。
-# 注意：不要写成 foreach(@(@('advice','战况')))，PowerShell 会把单元素数组摊平。
-$tabButton=New-Object Windows.Controls.Button
-$tabButton.Tag='advice';$tabButton.Content='战况';$tabButton.FontSize=11;$tabButton.Padding='11,3';$tabButton.Margin='0,0,6,0';$tabButton.MinWidth=54;$tabButton.ToolTip='当前对局消息与建议'
-$tabButton.Add_Click({param($sender,$eventArgs) Set-Tab 'advice'})
-$controls.Tabs.Children.Add($tabButton) | Out-Null
+# 现在只有一个页面，页签也没有意义：整行隐藏，把纵向空间让给消息。
+# 恢复点：4ec5a40（三页签版）、b1035c7（单页签版）。
+$controls.Tabs.Visibility='Collapsed'
 function Update-State {
  if(!$SelfTest -and [IO.File]::Exists((Join-Path $StateDir 'overlay-stopped'))){
   $script:exitApproved=$true;if($window.IsLoaded){$window.Close()};return
@@ -947,8 +943,8 @@ try{
     $script:testResult.collapsed=$script:collapsed -and $window.Width -eq 56
     $script:testResult.collapsedRightEdge=[Math]::Abs($window.Left+$window.Width-$area.Right) -lt 1
     Set-Collapsed $false;$script:testResult.expanded=$window.Width -ge 420
-    $script:testResult.tabs=$controls.Tabs.Children.Count
-    $script:testResult.simplifiedNavigation=$controls.Tabs.Children.Count -eq 1 -and @($controls.Tabs.Children | Where-Object {$_.Tag -in @('augments','players')}).Count -eq 0 -and @($controls.Tabs.Children | Where-Object {$_.Tag -eq 'teamfight'}).Count -eq 0 -and $null -eq $window.FindName('RefreshButton') -and $null -eq $window.FindName('TacticButton') -and $null -eq $window.FindName('InteractionButton') -and $null -eq $window.FindName('AppearanceButton')
+    $script:testResult.tabsRemoved=$controls.Tabs.Children.Count -eq 0;$script:testResult.tabRowHidden=$controls.Tabs.Visibility -eq 'Collapsed'
+    $script:testResult.simplifiedNavigation=$controls.Tabs.Children.Count -eq 0 -and @($controls.Tabs.Children | Where-Object {$_.Tag -in @('augments','players')}).Count -eq 0 -and @($controls.Tabs.Children | Where-Object {$_.Tag -eq 'teamfight'}).Count -eq 0 -and $null -eq $window.FindName('RefreshButton') -and $null -eq $window.FindName('TacticButton') -and $null -eq $window.FindName('InteractionButton') -and $null -eq $window.FindName('AppearanceButton')
     $script:testResult.appearanceInSettings=$controls.SettingsButton.ContextMenu.Items[0] -eq $controls.AppearanceMenuItem
     $script:testResult.singleWinRateTab=@($controls.Tabs.Children | Where-Object {$_.Content -eq '胜率'}).Count -eq 0 -and @($controls.Tabs.Children | Where-Object {$_.Content -eq '对手' -or $_.Tag -eq 'stats'}).Count -eq 0
 

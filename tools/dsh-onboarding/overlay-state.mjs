@@ -410,6 +410,11 @@ const playerRows = players.map(p => {
   // —— 把原「海克斯页 / 胜率页」的内容按时机写进战况时间线 ——
   (() => {
     if(state.game!=='lol')return;
+    // 没有数据时不要把「暂无数据 暂无」堆两列，只留阵营与英雄名。
+    const rosterLine=row=>{
+      const blank=value=>!value||/^暂无/.test(String(value));
+      return [row.side,row.champion,blank(row.winRateText)?'':row.winRateText,blank(row.tierText)?'':row.tierText].filter(Boolean).join(' ');
+    };
     const owned=state.ownedAugments??[];
     // 1) 三选一出现：给出本次可选项在该英雄上的排名（决断用）
     const offeredNow=offerNames(state.offers);
@@ -437,7 +442,7 @@ const playerRows = players.map(p => {
     if(state.phase==='ChampSelect'&&playerRows.length){
       noticePush(state,'lineup-select:'+playerRows.map(r=>r.champion).join('|'),{
         at:Date.now(),stage:'selection',dimension:'plan',
-        text:'选人阶段 · 阵容与胜率\n'+playerRows.map(r=>`${r.side} ${r.champion} ${r.winRateText} ${r.tierText}`).join('\n'),
+        text:'选人阶段 · 阵容与胜率\n'+playerRows.map(rosterLine).join('\n'),
         brief:'选人 · '+playerRows.slice(0,5).map(r=>`${r.side}${r.champion} ${r.winRateText}`).join(' ').slice(0,90),
       });
     }
@@ -445,7 +450,7 @@ const playerRows = players.map(p => {
     if(['Loading','GameStart'].includes(state.phase)&&playerRows.length>=6){
       noticePush(state,'lineup-loading:'+playerRows.map(r=>r.champion).join('|'),{
         at:Date.now(),stage:'loading',dimension:'plan',
-        text:'双方阵容 · 加载中\n'+playerRows.map(r=>`${r.side} ${r.champion} ${r.winRateText} ${r.tierText}`).join('\n')+(teamWinRates?'\n'+teamWinRates:''),
+        text:'双方阵容 · 加载中\n'+playerRows.map(rosterLine).join('\n')+(teamWinRates?'\n'+teamWinRates:''),
         brief:'双方阵容 · '+(teamWinRates||'').slice(0,90),
       });
     }
