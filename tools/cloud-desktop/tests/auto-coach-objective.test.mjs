@@ -91,3 +91,73 @@ test('an auto-picked augment still opens a post-augment turn', async () => {
   assert.equal(entry.dimension, 'augment');
   coach.close();
 });
+
+// 实测一局 154 个 tick 只有 21 个跑到判定，跨 ±2 的配合窗口大多撞在 busy/背压上被丢掉。
+// 现在窗口在闸门之前就被记下来，等下一个能跑的 tick 补发。
+test('a fight window swallowed by a busy tick is still delivered later', async () => {
+  const state = { time: 10_000, entries: [], alliesAlive: 5, enemiesAlive: 5, agentBusy: false };
+  const coach = createCloudCoach({
+    view: () => ({
+      game: 'lol', match: 'one', phase: 'InProgress', updatedAt: state.time,
+      selfChampion: '安妮', dead: false, alliesAlive: state.alliesAlive, enemiesAlive: state.enemiesAlive,
+    }),
+    getContext: async () => ({
+      current: {
+        ...base(),
+        me: { champion: '安妮', level: 11, items: [], dead: false },
+        allies: [{ champion: '盖伦', dead: false }],
+        enemies: [{ champion: '锐雯', dead: state.enemiesAlive < 5 }],
+      },
+    }),
+    now: () => state.time,
+    agent: { busy: () => state.agentBusy, ask: async () => '跟泰坦一起上，等他控制命中再进。' },
+    publish: async entry => state.entries.push(entry),
+  });
+
+  await coach.tick(); // 5v5 建立基线
+  state.time += 3000;
+  state.agentBusy = true;
+  state.alliesAlive = 5; state.enemiesAlive = 3; // 窗口打开，但这一轮 agent 忙 → 被吞掉
+  await coach.tick();
+  assert.equal(state.entries.filter(entry => entry.key === 'coordination').length, 0, '忙的时候不该硬抢模型');
+
+  state.time += 3000;
+  state.agentBusy = false;
+  await coach.tick(); // 补发
+  const coordination = state.entries.filter(entry => entry.key === 'coordination');
+  assert.equal(coordination.length, 1, '被吞掉的窗口必须补发');
+  assert.equal(coordination[0].dimension, 'now');
+  assert.equal(coordination[0].priority, 2);
+
+  // 同一个窗口不能反复补发。
+  state.time += 3000;
+  await coach.tick();
+  assert.equal(state.entries.filter(entry => entry.key === 'coordination').length, 1);
+  coach.close();
+});
+test('a side-man swing opens a coordination turn that names real champions', async () => {
+  let current = {
+    ...base(),
+    me: { champion: '安妮', level: 11, items: [], dead: false },
+    allies: [{ champion: '盖伦', dead: false }, { champion: '瑞兹', dead: false }],
+    enemies: [{ champion: '锐雯', dead: false }, { champion: '亚索', dead: false }],
+  };
+  const { state, coach } = harness(() => current);
+  await coach.tick();
+  const baseline = state.calls;
+
+  // 对面两人阵亡：人数差从 +1 拉到 +3，这是一次真实的开团/拿目标窗口。
+  current = { ...current, enemies: [{ champion: '锐雯', dead: true }, { champion: '亚索', dead: true }] };
+  await coach.tick();
+  assert.equal(state.calls, baseline + 1, 'a side-man swing must reach the model');
+
+  const entry = state.entries.at(-1);
+  assert.equal(entry.key, 'coordination');
+  assert.equal(entry.dimension, 'now');
+  assert.equal(entry.priority, 2, '配合窗口与团战同级');
+  const question = state.questions.at(-1) ?? '';
+  assert.match(question, /【本轮配合窗口】/, '存活名单必须进 prompt');
+  assert.match(question, /盖伦/, '点名真实队友，而不是“队友”');
+  assert.match(question, /跟谁一起上/);
+  coach.close();
+});

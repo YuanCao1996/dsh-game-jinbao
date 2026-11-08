@@ -106,6 +106,47 @@ test('a stalled chain still gets its praise instead of being dropped',()=>{
   assert.equal(praises(state).length,1);
 });
 
+// 云端一句话优先：链安静后先等宽限，云端到了就只上一条；
+// 否则玩家会先听到固定文案，再被云端文案覆盖成两句。
+test('云端点评优先：宽限内不出本地文案，云端到了只上一条',()=>{
+  const state=board();
+  kill(state,{streak:3,at:START+1000});
+  assert.equal(settlePraise(state,START+1000+PRAISE_SETTLE_MS,{cloudGraceMs:3000}),false,'宽限内不落本地文案');
+  const pending=overlayView(state).pendingPraise;
+  assert.equal(pending.length,1,'view 要暴露待点评的链给云端教练');
+  assert.equal(pending[0].streak,3);
+  assert.equal(pending[0].side,'self');
+  assert.equal(praises(state).length,0);
+
+  applyOverlayEvent(state,{game:'lol',match:'m1',t:START+3000,broadcast:'三杀！这波节奏彻底拿回来了。',praise:true,praiseChain:pending[0].chain,priority:2},'coach');
+  const praise=overlayView(state).playback.filter(row=>row.topic==='praise');
+  assert.equal(praise.length,1);
+  assert.equal(praise[0].text,'三杀！这波节奏彻底拿回来了。');
+  assert.equal(praise[0].praiseChain,pending[0].chain);
+
+  // 云端已经说过，宽限到期也绝不能再补一条本地模板文案。
+  assert.equal(settlePraise(state,START+60_000,{cloudGraceMs:3000}),false);
+  assert.equal(praises(state).length,1);
+  assert.equal(overlayView(state).pendingPraise.length,0);
+});
+
+test('云端没回来就在宽限到期用本地兜底；云端晚到只换文案不重播',()=>{
+  const state=board();
+  kill(state,{streak:4,at:START+1000});
+  assert.equal(settlePraise(state,START+1000+PRAISE_SETTLE_MS,{cloudGraceMs:3000}),false);
+  assert.equal(settlePraise(state,START+1000+PRAISE_SETTLE_MS+3000,{cloudGraceMs:3000}),true,'宽限到期交给本地兜底');
+  const local=praises(state);
+  assert.equal(local.length,1);
+  const before=overlayView(state).playback.find(row=>row.topic==='praise');
+  assert.match(before.text,/四杀/);
+
+  applyOverlayEvent(state,{game:'lol',match:'m1',t:START+9000,broadcast:'四杀！锐雯那笔仇报了。',praise:true,praiseChain:local[0].praiseChain,priority:2},'coach');
+  const praise=overlayView(state).playback.filter(row=>row.topic==='praise');
+  assert.equal(praise.length,1,'同一条链只能有一条播报');
+  assert.equal(praise[0].text,'四杀！锐雯那笔仇报了。');
+  assert.equal(praise[0].id,before.id,'文案换掉但 id 稳定，语音不会重播');
+});
+
 test('praise bypasses the 45s quiet window but leaves tactical advice room again after 15s',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'jinbao-praise-'));
   let time=START;
@@ -152,7 +193,7 @@ test('the live service uses the mentor the player actually picked',async t=>{
     {kind:'event',name:'Multikill',KillStreak:5,killer:ME},
   ].map((row,index)=>JSON.stringify({game:'lol',match:'m1',t:at+index*100,...row})).join('\n')+'\n';
   await writeFile(join(dir,'logs/live.jsonl'),rows);
-  const service=await createOverlayService({stateDir:dir,pollMs:10,search:async()=>({results:[]})});
+  const service=await createOverlayService({stateDir:dir,pollMs:10,search:async()=>({results:[]}),praiseCloudGraceMs:0});
   t.after(async()=>{await service.close();await rm(dir,{recursive:true,force:true,maxRetries:3});});
   let praise=null;
   for(let i=0;i<200&&!praise;i++){

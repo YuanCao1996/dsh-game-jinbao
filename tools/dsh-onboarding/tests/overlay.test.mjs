@@ -27,7 +27,15 @@ test('mid-game capture uses elapsed seconds, ends at GameEnd, resets across matc
  applyOverlayEvent(s,{at:1002,game:'lol',broadcast:'保持站位'},'coach');
  const v=overlayView(s,{rows:[{name:'锐雯',title:'放逐之刃',_viewKind:'hero',winRate:47.3},{champion:'放逐之刃 锐雯',_type:'coreBuilds',items:'["星蚀","焚天"]',winRate:48.9},{champion:'放逐之刃 锐雯',_type:'augments',name:'全凭身法',winRate:49.85,desc:'冲刺技能急速'}]});
  assert.equal(v.gameTime,'01:59');assert.match(v.advice,/保持站位$/);
- assert.match(v.equipment,/星蚀、焚天/);assert.match(v.augments,/英雄 Top10[\s\S]*全凭身法/);assert.match(v.stats,/47.3%/);assert.doesNotMatch(v.stats,/48.9%/);
+ assert.match(v.equipment,/星蚀、焚天/);
+ // 英雄专属排名改成三列表格渲染，文本里不再重复这段列表（否则会出现两份）。
+ assert.match(v.augments,/英雄 Top10 海克斯/,'标题仍在正文里');
+ assert.doesNotMatch(v.augments,/#1 · 全凭身法/,'列表改由表格渲染，正文不再重复');
+ assert.ok(Array.isArray(v.augmentsRankingRows)&&v.augmentsRankingRows.length>=1,'排名行要交给表格渲染');
+ assert.equal(v.augmentsRankingRows[0].name,'全凭身法');
+ assert.equal(v.augmentsIsRanking,true);
+ assert.equal(v.augmentsRankingRows[0].rank,'—','没有排名时显示占位符而不是 undefined');
+ assert.match(v.stats,/47.3%/);assert.doesNotMatch(v.stats,/48.9%/);
  assert.doesNotMatch(v.stats,/玩家战绩|场次/);assert.doesNotMatch(v.players,/0%/);
  applyOverlayEvent(s,{game:'lol',t:2000,kind:'event',name:'GameEnd',time:559},'match1');
  applyOverlayEvent(s,{game:'lol',t:2001,kind:'state',state:{time:560}},'match1');

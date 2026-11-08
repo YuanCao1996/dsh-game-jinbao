@@ -148,35 +148,32 @@ function Update-OverlaySurface([bool]$force=$false){
     $card.Background='Transparent'
     $card.BorderBrush=if($highlight){'#E7BE79'}else{'#1F2A36'}
     $card.BorderThickness=if($highlight){'2,0,0,1'}else{'0,0,0,1'}
-    $grid=New-Object Windows.Controls.Grid
-    $grid.ColumnDefinitions.Add((New-Object Windows.Controls.ColumnDefinition))
-    $grid.ColumnDefinitions[0].Width=62
-    $grid.ColumnDefinitions.Add((New-Object Windows.Controls.ColumnDefinition))
-    # 左列：上面时间、下面两字类别。
-    $gutter=New-Object Windows.Controls.StackPanel;$gutter.Margin='0,0,8,0'
+    $grid=New-Object Windows.Controls.StackPanel
+    # 头部一行：时间 + 说话人 + 类别标签。原来时间/标签独占左侧一列，
+    # 正文被挤窄 62px，整块面板因此偏宽；合并成一行后正文吃满宽度。
+    $header=New-Object Windows.Controls.WrapPanel
     $when=Format-OverlayBubbleTime $row.at
     $timeText=New-OverlayLabel $(if($when){$when}else{'--:--'}) ([Math]::Max(10,$font-3)) '#63727F'
-    $gutter.Children.Add($timeText)|Out-Null
-    foreach($tagInfo in @($category.tags)){
-     # 标签比正文还大一点，扫一眼就能看清。
-     $tag=New-OverlayLabel $tagInfo.label ([Math]::Max(13,$font+1)) $tagInfo.color;$tag.FontWeight='SemiBold'
-     $gutter.Children.Add($tag)|Out-Null
-    }
-    $grid.Children.Add($gutter)|Out-Null
-    # 右列：说话人（同一个人连续说话时只说一次）+ 正文。
-    $column=New-Object Windows.Controls.StackPanel
+    $timeText.Margin='0,0,6,3';$timeText.VerticalAlignment='Center'
+    $header.Children.Add($timeText)|Out-Null
+    # 说话人（同一个人连续说话时只说一次）。
     $speakerName=if($row.origin -eq 'team' -and $row.displayName){[string]$row.displayName}elseif($user){if($row.origin -eq 'phone'){'你 · 手机'}else{'你 · 电脑'}}elseif($row.failed){'本次未完成'}else{'金宝'}
     $speakerColor=if($row.failed){'#F5AD91'}elseif($highlight){'#E7BE79'}else{'#8FA0B0'}
     $repeatSpeaker=(-not $highlight) -and ($speakerName -eq $lastSpeaker)
     $lastSpeaker=if($highlight){''}else{$speakerName}
     if(-not $repeatSpeaker){
-     $speaker=New-OverlayLabel $speakerName 11 $speakerColor;$speaker.FontWeight='SemiBold';$speaker.Margin='0,0,0,2'
-     $column.Children.Add($speaker)|Out-Null
+     $speaker=New-OverlayLabel $speakerName 11 $speakerColor;$speaker.FontWeight='SemiBold';$speaker.Margin='0,0,6,3';$speaker.VerticalAlignment='Center'
+     $header.Children.Add($speaker)|Out-Null
     }
+    foreach($tagInfo in @($category.tags)){
+     # 标签跟在时间戳那一行后面，扫一眼就能看清类别。
+     $tag=New-OverlayLabel $tagInfo.label ([Math]::Max(11,$font-1)) $tagInfo.color;$tag.FontWeight='SemiBold';$tag.Margin='0,0,6,3';$tag.VerticalAlignment='Center'
+     $header.Children.Add($tag)|Out-Null
+    }
+    $grid.Children.Add($header)|Out-Null
     $body=New-OverlayLabel ([string]$row.text) $font $(if($user){'#CBD5E1'}elseif($row.failed){'#F5AD91'}else{'#EBF0F5'})
     Set-HighlightedText $body ([string]$row.text)
-    $column.Children.Add($body)|Out-Null
-    [Windows.Controls.Grid]::SetColumn($column,1);$grid.Children.Add($column)|Out-Null
+    $grid.Children.Add($body)|Out-Null
     $card.Child=$grid;$controls.RichContent.Children.Add($card)|Out-Null
     $copyMenu=New-Object Windows.Controls.ContextMenu;$copyMenu.Background='#19212A';$copyMenu.Foreground='#E8EEF5';$copyItem=New-Object Windows.Controls.MenuItem;$copyItem.Header='复制这条消息';$copyItem.Tag=[string]$row.text;$copyItem.Add_Click({param($sender,$eventArgs) try{[Windows.Clipboard]::SetText([string]$sender.Tag)}catch{}});$copyMenu.Items.Add($copyItem)|Out-Null;$card.ContextMenu=$copyMenu
    }

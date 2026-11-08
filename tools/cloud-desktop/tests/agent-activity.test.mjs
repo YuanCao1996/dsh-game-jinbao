@@ -31,8 +31,7 @@ const sse=data=>'data: '+(typeof data==='string'?data:JSON.stringify(data))+'\r\
 test('SSE publishes public text before finish and assembles fragmented tool calls without leaking reasoning',async()=>{let feed;const response=new Response(new ReadableStream({start(c){feed=c;}}),{headers:{'content-type':'text/event-stream'}});const seen=[];const result=readChatCompletion(response,{onText:t=>seen.push(t)});const write=v=>feed.enqueue(new TextEncoder().encode(sse(v)));write({choices:[{index:0,delta:{reasoning_content:'PRIVATE',content:'先查资料。'}}]});await new Promise(r=>setTimeout(r,0));assert.deepEqual(seen,['先查资料。']);write({choices:[{index:0,delta:{tool_calls:[{index:0,id:'call-1',function:{name:'get_current_',arguments:'{"a":'}}]}}]});write({choices:[{index:0,delta:{tool_calls:[{index:0,function:{name:'match_state',arguments:'1}'}}]},finish_reason:'tool_calls'}]});write('[DONE]');feed.close();const data=await result;assert.equal(data.choices[0].message.tool_calls[0].function.name,'get_current_match_state');assert.equal(data.choices[0].message.reasoning_content,'PRIVATE');assert.ok(!seen.join('').includes('PRIVATE'));});
 test('SSE rejects incomplete tool calls, truncated streams, excess bytes; JSON fallback works',async()=>{const response=v=>new Response(v,{headers:{'content-type':'text/event-stream'}});await assert.rejects(readChatCompletion(response(sse({choices:[{delta:{content:'未完成'}}]}))));await assert.rejects(readChatCompletion(response(sse({choices:[{delta:{tool_calls:[{index:0,id:'x',function:{name:'tool',arguments:'{'}}]},finish_reason:'tool_calls'}]})+sse('[DONE]'))));await assert.rejects(readChatCompletion(response('x'.repeat(100)),{maxBytes:50}));assert.equal((await readChatCompletion(Response.json({choices:[{message:{content:'完整回答'},finish_reason:'stop'}]}))).choices[0].message.content,'完整回答');});
 
-test('a learning note becomes its own activity row', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'jinbao-activity-note-'));
+test('a learning note becomes its own activity row', async () => {  const dir = await mkdtemp(join(tmpdir(), 'jinbao-activity-note-'));
   try {
     const activity = await createAgentActivity({ stateDir: dir });
     await activity.setEnabled(true);
@@ -43,4 +42,41 @@ test('a learning note becomes its own activity row', async () => {
     assert.match(snap.rows[0].label, /对面双坦先补重伤/);
     assert.equal(activity.note({ label: '   ' }), false, 'empty notes never create blank rows');
   } finally { await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
+});
+
+// 面板只显示一行，对局结束后要把整局的步骤时间线留下来才能复盘。
+test('每一行智能体动态都会落盘，且不写草稿正文', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'jinbao-activity-log-'));
+  const view = { game: 'lol', match: 'm1', gameTime: '03:12' };
+  const activity = await createAgentActivity({ stateDir: dir, getView: () => view });
+  try {
+    await activity.setEnabled(true);
+    const send = (event, extra = {}) => activity.accept({ game: 'lol', match: 'm1', topic: 'advice', requestId: 'req-1', event, ...extra });
+    send('task_started');
+    send('tool_start', { name: 'query_match_events', index: 1 });
+    send('tool_end', { name: 'query_match_events', index: 1, elapsed_ms: 432, success: true });
+    send('model_end', { request_index: 1, status: 429, elapsed_ms: 100 });
+    send('public_text', { text: '玩家原话不应该被写进日志。' });
+  } finally {
+    await activity.close();
+  }
+  try {
+    const lines = (await readFile(join(dir, 'logs', 'agent-activity.jsonl'), 'utf8'))
+      .split('\n').filter(Boolean).map(line => JSON.parse(line));
+    assert.ok(lines.length >= 5, `落盘行数不足: ${lines.length}`);
+    assert.ok(lines.every(line => line.schema === 1));
+    const labels = lines.map(line => line.label).filter(Boolean);
+    assert.ok(labels.some(label => /正在分析本局/.test(label)), '任务开始要落盘');
+    assert.ok(labels.some(label => /检索本局日志/.test(label)), '工具调用要落盘');
+    assert.ok(labels.some(label => /云端限流/.test(label)), '限流要落盘');
+    const throttled = lines.find(line => line.status === 429);
+    assert.ok(throttled, '429 必须带状态码，否则复盘看不出是被限流');
+    assert.equal(throttled.elapsedMs, 100);
+    assert.equal(throttled.game, 'lol');
+    assert.equal(throttled.match, 'm1');
+    assert.ok(lines.some(line => line.kind === 'enabled'), '开关变化也要留痕');
+    assert.ok(!JSON.stringify(lines).includes('玩家原话'), '草稿正文绝不能落盘');
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
 });

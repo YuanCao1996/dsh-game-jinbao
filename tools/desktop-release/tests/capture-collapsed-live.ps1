@@ -75,6 +75,20 @@ function Grab([string]$path) {
   $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
   $hdc = $graphics.GetHdc()
   try { [WinGrab]::PrintWindow($hwnd, $hdc, 2) | Out-Null } finally { $graphics.ReleaseHdc($hdc); $graphics.Dispose() }
+  if ($path -like '*collapsed*') {
+    # 真实屏幕实拍：以小球为中心抓 340×340 的桌面区域，带上屏幕边缘背景
+    $graphics.Dispose()
+    $cx = [int](($rect.Left + $rect.Right) / 2); $cy = [int](($rect.Top + $rect.Bottom) / 2)
+    $side = 340
+    $shot = New-Object System.Drawing.Bitmap($side, $side)
+    $sg = [System.Drawing.Graphics]::FromImage($shot)
+    try { $sg.CopyFromScreen($cx - [int]($side/2), $cy - [int]($side/2), 0, 0, (New-Object System.Drawing.Size($side,$side))) } catch {}
+    $sg.Dispose()
+    $shot.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $shot.Dispose()
+    Write-Host "  saved $path ($side x $side screen)"
+    return
+  }
   $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
   $bitmap.Dispose()
   Write-Host "  saved $path ($w x $h)"

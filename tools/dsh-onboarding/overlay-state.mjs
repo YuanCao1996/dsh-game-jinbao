@@ -57,6 +57,23 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   if (event.broadcast) {
     if(at<state.matchStartedAt||(event.game&&state.game&&event.game!==state.game)||(event.match&&event.match!==state.match))return;
     const reply = { at, text: text(event.broadcast), validity:event.validity ?? null,priority:Number.isInteger(event.priority)?Math.max(0,Math.min(2,event.priority)):0,dimension:typeof event.dimension==='string'?event.dimension:'',stage:typeof event.key==='string'?event.key:'' };
+    // 云端多杀点评：同一个 praiseChain 只留一条播报。云端先到就直接落一条；
+    // 本地兜底先到就只替换文案并保留原来的 at，避免同一波连杀被播两遍。
+    if (typeof event.praiseChain === 'string' && event.praiseChain) {
+      const chainKey = Object.keys(state.praiseChains ?? {}).find(key => key + '@' + state.praiseChains[key]?.chainAt === event.praiseChain);
+      if (!chainKey) return; // 链已随新对局清空，旧的云端点评不再上屏
+      state.praiseChains[chainKey].cloudFilled = true;
+      const existing = state.broadcasts.find(r => r.praiseChain === event.praiseChain);
+      if (existing) {
+        existing.text = reply.text; existing.priority = 2;
+        existing.expiresAt = Math.max(Number(existing.expiresAt) || 0, at + 12000);
+      } else {
+        state.broadcasts.push({ ...reply, priority: 2, praise: true, praiseChain: event.praiseChain, expiresAt: at + 12000 });
+        state.broadcasts.sort((a, b) => a.at - b.at);
+        state.broadcasts = state.broadcasts.slice(-12);
+      }
+      return;
+    }
     if (!state.broadcasts.some(r => r.at === at && r.text === reply.text)) {
       state.broadcasts.push(reply); state.broadcasts.sort((a, b) => a.at - b.at);
       state.broadcasts = state.broadcasts.slice(-12);
@@ -385,6 +402,13 @@ const playerRows = players.map(p => {
  // can be chosen with the synergy on screen. Local dataset only, no model round-trip.
  const pickedChampions = [...new Set([state.me?.champion, ...list(state.allies).map(player => player?.champion)].filter(Boolean))];
  const partnerHint = state.game==='lol'&&state.phase==='ChampSelect'?champSelectPartnerText(pickedChampions,{limit:3,perChampion:3}):'';
+  const augmentRankingRows = state.game==='lol'&&me.champion
+    ? ranked.slice(0,10).map(row => ({
+        rank: Number(row.rank)>0 && Number.isFinite(Number(row.rank)) ? '#'+Number(row.rank) : '—',
+        name: String(row.name ?? ''),
+        tier: /^T\d+$/i.test(row.tier ?? '') ? String(row.tier).toUpperCase() : '—',
+      }))
+    : [];
   const candidates = ranked.filter(row => offered.includes(row.name)).map(augmentLine);
   for(const name of offered)if(!ranked.some(row=>row.name===name))candidates.push(name+' · 暂无该英雄排名');
   // Revocation is permanent: a later death or item swap must not revive old advice.
@@ -447,15 +471,27 @@ const playerRows = players.map(p => {
     ? state.augmentCaptureReason==='chinese_language_unavailable'?'系统未安装中文识别语言包，可在 Windows 设置添加简体中文文字识别；日志中的强化信息仍会同步。':'文字识别暂不可用，正在自动重试；日志中的强化信息仍会同步。'
     : state.augmentCaptureReason==='capture_failed'?'游戏画面暂未采集成功，正在自动重试；日志中的强化信息仍会同步。':'等待识别游戏内三选一面板';
   const heroStats = (state.game==='lol'?'大乱斗英雄样本胜率\n':'英雄样本胜率\n') + (hero ? `${hero.name??hero.champion} · ${hero.tier!=null?tierText(hero.tier):''} · ${percent(hero.winRate)}${hero.version ? ' · 版本 ' + hero.version : ''}` : friendlyKnowledgeMessage(knowledge.message) || '等待英雄知识检索');
+  // 双方存活人数：教练要在被 busy/背压吞掉的 tick 里也能记住“配合窗口”，
+  // 所以这里和云端的 aliveCounts 用同一套口径（先按英雄名去掉本人，再补自己一次）。
+  const sideAlive=(()=>{
+    if(typeof me.dead!=='boolean')return null;
+    const self=String(me.champion??'');
+    const alive=people=>list(people).filter(p=>p&&p.dead!==true&&String(p?.champion??'')!==self).length;
+    return {alliesAlive:alive(state.allies)+(me.dead?0:1),enemiesAlive:alive(state.enemies)};
+  })();
   return {
     game: state.game, mode:state.mode, match: state.match, matchStartedAt:state.matchStartedAt, gameTime: state.game==='generic'?(state.phase==='CapturePaused'?'观察已停止':'观察中'):clock(state.gameSeconds), phase:state.phase, ended: state.ended,
+    ...(sideAlive??{}),
     selfChampion: shortChampion(me.champion),
     // The coach needs to know the player is dead before it decides whether it may spend a
     // turn: a death reminder is worth bypassing a busy voice queue, nothing else is.
     dead: me.dead===true, respawn: Number.isFinite(Number(me.respawn)) ? Number(me.respawn) : null,
     selfIdentityAt: state.selfIdentityAt,
     selfChampionAlias: typeof me.championAlias==='string' ? me.championAlias : '',
-    playback:validBroadcasts.map(r=>({id:String(r.at)+':'+r.text,at:r.at,text:r.text,priority:r.priority??0,...(r.praise?{topic:'praise'}:{}),expiresAt:r.expiresAt??r.validity?.expiresAt??null})),
+    playback:validBroadcasts.map(r=>({id:r.praiseChain?'praise:'+r.praiseChain:String(r.at)+':'+r.text,at:r.at,text:r.text,priority:r.priority??0,...(r.praise?{topic:'praise'}:{}),...(r.praiseChain?{praiseChain:r.praiseChain}:{}),expiresAt:r.expiresAt??r.validity?.expiresAt??null})),
+    // 已安静、但还没上屏的连杀链：云端教练据此生成一句话点评。
+    // 超过宽限仍未填充时由 settlePraise 用本地兜底补上。
+    pendingPraise:Object.values(state.praiseChains??{}).filter(chain=>chain&&!chain.settled&&!chain.cloudFilled).map(chain=>({chain:chain.key+'@'+chain.chainAt,streak:chain.streak,side:chain.side,hero:chain.hero??'',victims:Array.isArray(chain.victims)?chain.victims:[],revenge:Array.isArray(chain.revenge)?chain.revenge:[],at:Number.isFinite(chain.lastAt)?chain.lastAt:0})),
     revokedPlayback:state.broadcasts.filter(r=>r.revoked).map(r=>String(r.at)+':'+r.text),
     keywords:[...new Set([me.champion,...state.allies.map(p=>p.champion),...state.enemies.map(p=>p.champion),...list(me.items).map(i=>typeof i==='string'?i:i.name),...state.ownedAugments,...offerNames(state.offers)].filter(Boolean))].slice(0,64),
     // 关键词按类型分开，界面才能用同一套配色给正文高亮与左侧类别标签上色。
@@ -470,8 +506,11 @@ const playerRows = players.map(p => {
     advice: (state.game==='generic'?[me.genericState?.gameName||'游戏身份待核实',me.genericState?.gameMode,me.genericState?.roundState==='between'?'等待下一局':'当前窗口观察中']:['对局 '+clock(state.gameSeconds),shortChampion(me.champion),me.level!=null?'Lv'+me.level:'',me.k!=null?`${me.k}/${me.d??0}/${me.a??0}`:'',me.gold!=null?'金币 '+me.gold:'']).filter(Boolean).join(' · ')+'\n\n'+(companionLine?companionLine+'\n\n':'')+current+playbook+(state.game==='lol'&&offered.length?'\n\n海克斯推荐 · 当前三选一\n'+candidates.join('\n'):'')+(state.game==='lol'&&state.ownedAugments.length?'\n\n本局已选海克斯\n'+state.ownedAugments.join('、'):'')+(partnerHint?'\n\n'+partnerHint:''),
     equipment: '当前装备\n' + (own || '等待装备日志') + '\n\n推荐出装\n' + (state.equipment || builds.join('\n\n') || friendlyKnowledgeMessage(knowledge.message) || '进入对局后自动检索并结合装备与海克斯更新建议。')+(!state.ended&&state.equipmentStatus?'\n'+state.equipmentStatus:'')+(state.equipmentAssumptions.length?'\n\n待确认的强化推测\n'+state.equipmentAssumptions.map(a=>`第${a.round}轮暂按 ${a.name} 考虑`).join('\n'):'')+(equipmentUpdates?'\n\n装备动态\n'+equipmentUpdates:''),
     augments: state.game==='wzry'?'王者荣耀常规对局没有海克斯强化。可在战况页查看建议，或通过聊天咨询当前局势。':
-      (offered.length?augmentTitle+'\n按该英雄适配排名排序\n'+augmentBody+rerollLine+'\n\n':'')+'英雄 Top10 海克斯 · '+(shortChampion(me.champion)||'等待英雄')+'\n'+(ranked.slice(0,10).map(augmentLine).join('\n')||friendlyKnowledgeMessage(knowledge.message)||'正在查询英雄适配排名…')+'\n\n资料库推荐组合 · '+(me.champion||'等待英雄')+'\n'+(combinations.join('\n')||'暂无该英雄的组合记录')+
+      (offered.length?augmentTitle+'\n按该英雄适配排名排序\n'+augmentBody+rerollLine+'\n\n':'')+(state.game==='lol'&&me.champion&&augmentRankingRows.length?'英雄 Top10 海克斯 · '+(shortChampion(me.champion)||'等待英雄')+'\n\n':'英雄 Top10 海克斯 · '+(shortChampion(me.champion)||'等待英雄')+'\n'+(ranked.slice(0,10).map(augmentLine).join('\n')||friendlyKnowledgeMessage(knowledge.message)||'正在查询英雄适配排名…')+'\n\n')+'资料库推荐组合 · '+(me.champion||'等待英雄')+'\n'+(combinations.join('\n')||'暂无该英雄的组合记录')+
       (offered.length?'\n\n本轮已见 '+state.offerHistory.length+'/6':'\n\n'+captureHint)+'\n\n本局已选\n'+(state.ownedAugments.join('、')||'尚未收到强化选择日志')+(augmentUpdates?'\n\n强化动态\n'+augmentUpdates:''),
+    // 英雄专属排名用表格渲染（三列等宽），文本里不再重复这段列表。
+    augmentsRankingRows: augmentRankingRows,
+    augmentsIsRanking: augmentRankingRows.length>0,
     players: (teamWinRates?teamWinRates+'\n\n':'')+'英雄胜率 ↓\n'+(roster.join('\n') || '等待双方英雄数据。'),
     teamWinRates,
     knowledgeStatus:knowledge.failed?friendlyKnowledgeMessage(knowledge.message):'',
@@ -514,7 +553,7 @@ const playerRows = players.map(p => {
   };
 }
 
-export async function createOverlayService({ stateDir, agentChat, agentImage, search, pollMs = 500, equipmentDebounceMs=2000, equipmentCooldownMs=30000, equipmentOpeningRetryMs=15000, knowledgeRetryMs=15000,activity,canAutoRequest,experience=null }) {
+export async function createOverlayService({ stateDir, agentChat, agentImage, search, pollMs = 500, equipmentDebounceMs=2000, equipmentCooldownMs=30000, equipmentOpeningRetryMs=15000, knowledgeRetryMs=15000,activity,canAutoRequest,experience=null,praiseCloudGraceMs=12000 }) {
   search=createKnowledgeSearch(search);
   const logs = join(stateDir, 'logs'), output = join(stateDir, 'overlay-state.json');
   await mkdir(logs, { recursive: true });
@@ -884,7 +923,9 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
  }
        lastForcedKnowledgeAt=Date.now();void refresh(true).catch(()=>{});
       }
-      settlePraise(state, Date.now(), { role: await currentPraiseRole() });
+      // 多杀点评优先交给云端生成一句话；这里先等 7 秒宽限（云端建单+轮询+出句
+      // 实测 3~6 秒），超时没等到才用本地兜底，保证玩家听不到两句重复的播报。
+      settlePraise(state, Date.now(), { role: await currentPraiseRole(), cloudGraceMs: praiseCloudGraceMs });
       await flush();
       if(!knowledge.loading)equipmentCoach.tick();
     } catch {} finally { scanning = false; }

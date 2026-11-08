@@ -1,4 +1,4 @@
-﻿// Phase policy is independent of the Agent transport. Polls only wake the Agent
+// Phase policy is independent of the Agent transport. Polls only wake the Agent
 // for a milestone or a material change; dispatch rebuilds facts from live memory.
 import {isCompletedItem} from '../../lol-companion/item-policy.mjs';
 import {eventWindow} from './event-window.mjs';
@@ -23,11 +23,20 @@ export function stateCoachingTrigger(event, store) {
   const died = !reset && s.dead === true && old.dead === false;
   const shopOpened = !reset && s.canShop === true && old.canShop !== true;
   const enemyChanged = !reset && enemy !== old.spokenEnemy;
+  // 双方存活人数差跨过 ±2 是团战窗口开/关的唯一稳定信号。之前没有任何触发点会在
+  // 人数变化时叫醒教练，所以“和队友怎么配合”只出现在开局与 6 级两次播报里。
+  const side = Number.isInteger(s.alliesAlive) && Number.isInteger(s.enemiesAlive)
+    ? s.alliesAlive - s.enemiesAlive : null;
+  const priorSide = Number.isInteger(old?.sideDelta) ? old.sideDelta : null;
+  const advantage = value => value !== null && value >= 2;
+  const coordinationWindow = !reset && side !== null && priorSide !== null &&
+    (advantage(side) !== advantage(priorSide) || advantage(-side) !== advantage(-priorSide));
   let reason = null;
   if (reset) reason = level >= 6 ? 'ultimate' : 'opening';
   else if (died) reason = 'death';
   else if (shopOpened) reason = 'purchase';
   else if (reachedSix) reason = 'ultimate';
+  else if (coordinationWindow && time - (old.spokenCoordAt ?? -1e6) >= 45) reason = 'coordination';
   else if (enemyChanged && time - old.spokenAt >= 30) reason = 'enemyChange';
   else if (s.dead === true && ownItems !== old.spokenItems && time - old.spokenAt >= 15) reason = 'purchase';
   else if (material !== old.spokenMaterial && time - old.spokenAt >= 75) reason = 'situation';
@@ -35,6 +44,9 @@ export function stateCoachingTrigger(event, store) {
     ownItemsChanged:!reset && ownItems !== old.spokenItems} : null;
   store.coachingSnapshot = { time, reachedSix: reachedSix || (!reset && old.reachedSix),
     dead:typeof s.dead === 'boolean' ? s.dead : old?.dead,canShop:s.canShop,
+    // 人数差在没有新数据时保留旧值，避免“数据缺失”被当成一次窗口变化。
+    sideDelta: side !== null ? side : priorSide,
+    spokenCoordAt: reason === 'coordination' ? time : old?.spokenCoordAt,
     spokenEnemy:reason ? enemy : old.spokenEnemy,spokenItems:reason ? ownItems : old.spokenItems,
     spokenMaterial: reason ? material : old.spokenMaterial,
     spokenAt: reason ? time : old.spokenAt };
@@ -52,6 +64,7 @@ const TASKS = {
   augment: '只比较当前仍可选的海克斯，优先参考当前英雄适配排名，再结合全部已拥有强化、装备和对面阵容，明确“首选X，因为Y；备选Z”。单槽刷新后旧候选不再可选；解释具体收益或连招变化，不抄效果详情。没有候选就不要编造。',
   postAugment: '强化选择后的打法调整：区分用户确认/日志确证与推断选择，把全部已拥有海克斯一起考虑。按“强化效果：…；打法：…；下一件成装：…”三段简写，说明全部强化的关键协同机制、对面成装带来的调整与下一波操作。已买装备不要重复推荐购买；购买时机未知则说“下次可购买时”。若仅推断则用“如果选了X”并等待确认，效果数值不明时先查证。',
   situation: '只针对本轮新变化给最重要的一条行动：装备成型、存活人数、血量、阵容威胁或推塔窗口。点名相关英雄/装备和行动条件；没有足够新信息就保持静默，不为播报而重复“注意站位、配合队友”。',
+  coordination: '团战配合窗口刚打开或刚关闭（双方存活人数差发生变化）：只给一句配合方案，按“跟谁一起上→等他哪个技能命中→我放什么→先打谁”的顺序说，点名本局具体英雄。只用存活英雄和已知事实；队友大招状态未知就写“等他有大招时”，不猜冷却与技能是否可用，不写泛泛的注意配合、注意站位。',
   ace: '刚刚团灭对方：给出一个立刻能做的推进动作（推哪一路、拿哪个目标、还是先回城补给），并说明这段真空期还剩多久、手上血量或兵线是否支持；信息不足就说明要先确认什么。',
   inhib: '对方水晶被摧毁：说明超级兵带来的推线与视野变化，给出下一步压哪座塔或先清哪路线，避免越塔换命。',
   objective: '重要目标（小龙/大龙/先锋）刚被击杀或马上刷新：指出该利用还是该防守，给出具体动作和大致时间窗口。',
@@ -64,6 +77,21 @@ function hero(p) {
   if (!p) return null;
   return Object.fromEntries(['champion','name','tier','winRate','level','items','spells','dead','respawn','hpPct','gold','roles','canShop']
     .filter(key => p[key] != null).map(key => [key, p[key]]));
+}
+
+// 存活名单要跟着阶段任务一起进 prompt：配合建议必须点名具体英雄，
+// 否则模型只能写“配合队友”这种没法执行的空话。
+const aliveNames = (people, self) => list(people)
+  .filter(person => person?.dead !== true && (!self || String(person?.champion ?? '') !== self))
+  .map(person => String(person?.champion ?? '').trim()).filter(Boolean);
+function coordinationBrief(current) {
+  const mine = current?.me?.champion ? String(current.me.champion) : '';
+  const ours = aliveNames(current?.allies, mine);
+  if (mine && current?.me?.dead !== true) ours.unshift(mine);
+  const theirs = aliveNames(current?.enemies);
+  if (!ours.length && !theirs.length) return '';
+  return '【本轮配合窗口】我方存活：' + ([...new Set(ours)].join('、') || '未知') +
+    '；敌方存活：' + (theirs.join('、') || '未知') + '。点名其中具体英雄，不要泛称“队友”。';
 }
 
 export function buildLolCoachingPlan(events = [], current = null) {
@@ -88,6 +116,7 @@ export function buildLolCoachingPlan(events = [], current = null) {
   else if (events.some(e => e.coachTrigger === 'objective')) stage = 'objective';
   else if (events.some(e => e.coachTrigger === 'turret')) stage = 'turret';
   else if (events.some(e => e.coachTrigger === 'death') && me.dead === true) stage = 'death';
+  else if (events.some(e => e.coachTrigger === 'coordination')) stage = 'coordination';
   else if (events.some(e => e.coachTrigger === 'purchase')) stage = 'purchase';
   else if (events.some(e => e.coachTrigger === 'enemyChange')) stage = 'enemyChange';
   else if (events.some(e => e.coachTrigger === 'ultimate')) stage = 'ultimate';
@@ -113,12 +142,20 @@ export function buildLolCoachingPlan(events = [], current = null) {
   if (stage === 'selection') facts.bench = list(current?.bench ?? roster.bench).map(hero);
   if (stage === 'augment') facts.currentOptions = current?.offers ?? offer?.options ?? [];
   if (stage === 'postAugment') facts.selectionEvidence = picked ?? latest('augment_mutate');
+  if (stage === 'coordination') {
+    facts.alive = {
+      allies: aliveNames(current?.allies, current?.me?.champion),
+      enemies: aliveNames(current?.enemies),
+      me: current?.me?.dead === true ? 'dead' : 'alive',
+    };
+  }
   return { stage, facts, prompt: [
     '【本轮阶段任务】' + TASKS[stage],
+    stage === 'coordination' ? coordinationBrief(current) : '',
     '【本轮筛选事实 JSON】' + JSON.stringify(facts),
     '优先执行本轮阶段任务，不沿用历史阶段。输出最多两句、总计不超过60字、单段不换行；紧急局势仅一句。先结论再依据，每句对应本局英雄、强化、装备或事件。不复述面板，不输出泛泛口号，不显示玩家名。',
     '事实与资料分开：缺少决定结论的英雄技能、强化效果、装备或胜率资料时，使用现有DSH资料查询/联网工具，限定本局模式与版本；查不到就明确缺口，不编造数据。大招、金钱、装备和候选以最新事实为准。历史建议不是事实；不重复最近已播报且没有变化的建议。',
-  ].join('\n') };
+  ].filter(Boolean).join('\n') };
 }
 
 const canonical = value => fingerprint(names(value).sort());
@@ -133,7 +170,7 @@ function dependencies(current, stage) {
   if(stage==='ultimate')return {...identity,levelBand:Number(me.level)>=6?'ultimate':'early'};
   // Objective stages stay valid while the window lasts: they depend on who is alive and
   // on the phase, not on every gold or component change.
-  if(['ace','inhib','objective','turret'].includes(stage))
+  if(['ace','inhib','objective','turret','coordination'].includes(stage))
     return {champion:me.champion,phase:current.phase,
       allies:list(current.allies).filter(p=>p.dead!==true).map(p=>p.champion).sort().join(','),
       enemies:list(current.enemies).filter(p=>p.dead!==true).map(p=>p.champion).sort().join(',')};
@@ -152,7 +189,7 @@ export function createAdviceValidity(stage, current, now = Date.now()) {
   if (!current) return null;
   // 开局规划讲的是整局的六件装备顺序，有效期按整局给。依赖项必须和 adviceIsValid
   // 里重算的那份一致，否则规划一生成就会被判成过期（opening 走默认依赖）。
-  const ttl = stage === 'opening' ? 600000 : (['death','purchase','enemyChange','situation','ace','inhib','objective','turret'].includes(stage) ? 45000 : 90000);
+  const ttl = stage === 'opening' ? 600000 : (['death','purchase','enemyChange','situation','ace','inhib','objective','turret','coordination'].includes(stage) ? 45000 : 90000);
   return {version:1,match:current.match,stage,createdAt:now,expiresAt:now+ttl,
     dependencies:dependencies(current,stage)};
 }

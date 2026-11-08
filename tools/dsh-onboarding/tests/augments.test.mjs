@@ -31,15 +31,23 @@ test('hero-specific ranks beat win rate, omit details, and only rank the current
  const s=initialOverlayState();s.game='lol';s.me.champion='安妮';
  const knowledge={rows:[row('一号',1,{winRate:40}),row('二号',2,{winRate:80}),row('三号',3),row('旧选项',4),row('其他英雄',1,{champion:'锐雯'}),{_type:'combos',champion:'安妮',augments:['组合甲','组合乙'],winRate:65}]};
  const all=overlayView(s,knowledge).augments;
- assert.match(all,/组合甲 \+ 组合乙/);assert.match(all,/英雄 Top10[\s\S]*#1 · 一号/);assert.doesNotMatch(all,/当前三选一|效果详情|其他英雄/);
+ // 排名列表改由表格渲染，正文只保留标题；顺序断言改看表格行。
+ const allRanks=overlayView(s,knowledge).augmentsRankingRows;
+ assert.match(all,/组合甲 \+ 组合乙/);
+ assert.match(all,/英雄 Top10 海克斯/, '标题仍在正文里');
+ assert.equal(allRanks[0].rank,'#1');assert.equal(allRanks[0].name,'一号');
+ assert.doesNotMatch(all,/当前三选一|效果详情|其他英雄/);
  applyOverlayEvent(s,{game:'lol',kind:'augment_offer',t:1,roll:1,options:['旧选项','二号','三号']},'game');
  applyOverlayEvent(s,{game:'lol',kind:'augment_offer',t:2,roll:1,options:['一号','二号','三号']},'game');
- const current=overlayView(s,knowledge).augments;
- assert.doesNotMatch(current.split('英雄 Top10')[0],/旧选项|效果详情/);assert.match(current,/4\/6/);assert.ok(current.indexOf('一号')<current.indexOf('二号'));
- assert.ok(current.indexOf('#1 · 一号')<current.indexOf('资料库推荐组合'));
+ const currentView=overlayView(s,knowledge);
+ const current=currentView.augments;
+ assert.doesNotMatch(current.split('英雄 Top10')[0],/旧选项|效果详情/);assert.match(current,/4\/6/);
+ assert.equal(currentView.augmentsRankingRows[0].name,'一号');
+ assert.equal(currentView.augmentsRankingRows[1].name,'二号','第二名次也按排名排');
+ assert.ok(current.indexOf('英雄 Top10')<current.indexOf('资料库推荐组合'),'标题在推荐组合之前');
  applyOverlayEvent(s,{game:'lol',kind:'augment_offer_closed',t:3,roll:1},'game');
  const closed=overlayView(s,knowledge).augments;
- assert.match(closed,/组合甲 \+ 组合乙/);assert.match(closed,/英雄 Top10[\s\S]*#1 · 一号/);assert.doesNotMatch(closed,/当前三选一/);
+ assert.match(closed,/组合甲 \+ 组合乙/);assert.match(closed,/英雄 Top10 海克斯/);assert.doesNotMatch(closed,/当前三选一/);
 });
 
 test('three independent rerolls keep one round and at most six observed choices',()=>{

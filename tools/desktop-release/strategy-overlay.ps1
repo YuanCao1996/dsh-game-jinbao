@@ -51,13 +51,13 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
    <Setter Property="Background" Value="#202B36"/><Setter Property="Foreground" Value="#CBD5E1"/><Setter Property="BorderBrush" Value="#34424F"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="10,5"/><Setter Property="Margin" Value="2"/><Setter Property="Cursor" Value="Hand"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="ButtonChrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonChrome" Property="BorderBrush" Value="#D6B278"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonChrome" Property="Opacity" Value="0.72"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonChrome" Property="Opacity" Value="0.45"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ButtonChrome" Property="BorderBrush" Value="#E7BE79"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
   </Style>
-  <Style x:Key="WindowAction" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Width" Value="30"/><Setter Property="Height" Value="28"/><Setter Property="Padding" Value="4"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="12"/></Style>
+  <Style x:Key="WindowAction" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Width" Value="26"/><Setter Property="Height" Value="24"/><Setter Property="Padding" Value="2"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="12"/></Style>
   <Style TargetType="ContextMenu"><Setter Property="Background" Value="#19212A"/><Setter Property="Foreground" Value="#E8EEF5"/><Setter Property="BorderBrush" Value="#34424F"/><Setter Property="Padding" Value="5"/></Style>
   <Style TargetType="MenuItem"><Setter Property="Foreground" Value="#E8EEF5"/><Setter Property="Background" Value="#19212A"/><Setter Property="Padding" Value="10,7"/></Style>
   <Style TargetType="ScrollBar"><Setter Property="Width" Value="7"/><Setter Property="Background" Value="Transparent"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar"><Track x:Name="PART_Track" IsDirectionReversed="True" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" ViewportSize="{TemplateBinding ViewportSize}" Value="{Binding Value,RelativeSource={RelativeSource TemplatedParent},Mode=TwoWay}"><Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="#566575" CornerRadius="3" Margin="1"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb></Track></ControlTemplate></Setter.Value></Setter></Style>
   <Style TargetType="TextBox"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox"><Border x:Name="InputOutline" CornerRadius="8" BorderThickness="1" BorderBrush="{TemplateBinding BorderBrush}" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"><ScrollViewer x:Name="PART_ContentHost"/></Border><ControlTemplate.Triggers><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="InputOutline" Property="BorderBrush" Value="#CBA86C"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
  </Window.Resources>
- <Border x:Name="MainBorder" Background="#E810151B" BorderBrush="#39434F" BorderThickness="1" CornerRadius="12" Padding="8">
+ <Border x:Name="MainBorder" Background="#E810151B" BorderBrush="#39434F" BorderThickness="1" CornerRadius="12" Padding="6">
   <Grid>
    <Grid x:Name="Expanded">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -72,7 +72,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <Button x:Name="CollapseButton" Grid.Column="3" Style="{StaticResource WindowAction}" Content="&#xE921;" ToolTip="收起到屏幕右侧 · Ctrl+Alt+↓"/>
      <Button x:Name="CloseButton" Grid.Column="4" Style="{StaticResource WindowAction}" Content="&#xE8BB;" ToolTip="退出金宝悬浮窗"/>
     </Grid>
-    <StackPanel Grid.Row="1" Margin="2,2,2,0">
+    <StackPanel Grid.Row="1" Margin="2,0,2,0">
      <WrapPanel Visibility="Collapsed">
      <TextBlock x:Name="TimeText" Text="等待进入游戏" Foreground="#93C5FD" FontSize="14"/>
      <TextBlock x:Name="SummaryText" Text="正在检测游戏和教练服务…" Foreground="#94A3B8" FontSize="12" TextWrapping="Wrap" Margin="8,2,0,0"/>
@@ -81,7 +81,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <TextBlock x:Name="UpdateText" Foreground="#94A3B8" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
      <Button x:Name="ActionButton" Content="微信登录" HorizontalAlignment="Left" Visibility="Collapsed"/>
     </StackPanel>
-    <UniformGrid x:Name="Tabs" Grid.Row="2" Rows="1" Margin="0,2,0,4"/>
+    <StackPanel x:Name="Tabs" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,0,4"/>
     <DockPanel Grid.Row="3">
     <StackPanel x:Name="ConfirmationPanel" DockPanel.Dock="Top" Visibility="Collapsed" Margin="4,2,4,6">
      <TextBlock x:Name="ConfirmationTitle" Foreground="#FBBF24" FontSize="12" TextWrapping="Wrap"/>
@@ -453,6 +453,10 @@ function Update-Page {
  $lbRows=if($script:tab -eq 'augments' -and $script:snapshot.augmentsIsLeaderboard){$script:snapshot.augmentsRows}
   elseif($script:tab -eq 'players' -and $script:snapshot.playersIsLeaderboard){$script:snapshot.playersRows}else{$null}
  $lbVisible=($null -ne $lbRows) -and (@($lbRows).Count -gt 0)
+ # 英雄专属海克斯排名：三列等宽表格。原来这段是等宽文本，名字长短不一导致
+ # 「T0/T1」那一列参差不齐，用户要求每一列平均分布。
+ $rankRows=if($script:tab -eq 'augments' -and $script:snapshot.augmentsIsRanking -and -not $lbVisible){$script:snapshot.augmentsRankingRows}else{$null}
+ $rankVisible=($null -ne $rankRows) -and (@($rankRows).Count -gt 0)
  if($lbVisible){
   $controls.LeaderboardTable.Children.Clear()
   $lbChampion=($script:tab -eq 'augments')
@@ -477,9 +481,26 @@ function Update-Page {
   if($controls.RichContent){$controls.RichContent.Visibility='Collapsed'}
   $controls.PageText.Visibility='Collapsed';$controls.PageText.Text=''
   $controls.PlayersTable.Visibility='Collapsed'
+ }elseif($rankVisible){
+  # 三列等宽：排名 / 名称 / 品质。标题行由正文提供，这里不再重复。
+  $controls.LeaderboardTable.Children.Clear()
+  $rankRatios=@(1,1,1)
+  $rankAligns=@(2,0,2)
+  $rankZeros=@(0,0,0)
+  Add-LeaderboardRow @('排名','名称','品质') $rankRatios $rankAligns $rankZeros $rankZeros
+  foreach($rankRow in @($rankRows)){
+   Add-LeaderboardRow @([string]$rankRow.rank,[string]$rankRow.name,[string]$rankRow.tier) $rankRatios $rankAligns $rankZeros $rankZeros
+  }
+  $controls.LeaderboardTable.Visibility='Visible'
+  $script:leaderboardActive=$false
+  if($controls.RichContent){$controls.RichContent.Visibility=if($script:tab -eq 'advice'){'Visible'}else{'Collapsed'}}
+  $controls.PageText.Visibility=if([string]::IsNullOrWhiteSpace($controls.PageText.Text)){'Collapsed'}else{'Visible'}
+  $controls.PlayersTable.Visibility='Collapsed'
  }else{
   $script:leaderboardActive=$false
   $controls.LeaderboardTable.Visibility='Collapsed'
+  # 退出排名表格时恢复正文，否则海克斯页会只剩空白。
+  if($script:tab -eq 'augments' -and $controls.PageText.Text){$controls.PageText.Visibility='Visible'}
  }
  $script:renderedTab=$script:tab
 }
@@ -497,7 +518,7 @@ function Set-Tab([string]$name){
 }
 foreach($entry in @(@('advice','战况'),@('augments','海克斯'),@('players','胜率'))){
  $button=New-Object Windows.Controls.Button
- $button.Tag=$entry[0];$button.Content=$entry[1];$button.FontSize=11;$button.Padding='2,4';$button.ToolTip='切换到'+$entry[1]
+ $button.Tag=$entry[0];$button.Content=$entry[1];$button.FontSize=11;$button.Padding='11,3';$button.Margin='0,0,6,0';$button.MinWidth=54;$button.ToolTip='切换到'+$entry[1]
  $button.Add_Click({param($sender,$eventArgs) Set-Tab ([string]$sender.Tag)})
  $controls.Tabs.Children.Add($button) | Out-Null
 }
@@ -529,7 +550,6 @@ function Update-State {
   $enteredSelection=$next.phase -eq 'ChampSelect' -and (!$script:snapshot -or $script:snapshot.phase -ne 'ChampSelect')
   $script:snapshot=$next
   foreach($button in $controls.Tabs.Children){$button.Visibility=if($next.game -eq 'generic' -and $button.Tag -in @('augments','players')){'Collapsed'}else{'Visible'}}
-  $controls.Tabs.Columns=if($next.game -eq 'generic'){1}else{3}
   if($next.game -eq 'generic' -and $script:tab -in @('augments','players')){Set-Tab 'advice'}
   $confirmation=$next.confirmation
   $confirmId=if($confirmation){[string]$confirmation.id}else{''}
@@ -932,6 +952,24 @@ try{
     $script:testResult.simplifiedNavigation=$controls.Tabs.Children.Count -eq 3 -and @($controls.Tabs.Children | Where-Object {$_.Tag -eq 'teamfight'}).Count -eq 0 -and $null -eq $window.FindName('RefreshButton') -and $null -eq $window.FindName('TacticButton') -and $null -eq $window.FindName('InteractionButton') -and $null -eq $window.FindName('AppearanceButton')
     $script:testResult.appearanceInSettings=$controls.SettingsButton.ContextMenu.Items[0] -eq $controls.AppearanceMenuItem
     $script:testResult.singleWinRateTab=@($controls.Tabs.Children | Where-Object {$_.Content -eq '胜率'}).Count -eq 1 -and @($controls.Tabs.Children | Where-Object {$_.Content -eq '对手' -or $_.Tag -eq 'stats'}).Count -eq 0
+    # 英雄专属排名：三列等宽表格 + 正文保留（表头/十行/标题）。用户要求「每一列平均分布」。
+    $rankFixture=[pscustomobject]@{game='lol';match='rank-selftest';phase='InProgress';selfChampion='诺克萨斯之手';
+     augmentsIsRanking=$true;augmentsIsLeaderboard=$false;augmentsRows=@();playersIsLeaderboard=$false;
+     augments='资料库推荐组合 · 诺克萨斯之手';updatedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();
+     augmentsRankingRows=@(1..10|ForEach-Object {@{rank="#$_";name="强化$_";tier='T1'}})}
+    $savedRank=$script:snapshot;$script:snapshot=$rankFixture;Set-Tab 'augments';Update-Page;$window.UpdateLayout()
+    $rankTable=$controls.LeaderboardTable
+    $rankHeader=if($rankTable.Children.Count -gt 1){$rankTable.Children[1]}else{$null}
+    $equalStars=$false
+    if($rankHeader){
+     $cols=@($rankHeader.ColumnDefinitions)
+     $equalStars=$cols.Count -eq 3 -and @($cols|Where-Object {$_.Width.GridUnitType -eq 'Star' -and $_.Width.Value -eq 1}).Count -eq 3
+    }
+    $script:testResult.rankingTable=$rankTable.Visibility -eq 'Visible' -and $rankTable.Children.Count -eq 11 -and $controls.PageText.Visibility -eq 'Visible'
+    $script:testResult.rankingColumnsEven=$equalStars
+    Set-Tab 'advice'
+    $script:testResult.rankingHiddenOnOtherTabs=$rankTable.Visibility -eq 'Collapsed'
+    $script:snapshot=$savedRank
     $script:dragStartX=0;$script:dragStartY=0;$script:dragLeft=100;$script:dragTop=100;$script:dragging=$true;$script:bubbleDrag=$false
     Update-Drag 50 40 $true;$script:testResult.dragMoved=$window.Left -gt 100 -and $window.Top -gt 100
     Update-Drag 50 40 $false;$script:testResult.dragReleased=!$script:dragging
@@ -1032,7 +1070,7 @@ try{
     $script:snapshot=[pscustomobject]@{match='ui-test';suggestedQuestion='这轮海克斯怎么选？';chatRows=@(@{role='user';origin='phone';text='怎么打？'},@{role='assistant';text=$fullAnswer});chat='怎么打？'+$fullAnswer;keywords=@()}
     Set-Tab 'chat';$window.UpdateLayout()
     $script:testResult.chatBubbles=$controls.RichContent.Visibility -eq 'Visible' -and $controls.RichContent.Children.Count -eq 2
-    $script:testResult.phoneMessageSource=(@($controls.RichContent.Children[0].Child.Children[1].Children|Where-Object {$_.Text -eq '你 · 手机'}).Count -eq 1)
+    $script:testResult.phoneMessageSource=(@($controls.RichContent.Children[0].Child.Children[0].Children|Where-Object {$_.Text -eq '你 · 手机'}).Count -eq 1)
     # 推荐追问与看图都改成输入框里自动出现的提示问题，不再有按钮。
     Update-OverlayComposer
     $script:testResult.suggestionInPlaceholder=$controls.ComposerPlaceholder.Text -like '*这轮海克斯怎么选？*'
@@ -1040,10 +1078,10 @@ try{
     $script:snapshot.suggestedQuestion='';Update-OverlayComposer
     $script:testResult.screenQuestionFallback=$controls.ComposerPlaceholder.Text -like '*看看当前画面*'
     $script:snapshot.suggestedQuestion='这轮海克斯怎么选？';Update-OverlayComposer
-    $script:testResult.fullChatMessage=$controls.RichContent.Children[1].Child.Children[1].Children[1].Text -eq $fullAnswer
+    $script:testResult.fullChatMessage=$controls.RichContent.Children[1].Child.Children[1].Text -eq $fullAnswer
     $script:testResult.messageCopyAvailable=$controls.RichContent.Children[1].ContextMenu.Items[0].Tag -eq $fullAnswer
     $controls.FontSlider.Value=18
-    $script:testResult.richFontZoom=$controls.RichContent.Children[1].Child.Children[1].Children[1].FontSize -eq 18
+    $script:testResult.richFontZoom=$controls.RichContent.Children[1].Child.Children[1].FontSize -eq 18
     $controls.FontSlider.Value=14
     $script:job='ui-only';Update-OverlayComposer;$script:testResult.chatSendingFeedback=$controls.SendButton.Content -eq '思考中';$script:job=$null;Update-OverlayComposer
     $controls.PageScroll.ScrollToTop();$window.UpdateLayout();Update-ChatJump
@@ -1095,7 +1133,7 @@ try{
     $saved=$script:snapshot;$script:snapshot=$threadFixture;Set-Tab 'advice';Update-OverlaySurface $true;$window.UpdateLayout()
     $cards=@($controls.RichContent.Children|Where-Object {$_ -is [Windows.Controls.Border]})
     $script:testResult.metaRowSplit=($controls.RichContent.Children.Count -gt 0) -and ($controls.RichContent.Children[0] -is [Windows.Controls.Grid])
-    $script:testResult.augmentAccentCard=($cards.Count -eq 1) -and ([string]$cards[0].BorderThickness -eq '2,0,0,1') -and ([string]$cards[0].Child.Children[0].Children[1].Text -eq '符文')
+    $script:testResult.augmentAccentCard=($cards.Count -eq 1) -and ([string]$cards[0].BorderThickness -eq '2,0,0,1') -and (@($cards[0].Child.Children[0].Children|Where-Object {[string]$_.Text -eq '符文'}).Count -eq 1)
     # 连续同一说话人：名字只出现一次，正文三条都在。
     $groupFixture=[pscustomobject]@{game='lol';advice='对局 08:32 · 安妮';chatRows=@();thread=@(
      [pscustomobject]@{role='assistant';origin='coach';text='第一条';at=1793717799000;dimension=''},
@@ -1104,7 +1142,7 @@ try{
     $script:snapshot=$groupFixture;Set-Tab 'advice';Update-OverlaySurface $true;$window.UpdateLayout()
     $entries=@($controls.RichContent.Children|Where-Object {$_ -is [Windows.Controls.Border]})
     $names=0
-    foreach($entry in $entries){foreach($node in @($entry.Child.Children[1].Children)){if([string]$node.Text -eq '金宝'){$names++}}}
+    foreach($entry in $entries){foreach($node in @($entry.Child.Children[0].Children)){if([string]$node.Text -eq '金宝'){$names++}}}
     $script:testResult.consecutiveSpeakerGrouped=($entries.Count -eq 3) -and ($names -eq 1)
     # 类别标签：优先看阶段，其次按措辞归类，颜色各不相同。
     $script:testResult.categoryFromStage=((Get-OverlayCategory ([pscustomobject]@{stage='purchase';text='x'})).label -eq '出装') -and ((Get-OverlayCategory ([pscustomobject]@{stage='ace';text='x'})).label -eq '团战') -and ((Get-OverlayCategory ([pscustomobject]@{stage='augment';text='x'})).label -eq '符文')
@@ -1119,18 +1157,21 @@ try{
     $hlFixture=[pscustomobject]@{game='lol';advice='对局 08:32 · 安妮';chatRows=@();keywords=@('虚空之杖');itemKeywords=@('虚空之杖');augmentKeywords=@();championKeywords=@('安妮');thread=@([pscustomobject]@{role='assistant';origin='coach';text='下一件直接补虚空之杖';at=1793717799000;dimension='';stage='purchase'})}
     $savedHl=$script:snapshot;$script:snapshot=$hlFixture;Set-Tab 'advice';Update-OverlaySurface $true;$window.UpdateLayout()
     $hlEntry=@($controls.RichContent.Children|Where-Object {$_ -is [Windows.Controls.Border]})[0]
-    $hlBody=$hlEntry.Child.Children[1].Children[1]
+    $hlBody=$hlEntry.Child.Children[1]
     $hlRun=@($hlBody.Inlines|Where-Object {$_.Text -eq '虚空之杖'})
-    $hlTag=[string]$hlEntry.Child.Children[0].Children[1].Text
+    $hlTagNode=@($hlEntry.Child.Children[0].Children|Where-Object {[string]$_.Text -eq '出装'})
+    $hlTag=if($hlTagNode.Count){[string]$hlTagNode[0].Text}else{''}
     # 画笔的字符串形式带 alpha（#FFFFD166），要按颜色值比较。
     $wantColor=[Windows.Media.ColorConverter]::ConvertFromString([string]$pal['出装'])
-    $script:testResult.tagColorMatchesText=($hlRun.Count -eq 1) -and ($hlRun[0].Foreground.Color -eq $wantColor) -and ($hlTag -eq '出装') -and ($hlEntry.Child.Children[0].Children[1].Foreground.Color -eq $wantColor)
+    $script:testResult.tagColorMatchesText=($hlRun.Count -eq 1) -and ($hlRun[0].Foreground.Color -eq $wantColor) -and ($hlTag -eq '出装') -and ($hlTagNode.Count -eq 1) -and ($hlTagNode[0].Foreground.Color -eq $wantColor)
     $script:snapshot=$savedHl;Update-OverlaySurface $true
     # 组内消息不再占一行时间：头部折叠，时间贴到正文末尾。
     # TextBlock.Text 不含通过 Inlines 追加的 Run，必须读 Inlines 才能验证时间戳。
     # 时间恒在左列第一行；同一组的后续消息右侧只有正文（没有说话人行）。
+    # 时间现在和说话人/标签同一行；同一组的后续消息不再重复说话人。
     $gutterTime=[string]$entries[1].Child.Children[0].Children[0].Text
-    $script:testResult.groupedTimeInGutter=($entries.Count -eq 3) -and ($gutterTime -match '\d{2}:\d{2}') -and (@($entries[1].Child.Children[1].Children).Count -eq 1)
+    $repeatSpeakerNodes=@($entries[1].Child.Children[0].Children|Where-Object {[string]$_.Text -eq '金宝'}).Count
+    $script:testResult.groupedTimeInGutter=($entries.Count -eq 3) -and ($gutterTime -match '\d{2}:\d{2}') -and ($repeatSpeakerNodes -eq 0)
     $script:snapshot=$saved;Update-OverlaySurface $true
     $script:testResult.closed=$script:closing
    });$testing.Start()

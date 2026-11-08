@@ -16,8 +16,10 @@ test('transient empty Top10 and candidate lookups recover without a manual refre
   if(q.filter?.name==='珠光护手')return{results:++candidate===1?[]:[{data:{_type:'augments',champion:'安妮',name:'珠光护手',rank:1}}]};
   return{results:[{data:{_type:q.filter?._type??'augments',champion:'安妮',name:q.filter?.name??'其他数据',rank:5}}]};
  }});t.after(async()=>{await service.close();await rm(dir,{recursive:true,force:true});});
- for(let i=0;i<350&&(!service.view().augments.includes('#1 · 珠光护手')||!service.view().augments.includes('#2 · 常驻推荐'));i++)await new Promise(r=>setTimeout(r,10));
- assert.match(service.view().augments,/#1 · 珠光护手/);assert.match(service.view().augments,/#2 · 常驻推荐/);assert.equal(top,2);assert.equal(candidate,2);
+ const rowsOf=()=>(service.view().augmentsRankingRows??[]).map(r=>r.rank+' · '+r.name).join('|');
+ for(let i=0;i<350&&(!rowsOf().includes('#1 · 珠光护手')||!rowsOf().includes('#2 · 常驻推荐'));i++)await new Promise(r=>setTimeout(r,10));
+ // 排名列表改由表格行渲染（文本只保留标题），断言看 augmentsRankingRows。
+ assert.match(rowsOf(),/#1 · 珠光护手/);assert.match(rowsOf(),/#2 · 常驻推荐/);assert.equal(top,2);assert.equal(candidate,2);
 });
 
 test('post-augment advice survives unrelated enemy components; selected augment changes still revoke it',()=>{

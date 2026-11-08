@@ -2,8 +2,25 @@ import { condenseAdvice } from './advice-text.mjs';
 import{appendFile,writeFile,rename}from'node:fs/promises';import{join}from'node:path';
 import{stateCoachingTrigger,buildLolCoachingPlan,createAdviceValidity,adviceIsValid}from'../dsh-coach-server/lib/lol-coaching-plan.js';
 import{createCoachScheduler}from'./coach-scheduler.mjs';
+import{requestPraise}from'../dsh-onboarding/praise-cloud.mjs';
+// 配合窗口只取决于双方存活人数差，所以每轮都把人数算好塞进 state 事件。
+// c.allies 在某些采集路径下已经把本人算进去了，先按英雄名去掉本人再补一次，
+// 否则自己会被数两遍，人数差永远偏向我方。
+function aliveCounts(c){
+ const self=String(c?.me?.champion??'');
+ const count=people=>(Array.isArray(people)?people:[]).filter(p=>p?.dead!==true&&String(p?.champion??'')!==self).length;
+ if(typeof c?.me?.dead!=='boolean')return{};
+ return{alliesAlive:count(c?.allies)+(c.me.dead===true?0:1),enemiesAlive:count(c?.enemies)};
+}
+// 人数差跨过 ±2 视为配合窗口开/关；与 lol-coaching-plan.js 里的判定保持同一口径。
+function coordinationEdge(side,previous){
+ const strong=value=>value>=2;
+ return strong(side)!==strong(previous)||strong(-side)!==strong(-previous);
+}
 export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>true,canRequest=()=>true,now=Date.now,trace=()=>{},publish=entry=>appendFile(join(stateDir,'logs/coach_broadcasts.jsonl'),JSON.stringify(entry)+'\n',{mode:0o600}),publishStatus=async value=>{if(!stateDir)return;const file=join(stateDir,'coach-status.json');await writeFile(file+'.tmp',JSON.stringify(value),{mode:0o600});await rename(file+'.tmp',file);}}){
  let busy=false,closed=false,match='',store={},offers='',owned='',ownedCount=0,selection='',retryAt=0;
+ // 配合窗口的边沿基线，以及"被吞掉的窗口"待补发队列（只保留一个，最新的优先）。
+ let sideBaseline=null,pendingCoordination=null;
  let lastDead=false,deadMatch='';
  // Scheduling is separate from selection: it decides whether a turn can still be useful
  // in time, and learns how long replies actually take per stage.
@@ -16,7 +33,7 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
  // Stages whose advice is still useful when it lands late; everything else is tied to a
  // window that closes (death, champion select, live offers, objectives).
  const LATE_ACTIONABLE=new Set(['postAugment','ultimate','situation','enemyChange','purchase']);
- const DIMENSION={ace:'map',turret:'map',inhib:'map',objective:'map',purchase:'build',enemyChange:'risk',augment:'augment',postAugment:'augment',death:'now',situation:'now',ultimate:'plan',opening:'plan',loading:'plan',selection:'plan',ended:'now'};
+ const DIMENSION={ace:'map',turret:'map',inhib:'map',objective:'map',purchase:'build',enemyChange:'risk',augment:'augment',postAugment:'augment',death:'now',situation:'now',coordination:'now',ultimate:'plan',opening:'plan',loading:'plan',selection:'plan',ended:'now'};
  const live=v=>v&&['lol','wzry','generic'].includes(v.game)&&v.match&&!v.ended&&v.phase!=='CapturePaused'&&Number.isFinite(v.updatedAt)&&now()-v.updatedAt<=30000&&v.updatedAt<=now()+500;
  const stillCurrent=v=>{const latest=view();return !closed&&live(latest)&&latest.game===v.game&&latest.match===v.match;};
  const note=(v,action,reason,extra={})=>{try{trace({game:v?.game,match:v?.match,action,reason,...extra});}catch{}};
@@ -25,12 +42,55 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
  // the context moved on between publish and status, which used to leave
  // advicePublished at 0 even though coach_broadcasts.jsonl kept growing.
  const published=async(v,extra={})=>{note(v,'coach_published',undefined,extra);await status(v,'published','',extra,{noted:true});};
+ // 本地多杀文案只是固定句式的兜底；真正上屏的那句话由云端生成。
+ // 每条连杀链只请求一次，避免同一波连杀反复打模型。
+ const praiseTries=new Map();
+ const praiseTurn=async v=>{
+  // 云端点评窗口只有十几秒，而 agent 往往正在跑出装分析（本局 250 行）。
+  // 所以：不因 agent 忙就放弃（让请求排进队列），失败也让下一轮再试一次。
+  const nowMs=now();
+  const pending=(v?.pendingPraise??[]).filter(item=>{
+   if(!item?.chain)return false;
+   const tried=praiseTries.get(item.chain);
+   // 已经发过、或重试次数/时限用尽，就不再打模型（视图里短暂残留也不重复播）。
+   return !tried||(!tried.published&&tried.attempts<2&&nowMs-tried.at<20000);
+  });
+  if(!pending.length)return false;
+  const item=pending[0];
+  const tried=praiseTries.get(item.chain)??{attempts:0,at:nowMs};
+  praiseTries.set(item.chain,{attempts:tried.attempts+1,at:nowMs});
+  if(praiseTries.size>64)praiseTries.delete(praiseTries.keys().next().value);
+  const result=await requestPraise(agent,{
+   streak:item.streak,
+   hero:item.side==='ally'?item.hero:(v.selfChampion??''),
+   victims:item.victims, revenge:item.revenge, game:v.game, match:v.match,
+  },{timeoutMs:8000});
+  // 云端没说话就交回本地兜底（overlay 的宽限窗口会补上），这里不补发第二条固定文案。
+  if(!result||result.source!=='cloud'||!result.text)return true;
+  await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'praise',broadcast:result.text,praise:true,praiseChain:item.chain,priority:2});
+  note(v,'praise_cloud','published',{chain:item.chain,streak:item.streak});
+  // 记成已发布：同一条链即使还在视图里，也不会再请求或再播一次。
+  praiseTries.set(item.chain,{...(praiseTries.get(item.chain)??{attempts:1}),published:true,at:now()});
+  return true;
+ };
  return {async tick(){
   if(closed)return;const v=view();
+  // 配合窗口必须在 busy/背压/无对局这些闸门之前记录：跨 ±2 的那一刻只要撞上被吞掉的
+  // tick 就永远丢了（实测一局 154 个 tick 只有 21 个跑到判定，回放同一份数据能触发 16 次）。
+  const side=(Number.isFinite(v.alliesAlive)&&Number.isFinite(v.enemiesAlive))?v.alliesAlive-v.enemiesAlive:null;
+  if(side!==null){
+   if(sideBaseline!==null&&coordinationEdge(side,sideBaseline))pendingCoordination={at:now(),side};
+   sideBaseline=side;
+  }
+  // 窗口有时效：超过 20 秒的旧窗口不再补发，避免复活后才收到“该开团了”。
+  if(pendingCoordination&&now()-pendingCoordination.at>20000)pendingCoordination=null;
+  // 多杀点评必须排在教练回合之前：一次点评最多 2.5 秒，而教练回合要 13~58 秒，
+  // 排在后面就永远抢不到模型槽位，多杀只能听固定文案。
+  if(!busy){if(await praiseTurn(v))return;}
   if(busy||agent.busy?.()){note(v,'skip','busy');return;}
   if(!enabled()){note(v,'skip','disabled');return;}
   if(!live(v)){note(v,'skip','no_live_match');return;}
-  if(match!==v.game+':'+v.match){match=v.game+':'+v.match;store={};offers='';owned='';ownedCount=0;selection='';retryAt=0;}
+  if(match!==v.game+':'+v.match){match=v.game+':'+v.match;store={};offers='';owned='';ownedCount=0;selection='';retryAt=0;praiseTries.clear();sideBaseline=null;pendingCoordination=null;}
   if(now()<retryAt){note(v,'skip','retry_backoff',{retryAt});return;}
   // A confirmation is the player's explicit request for guidance. The view carries only
   // the count, so this stays the cheap guard: while nothing new is confirmed the turn is
@@ -77,12 +137,14 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
    else if(c.phase==='ChampSelect'&&selectionKey!==selection)events=[{kind:'champ_select'}];
    else if(['Loading','GameStart'].includes(c.phase)&&loadingKey!==store.loadingKey)events=[{kind:'loading_roster'}];
    else if(freshObjective)events=[{kind:'key_event',coachTrigger:freshObjective.trigger,keyEvent:freshObjective.event}];
+   // 上一个被 busy/背压吞掉的配合窗口：优先级低于大龙/先锋等目标事件，高于敌方装备变化。
+   else if(pendingCoordination)events=[{kind:'state',coachTrigger:'coordination',state:{...c.me,time:c.gameSeconds,enemyItems:(c.enemies??[]).flatMap(p=>p.items??[]),...aliveCounts(c)}}];
 
    else if((c.completedEquipmentEvents??[]).some(e=>e.at>(store.equipmentAt??0)))events=[{kind:'state',coachTrigger:'enemyChange'}];
-   else if(Number(c.gameSeconds)>0){const event={kind:'state',state:{...c.me,time:c.gameSeconds,enemyItems:(c.enemies??[]).flatMap(p=>p.items??[])}};event.coachTrigger=stateCoachingTrigger(event,nextStore);if(event.coachTrigger)events=[event];}
+   else if(Number(c.gameSeconds)>0){const event={kind:'state',state:{...c.me,time:c.gameSeconds,enemyItems:(c.enemies??[]).flatMap(p=>p.items??[]),...aliveCounts(c)}};event.coachTrigger=stateCoachingTrigger(event,nextStore);if(event.coachTrigger)events=[event];}
    // Dying is the most actionable automatic turn, and it must not depend on an earlier
    // publish having taught the coach the alive baseline (a busy queue swallows those).
-   if(deathEdge)events=[{kind:'state',coachTrigger:'death',state:{...c.me,time:c.gameSeconds,enemyItems:(c.enemies??[]).flatMap(p=>p.items??[])}}];
+   if(deathEdge)events=[{kind:'state',coachTrigger:'death',state:{...c.me,time:c.gameSeconds,enemyItems:(c.enemies??[]).flatMap(p=>p.items??[]),...aliveCounts(c)}}];
    if(!events.length&&store.lastValidity&&!adviceIsValid(store.lastValidity,c,now())&&now()-(store.lastAt??0)>=30000){events=c.offers?.length?[{kind:'augment_offer',options:c.offers}]:['Loading','GameStart'].includes(c.phase)?[{kind:'loading_roster'}]:[{kind:'state',coachTrigger:'situation'}];}
    // Remember what has already been seen even when this tick does nothing, so a consumed
 
@@ -121,8 +183,10 @@ const actionable=message+'\n'+workflow+'这是战况即时播报：用2至3句�
     note(v,'coach_late_published',undefined,{stage:plan.stage});
    }
    if(typeof answer!=='string'||!answer.trim())throw Error('Empty automatic reply');
-   await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:plan.stage,priority:['ace','inhib','augment','death','purchase','enemyChange','objective','turret'].includes(plan.stage)?2:1,dimension:DIMENSION[plan.stage]??'now',broadcast:answer,validity});
+   await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:plan.stage,priority:['ace','inhib','augment','death','purchase','enemyChange','objective','turret','coordination'].includes(plan.stage)?2:1,dimension:DIMENSION[plan.stage]??'now',broadcast:answer,validity});
    await published(v,{stage:plan.stage});
+   // 补发过一次就清掉，避免同一个窗口反复触发。
+   if(plan.stage==='coordination')pendingCoordination=null;
    nextStore.lastAt=now();nextStore.lastValidity=validity;
    // A higher-priority task only acknowledges its own milestone. For example,
    // showing new candidates must not swallow a concurrent confirmed selection.

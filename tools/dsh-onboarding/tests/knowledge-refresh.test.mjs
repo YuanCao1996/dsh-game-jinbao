@@ -49,7 +49,7 @@ test('a champion lookup fills the Top10 page and records the attempt', async () 
       : [],
   }));
   try {
-    await waitFor(() => /屹立不倒/.test(service.view().augments), 'Top10 rendered');
+    await waitFor(() => (service.view().augmentsRankingRows ?? []).some((row) => row.name === '屹立不倒') || /屹立不倒/.test(service.view().augments), 'Top10 rendered');
     const status = JSON.parse(await readFile(join(dir, 'knowledge-status.json'), 'utf8'));
     assert.equal(status.phase === 'started' && status.rows === 0, false, 'the finished record must replace the started one');
     assert.ok(status.rows >= 2, 'the finished record must report the rows it loaded: ' + JSON.stringify(status));
@@ -71,7 +71,7 @@ test('an empty lookup keeps retrying instead of waiting for a context change', a
     return { results: [] };
   });
   try {
-    await waitFor(() => /屹立不倒/.test(service.view().augments), 'Top10 rendered after a retry');
+    await waitFor(() => (service.view().augmentsRankingRows ?? []).some((row) => row.name === '屹立不倒') || /屹立不倒/.test(service.view().augments), 'Top10 rendered after a retry');
     assert.ok(calls >= 2, 'the lookup must be retried, saw ' + calls);
     const status = JSON.parse(await readFile(join(dir, 'knowledge-status.json'), 'utf8'));
     assert.ok(status.rows >= 1, 'the finished record must show the loaded rows');

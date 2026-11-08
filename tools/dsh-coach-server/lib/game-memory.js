@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, writeFile, rename, appendFile, open, realpath
 import { join, dirname, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { eventWindow } from './event-window.mjs';
+import { createMatchSummaryStore, summarizeMatch } from './match-summary.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const preferenceQueues=new Map();
@@ -22,6 +23,8 @@ export function cleanGameData(value, depth = 0) {
 
 export function createGameMemory(stateDir) {
   const root = join(stateDir, 'game-memory');
+ // One summary per finished match: the data foundation for progression, shared by both lines.
+ const summaries = createMatchSummaryStore(root);
   let queue = Promise.resolve();
   const snapshots = new Map();
   let cursors;
@@ -130,6 +133,7 @@ export function createGameMemory(stateDir) {
         // persisted conversation until live chat explicitly supplies its history.
         if (!value.chat?.length && previous?.chat?.length) value.chat = previous.chat;
         await atomic(join(root, key + '.json'), value);
+        if (value.ended === true) summaries.record(summarizeMatch(value));
         snapshots.set(key, encoded);
         if (snapshots.size > 64) snapshots.delete(snapshots.keys().next().value);
       });

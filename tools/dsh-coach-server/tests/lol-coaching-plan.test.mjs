@@ -1,6 +1,6 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildLolCoachingPlan, coachingStillCurrent,createAdviceValidity,adviceIsValid} from '../lib/lol-coaching-plan.js';
+import {buildLolCoachingPlan, coachingStillCurrent,createAdviceValidity,adviceIsValid,stateCoachingTrigger} from '../lib/lol-coaching-plan.js';
 import {initialOverlayState,applyOverlayEvent,overlayView} from '../../dsh-onboarding/overlay-state.mjs';
 import {LOL_ADAPTER as adapter} from '../lib/adapters/lol.js';
 import {turnContext} from '../lib/turn-context.js';
@@ -201,8 +201,7 @@ test('auto-picked augments reach the plan facts so the advice can account for th
  assert.deepEqual(plan.facts.autoPickedAugments, ['坦克引擎']);
 });
 
-test('the opening build order survives shopping, changes with the champion, and expires',()=>{
-  const at=1_000_000;
+test('the opening build order survives shopping, changes with the champion, and expires',()=>{  const at=1_000_000;
   const current={
     game:'lol',match:'m1',phase:'Loading',ended:false,ownedAugments:[],offers:[],bench:[],allies:[],enemies:[],
     me:{champion:'安妮',level:1,items:[],canShop:false,championAugments:[]},
@@ -221,4 +220,68 @@ test('the opening build order survives shopping, changes with the champion, and 
   assert.equal(adviceIsValid(validity,{...shopped,match:'m2'},at+100_000),false);
   // The plan is good for ten minutes, not for the whole game.
   assert.equal(adviceIsValid(validity,shopped,at+600_001),false);
+});
+
+// 配合窗口：以前没有任何触发点，人数差变化时教练不会被叫醒，
+// 于是“和队友怎么配合”只出现在开局与 6 级两次播报里。
+test('side-man advantage opens a coordination window exactly once per crossing', () => {
+ const store = {};
+ const tick = (time, alliesAlive, enemiesAlive) => {
+  const event = {kind:'state',state:{time,level:7,dead:false,items:[],enemyItems:[],alliesAlive,enemiesAlive}};
+  event.coachTrigger = stateCoachingTrigger(event, store);
+  return event.coachTrigger;
+ };
+ assert.equal(tick(100,5,5),'ultimate','首次采样只建立基线');
+ assert.equal(tick(105,5,5),null);
+ assert.equal(tick(110,5,3),'coordination','人数差扩大到 +2');
+ assert.equal(tick(115,5,3),null,'同一个窗口只播一次');
+ assert.equal(tick(120,4,3),null,'窗口收窄到 +1，但 45 秒冷却内不重复播报');
+ assert.equal(tick(121,4,3),null);
+ assert.equal(tick(160,3,1),'coordination','冷却结束后新的 +2 窗口可以再播');
+ // 少人时同样成立（-2 也是窗口）
+ assert.equal(tick(210,1,3),'coordination','人数劣势同样是一个窗口');
+ // 数据缺失不能凭空造出一次窗口变化
+ const missing = {kind:'state',state:{time:220,level:7,dead:false,items:[],enemyItems:[]}};
+ assert.equal(stateCoachingTrigger(missing,store),null);
+});
+
+test('coordination stage names real champions and keeps a short fight window', () => { const current = { game:'lol', match:'m', phase:'InProgress', gameSeconds:600,
+  me:{champion:'虚空女皇',level:11,dead:false},
+  // 采集路径有时会把本人一起塞进 allies，这里刻意重复一次验证去重
+  allies:[{champion:'虚空女皇'},{champion:'卡牌大师',dead:false},{champion:'提莫',dead:true}],
+  enemies:[{champion:'盖伦',dead:false},{champion:'锐雯',dead:true}], ownedAugments:[], events:[] };
+ const plan = buildLolCoachingPlan([{kind:'state',coachTrigger:'coordination'}], current);
+ assert.equal(plan.stage,'coordination');
+ assert.match(plan.prompt,/跟谁一起上/);
+ assert.match(plan.prompt,/等他哪个技能/);
+ const brief = plan.prompt.split('\n').find(line => line.startsWith('【本轮配合窗口】'));
+ assert.ok(brief, 'prompt 必须带上存活名单');
+ assert.equal((brief.match(/虚空女皇/g) ?? []).length,1,'本人不能重复出现');
+ assert.doesNotMatch(brief,/提莫/,'阵亡队友不算配合对象');
+ assert.doesNotMatch(brief,/锐雯/,'阵亡敌人不算目标');
+ assert.match(brief,/卡牌大师/);
+ assert.deepEqual(plan.facts.alive.enemies,['盖伦']);
+ assert.deepEqual(plan.facts.alive.allies,['卡牌大师']);
+ const validity = createAdviceValidity('coordination',current,1000);
+ assert.equal(validity.expiresAt,46000,'团战建议只有 45 秒');
+ assert.ok(adviceIsValid(validity,current,2000));
+ // 谁活着变了，这句配合方案就不再成立
+ assert.ok(!adviceIsValid(validity,{...current,enemies:[{champion:'盖伦',dead:true}]},2000));
+ // 阵亡优先级高于配合窗口
+ assert.equal(buildLolCoachingPlan(
+  [{kind:'state',coachTrigger:'coordination'},{kind:'state',coachTrigger:'death',state:{dead:true}}],
+  {...current,me:{...current.me,dead:true}}).stage,'death');
+});
+
+// 视图要直接给出双方存活人数：配合窗口必须能在被吞掉的 tick 里也被记下来，
+// 而不是等教练真正跑到判定时才去读上下文。
+test('view exposes side alive counts for the deferred coordination window', () => {
+ const s={...initialOverlayState(),game:'lol',match:'m',phase:'InProgress',me:{champion:'安妮',dead:false}};
+ s.allies=[{champion:'盖伦',dead:false},{champion:'安妮',dead:false}];
+ s.enemies=[{champion:'锐雯',dead:true},{champion:'亚索',dead:false}];
+ const view=overlayView(s);
+ assert.equal(view.alliesAlive,2,'队友 1 人 + 自己');
+ assert.equal(view.enemiesAlive,1,'阵亡的敌人不算');
+ s.me.dead=true;
+ assert.equal(overlayView(s).alliesAlive,1,'自己死了就从存活里去掉');
 });

@@ -15,7 +15,7 @@ export const PRAISE_MAX_STREAK = 5;
 export const ALLY_MIN_STREAK = 4;
 export const PRAISE_CHAIN_MS = 10_000;
 export const PRAISE_SETTLE_MS = 2_000;
-export const PRAISE_MAX_WAIT_MS = 12_000;
+export const PRAISE_MAX_WAIT_MS = 24_000;
 export const PRAISE_ROLES = Object.freeze(['jinbao', 'liurufeng', 'wangbatian', 'tiezhi']);
 
 const SELF = {
@@ -159,16 +159,22 @@ export function recordMultikill(state, { streak, side = 'self', hero = '', at, n
 
 // Emit every chain that has gone quiet. Safe to call on each poll tick.
 export function settlePraise(state, now = Date.now(), {
-  settleMs = PRAISE_SETTLE_MS, maxWaitMs = PRAISE_MAX_WAIT_MS, role = 'jinbao',
+  settleMs = PRAISE_SETTLE_MS, maxWaitMs = PRAISE_MAX_WAIT_MS, role = 'jinbao', cloudGraceMs = 0,
 } = {}) {
   const chains = state?.praiseChains;
   if (!chains) return false;
   let emitted = false;
   for (const chain of Object.values(chains)) {
     if (!chain || chain.settled) continue;
+    // 云端那句已经到了（applyOverlayEvent 已经把文案写进 broadcasts），
+    // 这里只把链标记为已结束，绝不再补一条本地文案把它盖掉。
+    if (chain.cloudFilled) { chain.settled = true; continue; }
     const quiet = now - chain.lastAt >= settleMs;
     const stalled = now - chain.chainAt >= maxWaitMs;
     if (!quiet && !stalled) continue;
+    // 云端优先：链安静后先等 cloudGraceMs 让云端那句话赶上来；
+    // 等不到（模型慢或失败）才用本地兜底，避免玩家先听固定文案再被覆盖成两句。
+    if (cloudGraceMs > 0 && !stalled && now - chain.lastAt < settleMs + cloudGraceMs) continue;
     const text = praiseText({ streak: chain.streak, side: chain.side, role, hero: chain.hero, pick: chain.variant, victims: chain.victims ?? [], revenge: chain.revenge ?? [] });
     if (!text) continue;
     const id = `${chain.key}@${chain.chainAt}`;
@@ -232,5 +238,7 @@ export function buildPraisePrompt({ streak, victims = [], revenge = [], hero = '
  if (revenged.length) lines.push('其中' + revenged.join('、') + '此前击杀过我，这是复仇。');
  lines.push('用教练口吻点评一句，可以有复仇的爽感，但不要煽情。');
  lines.push('硬性要求：只输出一句话，不超过 40 个字，不要解释、不要列举、不要换行、不要表情符号。');
+ // 实测调用工具会让一次点评变成两次模型往返（约 8.6 秒），超过播报宽限就只能听本地兜底。
+ lines.push('本句所需的连杀级别、击杀对象、复仇对象、自己的英雄都已在上文给全，不要调用任何工具，直接输出这一句话。');
  return lines.join('');
 }
