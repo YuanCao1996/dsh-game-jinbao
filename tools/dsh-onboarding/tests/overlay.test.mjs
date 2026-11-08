@@ -30,7 +30,7 @@ test('mid-game capture uses elapsed seconds, ends at GameEnd, resets across matc
  assert.match(v.equipment,/星蚀、焚天/);
  // 英雄专属排名改成三列表格渲染，文本里不再重复这段列表（否则会出现两份）。
  assert.match(v.augments,/英雄 Top10 海克斯/,'标题仍在正文里');
- assert.doesNotMatch(v.augments,/#1 · 全凭身法/,'列表改由表格渲染，正文不再重复');
+ assert.doesNotMatch(v.augments,/No\.1 · 全凭身法/,'列表改由表格渲染，正文不再重复');
  assert.ok(Array.isArray(v.augmentsRankingRows)&&v.augmentsRankingRows.length>=1,'排名行要交给表格渲染');
  assert.equal(v.augmentsRankingRows[0].name,'全凭身法');
  assert.equal(v.augmentsIsRanking,true);

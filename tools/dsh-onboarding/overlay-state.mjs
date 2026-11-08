@@ -434,8 +434,8 @@ const playerRows = players.map(p => {
       const order=[...pick.map(row=>row.name),...offeredNow.filter(name=>!rankOf.has(name))];
       const lines=order.map(name=>{
         const row=rankOf.get(name);
-        if(!row)return `${name} · 该英雄暂无排名`;
-        return `${Number(row.rank)>0?'#'+Number(row.rank):'排名暂无'} · ${name}${row.tier?' · '+row.tier:''}`;
+        if(!row)return `${name} · 排名未上榜`;
+        return `${Number(row.rank)>0?'No.'+Number(row.rank):'排名未上榜'} · ${name}${row.tier?' · '+row.tier:''}`;
       });
       noticeUpsert(state,roundKey,{
         at:Date.now(),stage:'augment',dimension:'augment',
@@ -449,7 +449,7 @@ const playerRows = players.map(p => {
       const row=ranked.find(r=>r.name===picked);
       noticePush(state,'aug-picked:'+picked,{
         at:Date.now(),stage:'augment',dimension:'augment',
-        text:`已选海克斯 · ${picked}`+(row?`（该英雄 ${Number(row.rank)>0?'#'+Number(row.rank):'排名暂无'}${row.tier?' · '+row.tier:''}）`:''),
+        text:`已选海克斯 · ${picked}`+(row?`（该英雄 ${Number(row.rank)>0?'No.'+Number(row.rank):'排名未上榜'}${row.tier?' · '+row.tier:''}）`:''),
       });
     }
     // 3) 选人阶段：每个英雄的阵营/胜率/强度
@@ -501,7 +501,7 @@ const playerRows = players.map(p => {
       }))
     : [];
   const candidates = ranked.filter(row => offered.includes(row.name)).map(augmentLine);
-  for(const name of offered)if(!ranked.some(row=>row.name===name))candidates.push(name+' · 暂无该英雄排名');
+  for(const name of offered)if(!ranked.some(row=>row.name===name))candidates.push(name+' · 排名未上榜');
   // Revocation is permanent: a later death or item swap must not revive old advice.
   // Two kinds are distinguished. "Hard" means the fact the advice stated is no longer
   // true (an ally ultimate that has since been used) and it must disappear. "Stale"

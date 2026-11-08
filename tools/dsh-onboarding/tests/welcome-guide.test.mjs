@@ -105,8 +105,10 @@ test('the guide documents exactly the tabs the overlay defines', async () => {
   const overlay = await fs.readFile(join(here, '..', '..', 'desktop-release', 'strategy-overlay.ps1'), 'utf8');
   const tabLine = overlay.match(/foreach\(\$entry in @\((.+?)\)\)\{/s);
   assert.ok(tabLine, 'the overlay tab definition must stay findable');
-  const tabs = [...tabLine[1].matchAll(/\(\s*'([a-z]+)'\s*,\s*'([^']+)'\s*\)/g)].map((match) => match[1]);
-  assert.ok(tabs.length >= 3, 'unexpected tab definition: ' + tabLine[1].slice(0, 120));
+  // 单页签版本已移除三页签循环，此时视为只有战况一页。
+  const declared = [...tabLine[1].matchAll(/\(\s*'([a-z]+)'\s*,\s*'([^']+)'\s*\)/g)].map((match) => match[1]);
+  const tabs = declared.length ? declared : ['advice'];
+  assert.ok(tabs.length >= 1 && tabs.includes('advice'), 'unexpected tab definition: ' + tabLine[1].slice(0, 120));
   const page = await fs.readFile(join(here, '..', 'welcome.html'), 'utf8');
   const steps = [...page.matchAll(/image:'([a-z-]+\.(?:png|gif))'/g)].map((match) => match[1]);
   // 三个页签的截图必须都在；另外允许“设置”等额外步骤，因此不再要求数量相等。

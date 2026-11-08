@@ -44,10 +44,10 @@ test('live log changes refresh ranked Mayhem choices in battle and augment pages
  t.after(service.close);
  const until=async check=>{for(let i=0;i<250;i++){if(check())return;await new Promise(r=>setTimeout(r,10));}throw Error('page synchronization timeout');};
  await send({kind:'augment_offer',roll:1,options:['一号','二号','三号']});
- await until(()=>service.view().advice.includes('#1 · 二号')&&service.view().advice.includes('#2 · 三号'));
+ await until(()=>service.view().advice.includes('No.1 · 二号')&&service.view().advice.includes('No.2 · 三号'));
  let v=service.view();assert.ok(v.advice.indexOf('二号')<v.advice.indexOf('三号'));assert.ok(v.advice.indexOf('三号')<v.advice.indexOf('一号'));
  await send({kind:'augment_offer',roll:1,reroll:true,options:['新选项','二号','三号']});
- await until(()=>service.view().advice.includes('#1 · 新选项'));
+ await until(()=>service.view().advice.includes('No.1 · 新选项'));
  v=service.view();assert.doesNotMatch(v.advice,/一号/);assert.doesNotMatch(v.augments.split('英雄 Top10')[0],/一号/);
  await send({kind:'augment_offer_closed',roll:1});
  await until(()=>!service.view().advice.includes('当前三选一'));

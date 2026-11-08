@@ -77,12 +77,12 @@ test('manual refresh waits for results and a changed slot queries its new candid
   return {results:rows.filter(r=>!q.filter?.name||r.name===q.filter.name).map(data=>({data}))};
  }});t.after(service.close);
  await until(()=>calls.some(q=>q.filter?._type==='augments'));
- version=4;await service.refresh();assert.doesNotMatch(service.view().augments.split('英雄 Top10')[0],/#4 · 新候选/);
+ version=4;await service.refresh();assert.doesNotMatch(service.view().augments.split('英雄 Top10')[0],/No\.4 · 新候选/);
  await appendFile(file,JSON.stringify({game:'lol',t:++at,kind:'augment_offer',roll:1,options:['初始','另一个','未知']})+'\n');
  await until(()=>service.view().augments.includes('当前三选一'));
  await appendFile(file,JSON.stringify({game:'lol',t:++at,kind:'augment_offer',roll:1,options:['新候选','另一个','未知']})+'\n');
  await until(()=>calls.some(q=>q.filter?.name==='新候选'));
- await service.refresh();assert.doesNotMatch(service.view().augments.split('英雄 Top10')[0],/初始/);assert.match(service.view().augments,/#4 · 新候选/);
+ await service.refresh();assert.doesNotMatch(service.view().augments.split('英雄 Top10')[0],/初始/);assert.match(service.view().augments,/No\.4 · 新候选/);
 });
 
 
@@ -99,7 +99,7 @@ test('a delayed slot lookup never restores replaced choices and rerolls reuse he
  const offer=options=>appendFile(file,JSON.stringify({game:'lol',t:++at,kind:'augment_offer',roll:1,options})+'\n');
  await offer(['旧选项','二号','三号']);await until(()=>!!release);
  await offer(['新选项','二号','三号']);await until(()=>service.view().augments.includes('新选项'));
- release();await until(()=>service.view().augments.includes('#1 · 新选项'));
+ release();await until(()=>service.view().augments.includes('No.1 · 新选项'));
  assert.doesNotMatch(service.view().augments,/旧选项/);
  assert.equal(calls.filter(q=>q.filter?._type==='coreBuilds').length,1);
  assert.equal(calls.filter(q=>q.filter?.name==='二号').length,1);
@@ -143,7 +143,7 @@ test('initial partial titles are ranked immediately and missing slots fill the s
  assert.deepEqual(events[1].options.map(r=>r.name),['甲','乙','丙']);
  const state=initialOverlayState();state.game='lol';state.me.champion='安妮';
  applyOverlayEvent(state,{game:'lol',...events[0],t:1},'game');
- assert.match(overlayView(state,{rows:[row('丙',1)]}).augments,/#1 · 丙/);
+ assert.match(overlayView(state,{rows:[row('丙',1)]}).augments,/No\.1 · 丙/);
  assert.match(overlayView(state).augments,/已识别 2\/3/);
 });
 
@@ -206,10 +206,10 @@ test('unchanged candidate rankings stay visible while a refreshed slot is being 
   return {results:q.filter?._type==='augments'?[{data:row(q.filter.name??'英雄推荐',q.filter.name==='乙'?2:1)}]:[]};
  }});t.after(()=>{release?.();service.close();});
  const offer=options=>appendFile(file,JSON.stringify({game:'lol',t:++at,kind:'augment_offer',roll:1,options})+'\n');
- await offer(['甲','乙','丙']);await until(()=>service.view().augments.includes('#2 · 乙'));
+ await offer(['甲','乙','丙']);await until(()=>service.view().augments.includes('No.2 · 乙'));
  await offer(['丁','乙','丙']);await until(()=>!!release);
- assert.match(service.view().augments,/#2 · 乙/);assert.doesNotMatch(service.view().augments.split('英雄 Top10')[0],/#1 · 甲/);
- release();await until(()=>service.view().augments.includes('#1 · 丁'));
+ assert.match(service.view().augments,/No\.2 · 乙/);assert.doesNotMatch(service.view().augments.split('英雄 Top10')[0],/No\.1 · 甲/);
+ release();await until(()=>service.view().augments.includes('No.1 · 丁'));
 });
 
 test('a panel the OCR never resolves leaves its text behind for diagnosis',()=>{

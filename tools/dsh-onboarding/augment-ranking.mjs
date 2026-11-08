@@ -14,7 +14,7 @@ export function rankedAugments(rows, champion) {
   return [...unique.values()].sort((a,b) => (rank(a)-rank(b) || tier(a)-tier(b) || winRate(b)-winRate(a) || a.name.localeCompare(b.name,'zh-CN')));
 }
 export function augmentLine(row) {
-  const rank = Number(row.rank) > 0 && Number.isFinite(Number(row.rank)) ? '#'+Number(row.rank) : '排名暂无';
+  const rank = Number(row.rank) > 0 && Number.isFinite(Number(row.rank)) ? 'No.'+Number(row.rank) : '排名未上榜';
   // 用户要求：这一列只显示该英雄的排名与品质，不显示胜率。
   return [rank, row.name, row.tier].filter(Boolean).join(' · ');
 }
