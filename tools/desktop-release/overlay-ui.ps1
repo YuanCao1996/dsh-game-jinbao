@@ -104,7 +104,31 @@ function Update-ChatJump {
 }
 function Update-OverlaySurface([bool]$force=$false){
  Update-StatusDot
- if(!$controls.RichContent){return}
+ # 消息里的表格行：阵营 / 英雄 / 胜率 / 强度 四列对齐。
+# 之前把阵容拼成一行文字，中文字宽不齐看起来很乱，这里按列排版。
+function Add-OverlayTableRow($cells,[bool]$isHead,[double]$font){
+ $row=New-Object Windows.Controls.Grid
+ $specs=@(@(28,0),@(1.0,1),@(54,1),@(26,2))
+ foreach($spec in $specs){
+  $column=New-Object Windows.Controls.ColumnDefinition
+  if([double]$spec[0] -le 1){$column.Width=[Windows.GridLength]::new([double]$spec[0],[Windows.GridUnitType]::Star)}
+  else{$column.Width=[Windows.GridLength]::new([double]$spec[0],[Windows.GridUnitType]::Pixel)}
+  $row.ColumnDefinitions.Add($column)|Out-Null
+ }
+ for($i=0;$i -lt 4;$i++){
+  $value=if($i -lt $cells.Count){[string]$cells[$i]}else{""}
+  $align=$specs[$i][1]
+  $label=New-OverlayLabel $value ([Math]::Max(10,$font-2)) $(if($isHead){"#7C8B99"}else{"#DDE5EE"})
+  $label.TextTrimming="CharacterEllipsis"
+  $label.TextAlignment=if($align -eq 1){"Right"}elseif($align -eq 2){"Center"}else{"Left"}
+  $label.Margin=if($i -gt 0){"6,1,0,1"}else{"0,1,0,1"}
+  if($isHead){$label.FontWeight="SemiBold"}
+  [Windows.Controls.Grid]::SetColumn($label,$i)
+  $row.Children.Add($label)|Out-Null
+ }
+ return $row
+}
+if(!$controls.RichContent){return}
  Update-OverlayComposer
  $font=[double]$controls.FontSlider.Value
  $rows=@($script:snapshot.chatRows|Where-Object {$_ -and $_.text})
@@ -174,6 +198,20 @@ function Update-OverlaySurface([bool]$force=$false){
     $body=New-OverlayLabel ([string]$row.text) $font $(if($user){'#CBD5E1'}elseif($row.failed){'#F5AD91'}else{'#EBF0F5'})
     Set-HighlightedText $body ([string]$row.text)
     $grid.Children.Add($body)|Out-Null
+    # 表格内容（阵容等）：按四列对齐，和以前胜率页一致。
+    if($row.table -and $row.table.rows){
+     $tablePanel=New-Object Windows.Controls.StackPanel
+     $tablePanel.Margin='0,3,0,0'
+     if($row.table.head){$tablePanel.Children.Add((Add-OverlayTableRow @($row.table.head) $true $font))|Out-Null}
+     foreach($cells in @($row.table.rows)){$tablePanel.Children.Add((Add-OverlayTableRow @($cells) $false $font))|Out-Null}
+     $grid.Children.Add($tablePanel)|Out-Null
+    }
+    # 加权胜率只在十人到齐时出现（页脚）。
+    if($row.footer){
+     $footerLine=New-OverlayLabel ([string]$row.footer) ([Math]::Max(10,$font-2)) '#9CAABA'
+     $footerLine.Margin='0,3,0,0'
+     $grid.Children.Add($footerLine)|Out-Null
+    }
     $card.Child=$grid;$controls.RichContent.Children.Add($card)|Out-Null
     $copyMenu=New-Object Windows.Controls.ContextMenu;$copyMenu.Background='#19212A';$copyMenu.Foreground='#E8EEF5';$copyItem=New-Object Windows.Controls.MenuItem;$copyItem.Header='复制这条消息';$copyItem.Tag=[string]$row.text;$copyItem.Add_Click({param($sender,$eventArgs) try{[Windows.Clipboard]::SetText([string]$sender.Tag)}catch{}});$copyMenu.Items.Add($copyItem)|Out-Null;$card.ContextMenu=$copyMenu
    }

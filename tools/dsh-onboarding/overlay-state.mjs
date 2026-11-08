@@ -317,18 +317,18 @@ let liveStatsKey='';let liveStatsUntil=0;
 // —— 战况页内联信息（原「海克斯页 / 胜率页」的内容）——
 // 页签取消后，这些内容以「新消息」形式进入战况时间线；brief 是给窄条/收起态的一行速览，
 // 方便玩家一眼决断。同 key 只记一次，最多保留 20 条。
-const noticePush=(state,key,{text,brief,stage,dimension,at}={})=>{
+const noticePush=(state,key,{text,brief,stage,dimension,at,table,footer}={})=>{
  if(!text)return false;
  const list=state.notices??(state.notices=[]);
  if(list.some(n=>n.key===key))return false;
- list.push({key,text,brief:String(brief??''),stage:stage??'',dimension:dimension??'',at:Number(at)||Date.now()});
+ list.push({key,text,brief:String(brief??''),stage:stage??'',dimension:dimension??'',at:Number(at)||Date.now(),...(table?{table}:{}),...(footer?{footer}:{})});
  state.notices=list.slice(-20);
  return true;
 };
 const noticeUpsert=(state,key,payload)=>{
  const list=state.notices??(state.notices=[]);
  const existing=list.find(n=>n.key===key);
- if(existing){existing.text=payload.text;existing.brief=String(payload.brief??'');return false;}
+ if(existing){existing.text=payload.text;existing.brief=String(payload.brief??'');if(payload.table)existing.table=payload.table;if('footer' in payload)existing.footer=payload.footer;return false;}
  return noticePush(state,key,payload);
 };
 export const withEventFallback=(activity,state)=>{ const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
@@ -473,21 +473,24 @@ const playerRows = players.map(p => {
         text:`已选海克斯 · ${picked}`+(row?`（${champName} ${Number(row.rank)>0?'No.'+Number(row.rank):'排名未上榜'}${row.tier?' · '+row.tier:''}）`:''),
       });
     }
-    // 3) 阵容：**同一条消息原地更新**（像以前的胜率页那样只改动变化的地方），
-    //    不再按名单变化反复 push（那是刷屏的主因）。
-    //    ARAM/KIWI 没有 LCU 选人会话，最早能拿到名单的时刻就是加载/开局；
-    //    我方先到就先显示我方，敌方到齐后再补敌方，知识到了再补胜率/强度。
+    // 3) 阵容：单条消息原地更新，内容用表格（阵营/英雄/胜率/强度）——
+    //    以前拼成一行文字，中文宽度不齐看起来很乱；现在交给渲染层排成四列。
+    //    选人阶段只列我方且不算加权；等加载页敌方五人都到齐，才出十人 + 加权胜率。
     const roster=playerRows.filter(row=>row.champion);
     const earlyPhase=state.phase==='ChampSelect'||['Loading','GameStart'].includes(state.phase)||(state.phase==='InProgress'&&Number(state.gameSeconds)<150);
     if(roster.length&&earlyPhase){
       const allies=roster.filter(row=>row.side!=='敌');
       const enemies=roster.filter(row=>row.side==='敌');
-      const known=allies.filter(row=>row.winRate!=null).length;
+      const full=enemies.length>=5;
+      // 没有数据时留空，由渲染层补「—」，避免出现「暂无数据 暂无」两列噪音。
+      const cell=value=>{const text=String(value??'').trim();return !text||/^暂无/.test(text)?'—':text;};
+      const tableRows=(full?[...allies,...enemies]:allies).map(row=>[cell(row.side),cell(row.champion),cell(row.winRateText),cell(row.tierText)]);
       noticeUpsert(state,'lineup',{
         at:Date.now(),stage:'loading',dimension:'plan',
-        text:'双方阵容 · '+(enemies.length?'对局双方':'我方已就位')+(known<allies.length?'（胜率陆续补齐）':'')+'\n'
-          +[...allies,...enemies].map(rosterLine).join('\n')+(teamWinRates?'\n'+teamWinRates:''),
-        brief:('阵容 · '+(teamWinRates||'')).slice(0,90),
+        text:full?'双方阵容 · 十人胜率':'我方阵容 · 选人中'+'（敌方未知）',
+        table:{head:['阵营','英雄','胜率','强度'],rows:tableRows},
+        footer:full?teamWinRates:'',
+        brief:full?('阵容 · '+(teamWinRates||'')).slice(0,90):'阵容 · 我方 '+allies.length+' 人已就位',
       });
     }
     // 4) 局势估计：同样原地更新（单条消息），幅度≥1 个百分点才改写，避免无意义刷新
@@ -654,7 +657,8 @@ const playerRows = players.map(p => {
     const turns = state.chat.map(r => ({ role: r.role, origin: r.origin ?? '', text: r.text, failed: r.failed === true, at: Number(r.at) || 0, kind: 'chat' }));
     const spoken = state.broadcasts.map(b => ({ role: 'assistant', origin: 'coach', text: b.text, at: Number(b.at) || 0, kind: b.topic === 'praise' ? 'praise' : 'advice', dimension: b.dimension ?? '', stage: b.stage ?? '' }));
     // 原海克斯页/胜率页的内容以同一条时间线出现，玩家不用切页就能看到。
-    const notices = (state.notices ?? []).map(n => ({ role: 'assistant', origin: 'coach', text: n.text, at: n.at, kind: 'notice', dimension: n.dimension ?? '', stage: n.stage ?? '' }));
+    // table/footer 透传给渲染层：阵容这类内容排成四列表格，比拼一行文字整齐得多。
+    const notices = (state.notices ?? []).map(n => ({ role: 'assistant', origin: 'coach', text: n.text, at: n.at, kind: 'notice', dimension: n.dimension ?? '', stage: n.stage ?? '', ...(n.table?{table:n.table}:{}) , ...(n.footer?{footer:n.footer}:{}) }));
     return [...spoken, ...notices, ...turns].filter(r => r.text).sort((a, b) => a.at - b.at).slice(-40);
    })(),
    // Events are too long to list here; the page keeps only the newest line and updates it.
