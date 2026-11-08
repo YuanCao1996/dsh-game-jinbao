@@ -108,7 +108,7 @@ function Update-OverlaySurface([bool]$force=$false){
 # 之前把阵容拼成一行文字，中文字宽不齐看起来很乱，这里按列排版。
 function Add-OverlayTableRow($cells,[bool]$isHead,[double]$font){
  $row=New-Object Windows.Controls.Grid
- $specs=@(@(28,0),@(1.0,1),@(54,1),@(26,2))
+ $specs=@(@(30,0),@(1.0,1),@(58,1),@(30,2))
  foreach($spec in $specs){
   $column=New-Object Windows.Controls.ColumnDefinition
   if([double]$spec[0] -le 1){$column.Width=[Windows.GridLength]::new([double]$spec[0],[Windows.GridUnitType]::Star)}
@@ -118,7 +118,7 @@ function Add-OverlayTableRow($cells,[bool]$isHead,[double]$font){
  for($i=0;$i -lt 4;$i++){
   $value=if($i -lt $cells.Count){[string]$cells[$i]}else{""}
   $align=$specs[$i][1]
-  $label=New-OverlayLabel $value ([Math]::Max(10,$font-2)) $(if($isHead){"#7C8B99"}else{"#DDE5EE"})
+  $label=New-OverlayLabel $value ([Math]::Max(11,$font-1)) $(if($isHead){"#8B99A6"}else{"#E4EBF2"})
   $label.TextTrimming="CharacterEllipsis"
   $label.TextAlignment=if($align -eq 1){"Right"}elseif($align -eq 2){"Center"}else{"Left"}
   $label.Margin=if($i -gt 0){"6,1,0,1"}else{"0,1,0,1"}
@@ -208,7 +208,7 @@ if(!$controls.RichContent){return}
     }
     # 加权胜率只在十人到齐时出现（页脚）。
     if($row.footer){
-     $footerLine=New-OverlayLabel ([string]$row.footer) ([Math]::Max(10,$font-2)) '#9CAABA'
+     $footerLine=New-OverlayLabel ([string]$row.footer) ([Math]::Max(11,$font-1)) '#A9B6C2'
      $footerLine.Margin='0,3,0,0'
      $grid.Children.Add($footerLine)|Out-Null
     }
