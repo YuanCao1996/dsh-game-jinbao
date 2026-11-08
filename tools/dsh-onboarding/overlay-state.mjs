@@ -45,7 +45,7 @@ export function initialOverlayState() {
   return { game: null, mode: '', match: null, at: 0, selfIdentityAt: 0, matchStartedAt: 0, gameSeconds: null, ended: false, phase: '',observedMatch:false,
     me: {}, allies: [], enemies: [], bench: [], playerStats: [], enemyItems: [], events: [], equipmentSnapshots:new Map(),
     ownedAugments: [], revealedAugments: [], augmentRounds: [], offers: [], offerRound: null, offerHistory: [], augmentCaptureAvailable: null, augmentCaptureReason: '', equipment: '', equipmentStatus:'', equipmentAssumptions: [], augmentAdvice: '', teamfight: '', broadcasts: [], chat: [],
-    agentStatus:'', agentError:'', coachStatus:null, praiseChains:{} };
+    agentStatus:'', agentError:'', coachStatus:null, praiseChains:{}, notices:[], noticeWinRate:null };
 }
 // Pure projection shared by live polling and log replay tests. Epoch time only orders
 // records; the displayed clock always comes from the game's elapsed seconds.
@@ -297,8 +297,18 @@ const friendlyKnowledgeMessage=message=>{
 const EVENT_FALLBACK_LIMIT=6;
 // 对局状态“只在变化时露一次”：记住上次的英雄/等级/KDA 组合与显示截止时间。
 let liveStatsKey='';let liveStatsUntil=0;
-const withEventFallback=(activity,state)=>{
- const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
+// —— 战况页内联信息（原「海克斯页 / 胜率页」的内容）——
+// 页签取消后，这些内容以「新消息」形式进入战况时间线；brief 是给窄条/收起态的一行速览，
+// 方便玩家一眼决断。同 key 只记一次，最多保留 20 条。
+const noticePush=(state,key,{text,brief,stage,dimension,at}={})=>{
+ if(!text)return false;
+ const list=state.notices??(state.notices=[]);
+ if(list.some(n=>n.key===key))return false;
+ list.push({key,text,brief:String(brief??''),stage:stage??'',dimension:dimension??'',at:Number(at)||Date.now()});
+ state.notices=list.slice(-20);
+ return true;
+};
+const withEventFallback=(activity,state)=>{ const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
  let rows=Array.isArray(base.rows)?base.rows:[];
  if(!rows.length){
   // 没有活动回合时用本局事件流兜底，面板不至于整块空着。
@@ -390,8 +400,66 @@ const playerRows = players.map(p => {
   const weighted=side=>{const result=teamStrength(playerRows,side);return result.value===null?`待补齐 ${result.known}/5`:`${Number(result.value.toFixed(1))}%`;};
   const liveEstimate=state.game==='lol'?liveTeamEstimate(playerRows,{seconds:state.gameSeconds,allyKills:me.teamKills,enemyKills:me.enemyKills,sideSource:me.sideSource}):null;
   const teamWinRates=state.game==='lol'?(liveEstimate?`局势估计 · 我方 ${liveEstimate.ally}%｜敌方 ${liveEstimate.enemy}% · ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`:`加权样本 · 我方 ${weighted('友')}｜敌方 ${weighted('敌')}`):'';
+
   const builds = rows.filter(r => r._type === 'coreBuilds').map(r => `${items(r.items)}\n  样本胜率 ${percent(r.winRate)} · 使用率 ${percent(r.pickRate)}`);
   const ranked = rankedAugments(rows, me.champion);
+  // —— 把原「海克斯页 / 胜率页」的内容按时机写进战况时间线 ——
+  (() => {
+    if(state.game!=='lol')return;
+    const owned=state.ownedAugments??[];
+    // 1) 三选一出现：给出本次可选项在该英雄上的排名（决断用）
+    const offeredNow=offerNames(state.offers);
+    if(offeredNow.length){
+      const pick=ranked.filter(row=>offeredNow.includes(row.name));
+      const lines=pick.length
+        ?pick.map(row=>`${Number(row.rank)>0?'#'+Number(row.rank):'排名暂无'} · ${row.name}${row.tier?' · '+row.tier:''}`)
+        :offeredNow.map(name=>`${name} · 该英雄暂无排名`);
+      noticePush(state,'aug-offer:'+offeredNow.slice().sort().join('|'),{
+        at:Date.now(),stage:'augment',dimension:'augment',
+        text:'海克斯三选一 · 该英雄排名\n'+lines.join('\n'),
+        brief:'海克斯三选一 · '+pick.map(row=>`${row.name}${row.tier?' '+row.tier:''}`).join(' ｜ ').slice(0,80),
+      });
+    }
+    // 2) 已选：识别到新的强化
+    const picked=owned.at(-1);
+    if(picked){
+      const row=ranked.find(r=>r.name===picked);
+      noticePush(state,'aug-picked:'+picked,{
+        at:Date.now(),stage:'augment',dimension:'augment',
+        text:`已选海克斯 · ${picked}`+(row?`（该英雄 ${Number(row.rank)>0?'#'+Number(row.rank):'排名暂无'}${row.tier?' · '+row.tier:''}）`:''),
+      });
+    }
+    // 3) 选人阶段：每个英雄的阵营/胜率/强度
+    if(state.phase==='ChampSelect'&&playerRows.length){
+      noticePush(state,'lineup-select:'+playerRows.map(r=>r.champion).join('|'),{
+        at:Date.now(),stage:'selection',dimension:'plan',
+        text:'选人阶段 · 阵容与胜率\n'+playerRows.map(r=>`${r.side} ${r.champion} ${r.winRateText} ${r.tierText}`).join('\n'),
+        brief:'选人 · '+playerRows.slice(0,5).map(r=>`${r.side}${r.champion} ${r.winRateText}`).join(' ').slice(0,90),
+      });
+    }
+    // 4) 加载：十人阵容 + 团队加权胜率
+    if(['Loading','GameStart'].includes(state.phase)&&playerRows.length>=6){
+      noticePush(state,'lineup-loading:'+playerRows.map(r=>r.champion).join('|'),{
+        at:Date.now(),stage:'loading',dimension:'plan',
+        text:'双方阵容 · 加载中\n'+playerRows.map(r=>`${r.side} ${r.champion} ${r.winRateText} ${r.tierText}`).join('\n')+(teamWinRates?'\n'+teamWinRates:''),
+        brief:'双方阵容 · '+(teamWinRates||'').slice(0,90),
+      });
+    }
+    // 5) 胜率明显变化：幅度≥3 个百分点且距上次≥60 秒，避免刷屏
+    if(liveEstimate&&Number.isFinite(Number(liveEstimate.ally))){
+      const ally=Number(liveEstimate.ally),previous=state.noticeWinRate??null;
+      const moved=!previous||Math.abs(ally-Number(previous.ally))>=3;
+      const quiet=!previous||Date.now()-Number(previous.at)>=60000;
+      if(moved&&quiet){
+        state.noticeWinRate={at:Date.now(),ally};
+        noticePush(state,'winrate:'+Math.round(ally)+':'+Math.round(Date.now()/60000),{
+          at:Date.now(),stage:'situation',dimension:'map',
+          text:`局势估计更新 · 我方 ${ally}%｜敌方 ${liveEstimate.enemy}% · 击杀 ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`,
+          brief:`局势 ${ally}% vs ${liveEstimate.enemy}%`,
+        });
+      }
+    }
+  })();
   const combinations=rows.filter(r=>r._type==='combos').sort((a,b)=>Number(b.winRate)-Number(a.winRate)).slice(0,5).map(r=>{
     let cards=r.augments;try{if(typeof cards==='string')cards=JSON.parse(cards);}catch{cards=[];}
     const names=offerNames(Array.isArray(cards)?cards:[]);
@@ -488,7 +556,9 @@ const playerRows = players.map(p => {
     dead: me.dead===true, respawn: Number.isFinite(Number(me.respawn)) ? Number(me.respawn) : null,
     selfIdentityAt: state.selfIdentityAt,
     selfChampionAlias: typeof me.championAlias==='string' ? me.championAlias : '',
-    playback:validBroadcasts.map(r=>({id:r.praiseChain?'praise:'+r.praiseChain:String(r.at)+':'+r.text,at:r.at,text:r.text,priority:r.priority??0,...(r.praise?{topic:'praise'}:{}),...(r.praiseChain?{praiseChain:r.praiseChain}:{}),expiresAt:r.expiresAt??r.validity?.expiresAt??null})),
+    // 窄条/收起态只显示一行：把内联信息的速览也排进播报队列（id 稳定，不会重复念）。
+    playback:[...validBroadcasts.map(r=>({id:r.praiseChain?'praise:'+r.praiseChain:String(r.at)+':'+r.text,at:r.at,text:r.text,priority:r.priority??0,...(r.praise?{topic:'praise'}:{}),...(r.praiseChain?{praiseChain:r.praiseChain}:{}),expiresAt:r.expiresAt??r.validity?.expiresAt??null})),
+     ...(state.notices??[]).filter(n=>n.brief&&Date.now()-n.at<300000).map(n=>({id:'notice:'+n.key,at:n.at,text:n.brief,priority:2,expiresAt:n.at+180000}))].sort((a,b)=>a.at-b.at),
     // 已安静、但还没上屏的连杀链：云端教练据此生成一句话点评。
     // 超过宽限仍未填充时由 settlePraise 用本地兜底补上。
     pendingPraise:Object.values(state.praiseChains??{}).filter(chain=>chain&&!chain.settled&&!chain.cloudFilled).map(chain=>({chain:chain.key+'@'+chain.chainAt,streak:chain.streak,side:chain.side,hero:chain.hero??'',victims:Array.isArray(chain.victims)?chain.victims:[],revenge:Array.isArray(chain.revenge)?chain.revenge:[],at:Number.isFinite(chain.lastAt)?chain.lastAt:0})),
@@ -540,7 +610,9 @@ const playerRows = players.map(p => {
    thread: (() => {
     const turns = state.chat.map(r => ({ role: r.role, origin: r.origin ?? '', text: r.text, failed: r.failed === true, at: Number(r.at) || 0, kind: 'chat' }));
     const spoken = state.broadcasts.map(b => ({ role: 'assistant', origin: 'coach', text: b.text, at: Number(b.at) || 0, kind: b.topic === 'praise' ? 'praise' : 'advice', dimension: b.dimension ?? '', stage: b.stage ?? '' }));
-    return [...spoken, ...turns].filter(r => r.text).sort((a, b) => a.at - b.at).slice(-40);
+    // 原海克斯页/胜率页的内容以同一条时间线出现，玩家不用切页就能看到。
+    const notices = (state.notices ?? []).map(n => ({ role: 'assistant', origin: 'coach', text: n.text, at: n.at, kind: 'notice', dimension: n.dimension ?? '', stage: n.stage ?? '' }));
+    return [...spoken, ...notices, ...turns].filter(r => r.text).sort((a, b) => a.at - b.at).slice(-40);
    })(),
    // Events are too long to list here; the page keeps only the newest line and updates it.
    eventTicker: (() => { const last = state.events.at(-1); return last ? `${last.time ?? ''} ${last.text ?? ''}`.trim() : ''; })(),

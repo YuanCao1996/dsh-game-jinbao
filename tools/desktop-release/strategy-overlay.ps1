@@ -506,22 +506,24 @@ function Update-Page {
 }
 function Set-Tab([string]$name){
  if($name -notin @('chat','advice') -and $script:speechJob){Stop-Job $script:speechJob;Remove-Job $script:speechJob -Force;$script:speechJob=$null}
- if($name -eq 'stats'){$name='players'}
+ if($name -eq 'stats'){$name='advice'}
  # 事件与聊天已并入战况：作为别名切到战况；从聊天入口进来时保持可输入状态。
  $focusComposer=($name -eq 'chat')
- if($name -in @('events','chat')){$name='advice'}
+ # 海克斯页/胜率页已取消，旧入口一并落到战况。
+ if($name -in @('events','chat','augments','players')){$name='advice'}
  $script:tab=$name
  foreach($button in $controls.Tabs.Children){$selected=$button.Tag -eq $name;$button.Background=if($selected){'#322B20'}else{'Transparent'};$button.Foreground=if($selected){'#EDC989'}else{'#9CAABA'};$button.BorderBrush=if($selected){'#6F5836'}else{'Transparent'}}
  Set-Interaction $focusComposer
  Update-Page
  if($focusComposer -and $window.IsVisible){$window.Activate() | Out-Null;$controls.QuestionBox.Focus() | Out-Null;[Windows.Input.Keyboard]::Focus($controls.QuestionBox) | Out-Null}
 }
-foreach($entry in @(@('advice','战况'),@('augments','海克斯'),@('players','胜率'))){
- $button=New-Object Windows.Controls.Button
- $button.Tag=$entry[0];$button.Content=$entry[1];$button.FontSize=11;$button.Padding='11,3';$button.Margin='0,0,6,0';$button.MinWidth=54;$button.ToolTip='切换到'+$entry[1]
- $button.Add_Click({param($sender,$eventArgs) Set-Tab ([string]$sender.Tag)})
- $controls.Tabs.Children.Add($button) | Out-Null
-}
+# 只保留战况页：海克斯/胜率的内容改为在战况时间线里按时机出现（新消息 + 窄条速览）。
+# 原「海克斯」「胜率」页签已取消（恢复点见 commit 4ec5a40）。
+# 注意：不要写成 foreach(@(@('advice','战况')))，PowerShell 会把单元素数组摊平。
+$tabButton=New-Object Windows.Controls.Button
+$tabButton.Tag='advice';$tabButton.Content='战况';$tabButton.FontSize=11;$tabButton.Padding='11,3';$tabButton.Margin='0,0,6,0';$tabButton.MinWidth=54;$tabButton.ToolTip='当前对局消息与建议'
+$tabButton.Add_Click({param($sender,$eventArgs) Set-Tab 'advice'})
+$controls.Tabs.Children.Add($tabButton) | Out-Null
 function Update-State {
  if(!$SelfTest -and [IO.File]::Exists((Join-Path $StateDir 'overlay-stopped'))){
   $script:exitApproved=$true;if($window.IsLoaded){$window.Close()};return
@@ -808,7 +810,7 @@ function Invoke-OverlayShortcut([int]$id){
   if($script:displayMode -ne 'large'){Set-DisplayMode 'large'}
   Set-Collapsed $false
   if($id -in @(704,705)){
-   $pages=if($script:snapshot.game -eq 'generic'){@('advice')}else{@('advice','augments','players')};$index=[Array]::IndexOf($pages,$script:tab)
+   $pages=@('advice');$index=0
    $delta=if($id -eq 704){-1}else{1};Set-Tab $pages[(($index+$delta+$pages.Count)%$pages.Count)]
   }
  }
@@ -949,27 +951,10 @@ try{
     $script:testResult.collapsedRightEdge=[Math]::Abs($window.Left+$window.Width-$area.Right) -lt 1
     Set-Collapsed $false;$script:testResult.expanded=$window.Width -ge 420
     $script:testResult.tabs=$controls.Tabs.Children.Count
-    $script:testResult.simplifiedNavigation=$controls.Tabs.Children.Count -eq 3 -and @($controls.Tabs.Children | Where-Object {$_.Tag -eq 'teamfight'}).Count -eq 0 -and $null -eq $window.FindName('RefreshButton') -and $null -eq $window.FindName('TacticButton') -and $null -eq $window.FindName('InteractionButton') -and $null -eq $window.FindName('AppearanceButton')
+    $script:testResult.simplifiedNavigation=$controls.Tabs.Children.Count -eq 1 -and @($controls.Tabs.Children | Where-Object {$_.Tag -in @('augments','players')}).Count -eq 0 -and @($controls.Tabs.Children | Where-Object {$_.Tag -eq 'teamfight'}).Count -eq 0 -and $null -eq $window.FindName('RefreshButton') -and $null -eq $window.FindName('TacticButton') -and $null -eq $window.FindName('InteractionButton') -and $null -eq $window.FindName('AppearanceButton')
     $script:testResult.appearanceInSettings=$controls.SettingsButton.ContextMenu.Items[0] -eq $controls.AppearanceMenuItem
-    $script:testResult.singleWinRateTab=@($controls.Tabs.Children | Where-Object {$_.Content -eq '胜率'}).Count -eq 1 -and @($controls.Tabs.Children | Where-Object {$_.Content -eq '对手' -or $_.Tag -eq 'stats'}).Count -eq 0
-    # 英雄专属排名：三列等宽表格 + 正文保留（表头/十行/标题）。用户要求「每一列平均分布」。
-    $rankFixture=[pscustomobject]@{game='lol';match='rank-selftest';phase='InProgress';selfChampion='诺克萨斯之手';
-     augmentsIsRanking=$true;augmentsIsLeaderboard=$false;augmentsRows=@();playersIsLeaderboard=$false;
-     augments='资料库推荐组合 · 诺克萨斯之手';updatedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();
-     augmentsRankingRows=@(1..10|ForEach-Object {@{rank="#$_";name="强化$_";tier='T1'}})}
-    $savedRank=$script:snapshot;$script:snapshot=$rankFixture;Set-Tab 'augments';Update-Page;$window.UpdateLayout()
-    $rankTable=$controls.LeaderboardTable
-    $rankHeader=if($rankTable.Children.Count -gt 1){$rankTable.Children[1]}else{$null}
-    $equalStars=$false
-    if($rankHeader){
-     $cols=@($rankHeader.ColumnDefinitions)
-     $equalStars=$cols.Count -eq 3 -and @($cols|Where-Object {$_.Width.GridUnitType -eq 'Star' -and $_.Width.Value -eq 1}).Count -eq 3
-    }
-    $script:testResult.rankingTable=$rankTable.Visibility -eq 'Visible' -and $rankTable.Children.Count -eq 11 -and $controls.PageText.Visibility -eq 'Visible'
-    $script:testResult.rankingColumnsEven=$equalStars
-    Set-Tab 'advice'
-    $script:testResult.rankingHiddenOnOtherTabs=$rankTable.Visibility -eq 'Collapsed'
-    $script:snapshot=$savedRank
+    $script:testResult.singleWinRateTab=@($controls.Tabs.Children | Where-Object {$_.Content -eq '胜率'}).Count -eq 0 -and @($controls.Tabs.Children | Where-Object {$_.Content -eq '对手' -or $_.Tag -eq 'stats'}).Count -eq 0
+
     $script:dragStartX=0;$script:dragStartY=0;$script:dragLeft=100;$script:dragTop=100;$script:dragging=$true;$script:bubbleDrag=$false
     Update-Drag 50 40 $true;$script:testResult.dragMoved=$window.Left -gt 100 -and $window.Top -gt 100
     Update-Drag 50 40 $false;$script:testResult.dragReleased=!$script:dragging
@@ -1043,12 +1028,12 @@ try{
     $script:testResult.eventsFollowNewest=$controls.EventTicker.Text -eq '12:35 最新装备购买事件' -and $controls.EventTickerPanel.Visibility -eq 'Visible'
     $script:snapshot=[pscustomobject]@{players='英雄战绩';playerRows=@([pscustomobject]@{side='敌';champion='厄斐琉斯';winRateText='55%';tierText='T0'})}
     Set-Tab 'players'
-    $script:testResult.playerTableVisible=$controls.PlayersTable.Visibility -eq 'Visible' -and $controls.PageText.Visibility -eq 'Collapsed'
-    $script:testResult.playerTableColumns=$controls.PlayersTable.Children[2].Child.ColumnDefinitions.Count -eq 4
+    $script:testResult.playerTableVisible=$controls.PlayersTable.Visibility -eq 'Collapsed'
+    $script:testResult.playerTableColumns=@($controls.Tabs.Children|Where-Object {$_.Tag -in @('augments','players')}).Count -eq 0
     $selectionFixture=@{game='lol';match='select-selftest';phase='ChampSelect';title='金宝';gameTime='等待对局';summary='安妮';players='安妮 · 55% · T0';updatedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();playerRows=@(@{side='备选';champion='安妮';winRateText='55%';tierText='T0'})}
     [IO.File]::WriteAllText($stateFile,($selectionFixture | ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
     Update-State
-    $script:testResult.selectionAutoOpens=$script:tab -eq 'players' -and $controls.TimeText.Text -eq '正在选择英雄'
+    $script:testResult.selectionAutoOpens=$script:tab -eq 'advice' -and $controls.TimeText.Text -eq '正在选择英雄'
     $script:testResult.gameTime=$controls.TimeText.Text
     Set-DisplayMode 'narrow';$window.UpdateLayout()
     $script:testResult.narrowMode=$controls.NarrowPanel.Visibility -eq 'Visible' -and $controls.Expanded.Visibility -eq 'Collapsed' -and $window.Height -ge 2*$script:subtitleRowHeight
@@ -1064,8 +1049,8 @@ try{
     $script:testResult.confirmationVisible=$controls.ConfirmationPanel.Visibility -eq 'Visible' -and $controls.ConfirmationChoices.Children.Count -eq 4 -and $controls.ConfirmationChoices.Children[0].Tag -eq '乙'
     Show-QuickConfirmation $selectionFixture.confirmation
     $script:testResult.quickConfirmationBuilt=$quickConfirm.Child.Child.Children.Count -eq 5 -and $quickConfirm.Child.Child.Children[1].Tag.name -eq '乙'
-    $script:snapshot=[pscustomobject]@{keywords=@('安妮','残疫');summary='安妮'};Set-HighlightedText $controls.PageText '安妮下一件考虑残疫'
-    $script:testResult.keywordHighlight=$controls.PageText.Inlines.Count -gt 1 -and $controls.PageText.Text -eq '安妮下一件考虑残疫'
+    $script:snapshot=[pscustomobject]@{keywords=@('安妮','残疫');summary='安妮'};$controls.PageText.Tag='';$controls.PageText.Text='';Set-HighlightedText $controls.PageText '安妮下一件考虑残疫'
+    $hlJoined=(-join @($controls.PageText.Inlines|ForEach-Object {[string]$_.Text}));$script:testResult.keywordHighlight=$controls.PageText.Inlines.Count -gt 1 -and $hlJoined -eq '安妮下一件考虑残疫'
     $fullAnswer='完整回答内容。'*200
     $script:snapshot=[pscustomobject]@{match='ui-test';suggestedQuestion='这轮海克斯怎么选？';chatRows=@(@{role='user';origin='phone';text='怎么打？'},@{role='assistant';text=$fullAnswer});chat='怎么打？'+$fullAnswer;keywords=@()}
     Set-Tab 'chat';$window.UpdateLayout()
@@ -1114,7 +1099,7 @@ try{
     # Exercise the actual HWND hook, without sending keys to any other app.
     [JinbaoOverlayNative]::SendMessage($script:windowHandle,0x0312,[IntPtr]703,[IntPtr]::Zero)|Out-Null;$script:testResult.shortcutCollapse=$script:collapsed
     [JinbaoOverlayNative]::SendMessage($script:windowHandle,0x0312,[IntPtr]702,[IntPtr]::Zero)|Out-Null;$script:testResult.shortcutExpand=!$script:collapsed
-    Set-Tab 'advice';[JinbaoOverlayNative]::SendMessage($script:windowHandle,0x0312,[IntPtr]705,[IntPtr]::Zero)|Out-Null;$script:testResult.shortcutNext=$script:tab -eq 'augments'
+    Set-Tab 'advice';[JinbaoOverlayNative]::SendMessage($script:windowHandle,0x0312,[IntPtr]705,[IntPtr]::Zero)|Out-Null;$script:testResult.shortcutNext=$script:tab -eq 'advice'
     [JinbaoOverlayNative]::SendMessage($script:windowHandle,0x0312,[IntPtr]704,[IntPtr]::Zero)|Out-Null;$script:testResult.shortcutPrevious=$script:tab -eq 'advice'
     $script:testResult.modeButtonInSettings=$null -eq $window.FindName('ModeButton') -and $settingsMenu.Items.Contains($modeMenu)
     $script:testExitChoice=$true;$controls.CloseButton.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent)))
