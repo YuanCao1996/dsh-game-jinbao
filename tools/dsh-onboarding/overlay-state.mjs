@@ -335,7 +335,9 @@ export const withEventFallback=(activity,state)=>{ const base=activity??{support
  let rows=Array.isArray(base.rows)?base.rows:[];
  // 事件并入智能体动态：正在进行的那几步保留，后面接上本局事件；面板显示最近几行。
  // 装备更新（尤其敌方/别人的）属于出装页，塞进这里会把真正的事件全挤掉（实测 40 条里 25 条是它）。
- const KEEP_WORKING=new Set(['running','queued','draft']);
+ // 只有真正在跑（running/draft）才算进行中；queued 是排队等背压，实测会长时间
+ // 占住这一行，导致整局都看不到事件。
+ const KEEP_WORKING=new Set(['running','draft']);
  const working=rows.filter(row=>KEEP_WORKING.has(String(row?.phase??'')));
  // 只把「确实发生了什么」的事件放进动态：团灭/塔/水晶/龙/先锋/多杀/阵亡/海克斯三选一与已选。
  // 疑似识别、面板关闭提示、装备更新这些既不准也不重要，会把关键事件挤掉。
