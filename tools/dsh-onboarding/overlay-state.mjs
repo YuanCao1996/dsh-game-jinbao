@@ -198,9 +198,26 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
      victims:killInfo.victims, revenge:killInfo.revenge });
       }
     }
+    // 击杀类也进事件流：以前只收塔/龙/水晶/团灭，玩家看不到「谁杀了谁」。
+    // 只记与我方有关的，避免每次团灭刷十几条。
+    if(name==='Multikill'){
+      const streak=Number(event.KillStreak??event.killStreak)||0;
+      const killer=String(event.killer??'');
+      const mine=String(state.me?.champion??'').trim();
+      if(streak>=3&&killer&&mine){
+        const allies=list(state.allies).map(person=>String(person?.champion??'')).filter(Boolean);
+        if(killer.includes(mine)||allies.some(hero=>hero&&killer.includes(hero))){
+          const key='Multikill:'+String(event.id??event.EventID??streak+':'+seconds);
+          if(!state.events.some(entry=>entry.key===key))state.events.push({key,time:clock(seconds),text:`${killer} ${streak}杀`,kind:'Multikill'});
+        }
+      }
+    }
+    if(name==='ChampionKill'&&String(event.victim??event.VictimName??'').includes(String(state.me?.champion??'\u0000'))){
+      const key='Death:'+String(event.id??event.EventID??seconds);
+      if(!state.events.some(entry=>entry.key===key))state.events.push({key,time:clock(seconds),text:'你被击杀',kind:'Death'});
+    }
     const label=Object.hasOwn(keyEventLabels,name)?keyEventLabels[name]:null;
-    if(label){
-      const id=event.id??event.EventID;
+    if(label){      const id=event.id??event.EventID;
       const key=Number.isInteger(id)?name+':'+id:JSON.stringify([name,seconds,event.turret??event.TurretKilled,event.InhibKilled??event.InhibitorKilled]);
       if(!state.events.some(e=>e.key===key)){
         const result=name==='GameEnd'?(event.Result==='Win'?'胜利':event.Result==='Lose'?'失败':null):null;
@@ -314,21 +331,20 @@ const noticeUpsert=(state,key,payload)=>{
  if(existing){existing.text=payload.text;existing.brief=String(payload.brief??'');return false;}
  return noticePush(state,key,payload);
 };
-const withEventFallback=(activity,state)=>{ const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
+export const withEventFallback=(activity,state)=>{ const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
  let rows=Array.isArray(base.rows)?base.rows:[];
- // 事件并入智能体动态：没有正在进行的回合时显示本局事件，有回合时显示当前步骤。
- // 之前的条件是 rows 为空才兜底，但 rows 只要跑过一个任务就永远非空，事件从此再也看不到。
- const working=rows.some(row=>['running','queued','draft'].includes(String(row?.phase??'')));
- if(!working){
-  // 开局/结束这类状态事件不进事件流：它们不是"发生了什么"，
-  // 而且终局后会占掉最新一行（实测出现「对局结束 · 胜利」）。
-  const stateKinds=new Set(['GameStart','GameEnd']);
-  const events=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
-   id:'event-'+(event.at??index),task:'events',topic:'本局事件',
-   clock:event.time??'',label:String(event.text??'').slice(0,60),phase:'done'}));
-  // 正在跑（或有等待中）的回合优先；否则让本局事件占这一行。
-  if(events.length)rows=events;
- }
+ // 事件并入智能体动态：正在进行的那几步保留，后面接上本局事件；面板显示最近几行。
+ // 装备更新（尤其敌方/别人的）属于出装页，塞进这里会把真正的事件全挤掉（实测 40 条里 25 条是它）。
+ const KEEP_WORKING=new Set(['running','queued','draft']);
+ const working=rows.filter(row=>KEEP_WORKING.has(String(row?.phase??'')));
+ // 只把「确实发生了什么」的事件放进动态：团灭/塔/水晶/龙/先锋/多杀/阵亡/海克斯三选一与已选。
+ // 疑似识别、面板关闭提示、装备更新这些既不准也不重要，会把关键事件挤掉。
+ const FEED_KINDS=new Set(['Ace','TurretKilled','InhibKilled','InhibRespawningSoon','InhibRespawned','DragonKill','BaronKill','HeraldKill','Multikill','Death','augment_offer','augment_picked']);
+ const stateKinds=new Set(['GameStart','GameEnd']);
+ const events=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)&&FEED_KINDS.has(String(event.kind??''))).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
+  id:'event-'+(event.at??index)+'-'+(event.key??''),task:'events',topic:'本局事件',
+  clock:event.time??'',label:String(event.text??'').slice(0,60),phase:'done'}));
+ if(working.length||events.length)rows=[...working,...events];
  if(!rows.length)return base;
  // 最新的排最上面；顶部常驻一行对局状态（时间/英雄/等级/KDA/金币），随状态刷新跳动。
  const me=state.me??{};

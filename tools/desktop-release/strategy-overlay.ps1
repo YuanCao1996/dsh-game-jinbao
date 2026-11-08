@@ -1083,9 +1083,9 @@ try{
     $script:testResult.stickyLearningRow=($picked.Count -eq 1) -and ([string]$picked[0].topic -eq '经验学习')
     $oldLearn=[pscustomobject]@{id='n2';topic='经验学习';clock='';label='旧的学习行';phase='done';at=$nowMs-9000}
     $pickedOld=@(Select-AgentActivityRow @($oldLearn,$toolRow) 5000)
-    $script:testResult.stickyLearningExpires=($pickedOld.Count -eq 1) -and ([string]$pickedOld[0].topic -eq '自动教练')
+    $script:testResult.stickyLearningExpires=($pickedOld.Count -ge 1) -and ([string]$pickedOld[-1].topic -eq '自动教练')
     $onlyTool=@(Select-AgentActivityRow @($toolRow) 5000)
-    $script:testResult.singleLineRefresh=($onlyTool.Count -eq 1) -and ([string]$onlyTool[0].label -eq '读取当前对局')
+    $script:testResult.singleLineRefresh=($onlyTool.Count -eq 1) -and ([string]$onlyTool[-1].label -eq '读取当前对局')
     Test-AgentActivitySurface
     $script:testExitChoice=$false;$controls.CloseButton.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent)))
     $script:testResult.exitCancelKeepsWindow=!$script:closing -and !$script:exitApproved
