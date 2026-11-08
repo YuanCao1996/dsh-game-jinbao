@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs';
+import {createLocalExploration} from './exploration-local.mjs';
 import http from 'node:http';
 import { experienceRoute, experienceListPayload, correctRequest, publicLibraryRoute, publicQueryParams, publicUpsertBody, mdEditRoute, mdEditBody } from "./experience-routes.mjs";
 import { createPublicLibrary } from "../dsh-coach-server/lib/public-library.mjs";
@@ -43,7 +45,9 @@ export async function createSetupServer({credentials,stateDir,port=3084,coachPor
  try{syncForgotten=JSON.parse(await readFile(join(stateDir,'sync-forgotten.json'),'utf8')).forgotten===true;}catch{}
  const locked=fn=>{if(!accepting)return Promise.reject(error(409));const next=mutation.then(fn);mutation=next.catch(()=>{});return next;};
  const resolve=async key=>(await credentials.resolve(refs[key]))?.value;
- const exploration=createDesktopExploration({stateDir,serviceBaseUrl:service,getToken:()=>resolve('cloud'),fetchImpl});
+ // 探索记录改为本地版：不联网、不上传、没有排行榜（排行榜/跨设备同步才需要服务器）。
+const explorationCatalog=JSON.parse(readFileSync(new URL('./exploration-catalog.json',import.meta.url),'utf8'));
+const exploration=createLocalExploration({stateDir,catalog:explorationCatalog});
  async function saveConfig(next){await writeFile(filename+'.tmp',JSON.stringify(next),{mode:0o600});await rename(filename+'.tmp',filename);config=next;}
  async function acceptCloud(result){
   if(typeof result.sessionToken!=='string'||!/^j[cdw]_[a-f0-9]{64}$/.test(result.sessionToken))throw error(502);
