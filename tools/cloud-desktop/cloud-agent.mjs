@@ -50,8 +50,9 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
  function transportContext(memory,request){
   const value=cloudContext(memory,request.game,request.match,{eventQuery:!!queryEvents,observationPlan:!!observationPlan,userMemory:!!memoryTools});
   if(getActivityEnabled())value.client_context.capabilities.agent_activity_v1=true;
-  value.client_context.task={automatic:request.automatic===true,topic:['advice','equipment','praise','chat'].includes(request.topic)?request.topic:'chat'}
-   const lk=localKnowledgeNames(memory);
+  value.client_context.task={automatic:request.automatic===true,topic:['advice','equipment','praise','chat'].includes(request.topic)?request.topic:'chat',time_critical:request.timeCritical===true}
+   const critical=request.timeCritical===true;
+ const lk=critical?null:localKnowledgeNames(memory);
    if(lk)value.client_context.local_knowledge=lk;;
   if(value.current_match_state.status==='unknown')delete value.current_match_state.captured_at_ms;
   const key=JSON.stringify(value);
