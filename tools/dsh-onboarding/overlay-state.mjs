@@ -310,14 +310,18 @@ const noticePush=(state,key,{text,brief,stage,dimension,at}={})=>{
 };
 const withEventFallback=(activity,state)=>{ const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
  let rows=Array.isArray(base.rows)?base.rows:[];
- if(!rows.length){
-  // 没有活动回合时用本局事件流兜底，面板不至于整块空着。
+ // 事件并入智能体动态：没有正在进行的回合时显示本局事件，有回合时显示当前步骤。
+ // 之前的条件是 rows 为空才兜底，但 rows 只要跑过一个任务就永远非空，事件从此再也看不到。
+ const working=rows.some(row=>['running','queued','draft'].includes(String(row?.phase??'')));
+ if(!working){
   // 开局/结束这类状态事件不进事件流：它们不是"发生了什么"，
   // 而且终局后会占掉最新一行（实测出现「对局结束 · 胜利」）。
   const stateKinds=new Set(['GameStart','GameEnd']);
-  rows=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
+  const events=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
    id:'event-'+(event.at??index),task:'events',topic:'本局事件',
    clock:event.time??'',label:String(event.text??'').slice(0,60),phase:'done'}));
+  // 正在跑（或有等待中）的回合优先；否则让本局事件占这一行。
+  if(events.length)rows=events;
  }
  if(!rows.length)return base;
  // 最新的排最上面；顶部常驻一行对局状态（时间/英雄/等级/KDA/金币），随状态刷新跳动。

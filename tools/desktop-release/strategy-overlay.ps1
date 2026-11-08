@@ -87,9 +87,6 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <TextBlock x:Name="ConfirmationTitle" Foreground="#FBBF24" FontSize="12" TextWrapping="Wrap"/>
      <WrapPanel x:Name="ConfirmationChoices"/>
     </StackPanel>
-    <Border x:Name="EventTickerPanel" DockPanel.Dock="Bottom" Visibility="Collapsed" BorderBrush="#34424F" BorderThickness="0,1,0,0" Margin="4,6,4,0" Padding="0,5,0,0">
-     <TextBlock x:Name="EventTicker" Foreground="#9CAABA" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="最新一条对局事件，随事件更新"/>
-    </Border>
     <Button x:Name="LatestMessageButton" DockPanel.Dock="Bottom" Content="回到最新消息 ↓" FontSize="11" HorizontalAlignment="Center" Visibility="Collapsed" Margin="0,4"/>
     <Border x:Name="AgentActivityPanel" DockPanel.Dock="Top" Visibility="Collapsed" BorderBrush="#34424F" BorderThickness="0,0,0,1" Margin="2,0,2,4" Padding="0,0,0,4">
      <DockPanel MaxHeight="132">
@@ -161,7 +158,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
 $window=[Windows.Markup.XamlReader]::Load((New-Object Xml.XmlNodeReader $xaml))
 $controls=@{}
 foreach($name in @('MainBorder','OpacitySlider','OpacityText','Expanded','Header','TitleText','TimeText','SummaryText','LauncherText','ActionButton','Tabs','PageScroll','PageText','ChatPanel','QuestionBox','SendButton','Footer','HintText','SettingsButton','CollapseButton','CloseButton','Bubble','BubbleBall','BubbleBadge','BubbleBadgeText')){$controls[$name]=$window.FindName($name)}
-foreach($name in @('RichContent','ComposerPlaceholder','ModeButton','LatestMessageButton','EventTicker','EventTickerPanel','ChatStatusText','TeamModeButton','TeamManageButton')){$controls[$name]=$window.FindName($name)}
+foreach($name in @('RichContent','ComposerPlaceholder','ModeButton','LatestMessageButton','ChatStatusText','TeamModeButton','TeamManageButton')){$controls[$name]=$window.FindName($name)}
 $script:scrollPositions=@{};$script:scrollFollow=@{}
  # 布局改造新增的控件也必须显式注册，否则运行时拿到的是 $null（状态点会静默不更新）。
 foreach($name in @('StatusDot','StatusText','ComposerActions')){$controls[$name]=$window.FindName($name)}
@@ -1022,10 +1019,10 @@ try{
     $script:snapshot.chat+="`n又一条消息";Update-Page
     $script:testResult.chatFollowsBottom=($controls.PageScroll.ScrollableHeight-$controls.PageScroll.VerticalOffset) -lt 1
     # 事件已并入战况：只保留一行，随事件更新。
-    $script:snapshot=[pscustomobject]@{advice=$longText;eventTicker='12:34 购买装备：残疫'}
+    $script:snapshot=[pscustomobject]@{advice=$longText}
     Set-Tab 'augments';Set-Tab 'advice';$window.UpdateLayout()
-    $script:snapshot.eventTicker='12:35 最新装备购买事件';Update-Page;$window.UpdateLayout()
-    $script:testResult.eventsFollowNewest=$controls.EventTicker.Text -eq '12:35 最新装备购买事件' -and $controls.EventTickerPanel.Visibility -eq 'Visible'
+    # 事件已并入智能体动态：窗口里不应再存在独立的事件行控件。
+    $script:testResult.eventsMergedIntoActivity=($null -eq $window.FindName('EventTicker')) -and ($null -eq $window.FindName('EventTickerPanel'))
     $script:snapshot=[pscustomobject]@{players='英雄战绩';playerRows=@([pscustomobject]@{side='敌';champion='厄斐琉斯';winRateText='55%';tierText='T0'})}
     Set-Tab 'players'
     $script:testResult.playerTableVisible=$controls.PlayersTable.Visibility -eq 'Collapsed'
