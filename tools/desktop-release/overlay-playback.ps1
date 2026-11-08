@@ -26,8 +26,10 @@ function Get-NarrowWidth {
 }
 function Set-NarrowMetrics {
  $size=[double]$controls.FontSlider.Value
- foreach($name in @('NarrowText','PreviousSubtitle','OutgoingSubtitle')){if($controls[$name]){$controls[$name].FontSize=$size}}
- $script:subtitleRowHeight=[Math]::Ceiling($size*1.6+4)
+ # 字幕/跑马灯比正文大半号：收起后只有这一行，抬一眼就要看清（原来完全跟随正文字号，最小只有 11）。
+ $subtitleSize=[Math]::Min(24,$size+1)
+ foreach($name in @('NarrowText','PreviousSubtitle','OutgoingSubtitle')){if($controls[$name]){$controls[$name].FontSize=$subtitleSize}}
+ $script:subtitleRowHeight=[Math]::Ceiling($subtitleSize*1.6+4)
  if($script:displayMode -eq 'narrow' -and !$script:collapsed){
   $window.MinWidth=[Math]::Min(260,$area.Width-20);$window.MinHeight=40
   $window.Width=[Math]::Min([Math]::Max($window.MinWidth,$script:narrowWidth),$area.Width-20)
