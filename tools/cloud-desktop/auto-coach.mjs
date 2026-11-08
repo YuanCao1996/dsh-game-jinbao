@@ -101,7 +101,8 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
   // can no longer shop. Only the alive->dead edge bypasses the gate.
   if(v.match!==deadMatch){deadMatch=v.match;lastDead=v.dead===true;}
   const dyingNow=v.dead===true,deathEdge=dyingNow&&!lastDead;lastDead=dyingNow;
-  if(!canRequest()&&!maybeConfirmed&&!deathEdge){note(v,'skip','output_backpressure');if(now()-(store.waitStatusAt??-Infinity)>=30000){store.waitStatusAt=now();await status(v,'interrupted','等待下一次低频自动分析');}return;}
+  // 团战配合窗口和阵亡一样是有时效的：被背压拦住就等于丢掉了这个窗口。
+  if(!canRequest()&&!maybeConfirmed&&!deathEdge&&!pendingCoordination){note(v,'skip','output_backpressure');if(now()-(store.waitStatusAt??-Infinity)>=30000){store.waitStatusAt=now();await status(v,'interrupted','等待下一次低频自动分析');}return;}
   busy=true;
   try{
    const c=(await getContext(v.game,v.match)).current;if(!stillCurrent(v)||!c||c.match!==v.match||c.ended){note(v,'skip','context_changed');return;}

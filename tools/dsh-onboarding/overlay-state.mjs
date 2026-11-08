@@ -308,6 +308,12 @@ const noticePush=(state,key,{text,brief,stage,dimension,at}={})=>{
  state.notices=list.slice(-20);
  return true;
 };
+const noticeUpsert=(state,key,payload)=>{
+ const list=state.notices??(state.notices=[]);
+ const existing=list.find(n=>n.key===key);
+ if(existing){existing.text=payload.text;existing.brief=String(payload.brief??'');return false;}
+ return noticePush(state,key,payload);
+};
 const withEventFallback=(activity,state)=>{ const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
  let rows=Array.isArray(base.rows)?base.rows:[];
  // 事件并入智能体动态：没有正在进行的回合时显示本局事件，有回合时显示当前步骤。
@@ -419,11 +425,19 @@ const playerRows = players.map(p => {
     // 1) 三选一出现：给出本次可选项在该英雄上的排名（决断用）
     const offeredNow=offerNames(state.offers);
     if(offeredNow.length){
+      const round=Number.isInteger(Number(state.offerRound))?Number(state.offerRound):null;
+      const roundKey=round!==null?'aug-offer:r'+round:'aug-offer:'+offeredNow.slice().sort().join('|');
       const pick=ranked.filter(row=>offeredNow.includes(row.name));
-      const lines=pick.length
-        ?pick.map(row=>`${Number(row.rank)>0?'#'+Number(row.rank):'排名暂无'} · ${row.name}${row.tier?' · '+row.tier:''}`)
-        :offeredNow.map(name=>`${name} · 该英雄暂无排名`);
-      noticePush(state,'aug-offer:'+offeredNow.slice().sort().join('|'),{
+      // 三个选项都要出现：有排名的给排名与品质，没排名的明确写“暂无排名”，
+      // 否则玩家看不到那张卡（实测漏掉过「超负荷」）。
+      const rankOf=new Map(pick.map(row=>[row.name,row]));
+      const order=[...pick.map(row=>row.name),...offeredNow.filter(name=>!rankOf.has(name))];
+      const lines=order.map(name=>{
+        const row=rankOf.get(name);
+        if(!row)return `${name} · 该英雄暂无排名`;
+        return `${Number(row.rank)>0?'#'+Number(row.rank):'排名暂无'} · ${name}${row.tier?' · '+row.tier:''}`;
+      });
+      noticeUpsert(state,roundKey,{
         at:Date.now(),stage:'augment',dimension:'augment',
         text:'海克斯三选一 · 该英雄排名\n'+lines.join('\n'),
         brief:'海克斯三选一 · '+pick.map(row=>`${row.name}${row.tier?' '+row.tier:''}`).join(' ｜ ').slice(0,80),
@@ -447,7 +461,7 @@ const playerRows = players.map(p => {
       });
     }
     // 4) 加载：十人阵容 + 团队加权胜率
-    if(['Loading','GameStart'].includes(state.phase)&&playerRows.length>=6){
+    if((['Loading','GameStart'].includes(state.phase)||(state.phase==='InProgress'&&Number(state.gameSeconds)<90))&&playerRows.length>=6){
       noticePush(state,'lineup-loading:'+playerRows.map(r=>r.champion).join('|'),{
         at:Date.now(),stage:'loading',dimension:'plan',
         text:'双方阵容 · 加载中\n'+playerRows.map(rosterLine).join('\n')+(teamWinRates?'\n'+teamWinRates:''),
@@ -457,8 +471,8 @@ const playerRows = players.map(p => {
     // 5) 胜率明显变化：幅度≥3 个百分点且距上次≥60 秒，避免刷屏
     if(liveEstimate&&Number.isFinite(Number(liveEstimate.ally))){
       const ally=Number(liveEstimate.ally),previous=state.noticeWinRate??null;
-      const moved=!previous||Math.abs(ally-Number(previous.ally))>=3;
-      const quiet=!previous||Date.now()-Number(previous.at)>=60000;
+      const moved=!previous||Math.abs(ally-Number(previous.ally))>=5;
+      const quiet=!previous||Date.now()-Number(previous.at)>=90000;
       if(moved&&quiet){
         state.noticeWinRate={at:Date.now(),ally};
         noticePush(state,'winrate:'+Math.round(ally)+':'+Math.round(Date.now()/60000),{
