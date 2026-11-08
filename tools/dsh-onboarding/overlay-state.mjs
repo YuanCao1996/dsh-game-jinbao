@@ -488,7 +488,7 @@ const playerRows = players.map(p => {
       noticeUpsert(state,'lineup',{
         at:Date.now(),stage:'loading',dimension:'plan',
         text:full?'双方阵容 · 十人胜率':'我方阵容 · 选人中'+'（敌方未知）',
-        table:{head:['阵营','英雄','胜率','强度'],rows:tableRows},
+        table:{head:['阵营','英雄','胜率','强度'],rows:tableRows,me:cell(me.champion)},
         footer:full?teamWinRates:'',
         brief:full?('阵容 · '+(teamWinRates||'')).slice(0,90):'阵容 · 我方 '+allies.length+' 人已就位',
       });

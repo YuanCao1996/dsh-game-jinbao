@@ -106,9 +106,9 @@ function Update-OverlaySurface([bool]$force=$false){
  Update-StatusDot
  # 消息里的表格行：阵营 / 英雄 / 胜率 / 强度 四列对齐。
 # 之前把阵容拼成一行文字，中文字宽不齐看起来很乱，这里按列排版。
-function Add-OverlayTableRow($cells,[bool]$isHead,[double]$font){
+function Add-OverlayTableRow($cells,[bool]$isHead,[double]$font,[bool]$isMe){
  $row=New-Object Windows.Controls.Grid
- $specs=@(@(30,0),@(1.0,1),@(58,1),@(30,2))
+ $specs=@(@(30,0),@(1.0,0),@(58,1),@(30,2))
  foreach($spec in $specs){
   $column=New-Object Windows.Controls.ColumnDefinition
   if([double]$spec[0] -le 1){$column.Width=[Windows.GridLength]::new([double]$spec[0],[Windows.GridUnitType]::Star)}
@@ -118,11 +118,13 @@ function Add-OverlayTableRow($cells,[bool]$isHead,[double]$font){
  for($i=0;$i -lt 4;$i++){
   $value=if($i -lt $cells.Count){[string]$cells[$i]}else{""}
   $align=$specs[$i][1]
-  $label=New-OverlayLabel $value ([Math]::Max(11,$font-1)) $(if($isHead){"#8B99A6"}else{"#E4EBF2"})
+  $tone=if($isHead){"#8B99A6"}elseif($isMe){"#E7BE79"}else{"#E4EBF2"}
+  if($isMe -and $i -eq 0 -and $value){$value="▶"}
+  $label=New-OverlayLabel $value ([Math]::Max(11,$font-1)) $tone
   $label.TextTrimming="CharacterEllipsis"
   $label.TextAlignment=if($align -eq 1){"Right"}elseif($align -eq 2){"Center"}else{"Left"}
   $label.Margin=if($i -gt 0){"6,1,0,1"}else{"0,1,0,1"}
-  if($isHead){$label.FontWeight="SemiBold"}
+  if($isHead -or $isMe){$label.FontWeight="SemiBold"}
   [Windows.Controls.Grid]::SetColumn($label,$i)
   $row.Children.Add($label)|Out-Null
  }
@@ -203,7 +205,11 @@ if(!$controls.RichContent){return}
      $tablePanel=New-Object Windows.Controls.StackPanel
      $tablePanel.Margin='0,3,0,0'
      if($row.table.head){$tablePanel.Children.Add((Add-OverlayTableRow @($row.table.head) $true $font))|Out-Null}
-     foreach($cells in @($row.table.rows)){$tablePanel.Children.Add((Add-OverlayTableRow @($cells) $false $font))|Out-Null}
+     $meChampion=[string]($row.table.me)
+     foreach($cells in @($row.table.rows)){
+      $isMe=$meChampion -and ([string]$cells[1] -eq $meChampion)
+      $tablePanel.Children.Add((Add-OverlayTableRow @($cells) $false $font $isMe))|Out-Null
+     }
      $grid.Children.Add($tablePanel)|Out-Null
     }
     # 加权胜率只在十人到齐时出现（页脚）。
