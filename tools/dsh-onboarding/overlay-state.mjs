@@ -317,18 +317,18 @@ let liveStatsKey='';let liveStatsUntil=0;
 // —— 战况页内联信息（原「海克斯页 / 胜率页」的内容）——
 // 页签取消后，这些内容以「新消息」形式进入战况时间线；brief 是给窄条/收起态的一行速览，
 // 方便玩家一眼决断。同 key 只记一次，最多保留 20 条。
-const noticePush=(state,key,{text,brief,stage,dimension,at,table,footer}={})=>{
+const noticePush=(state,key,{text,brief,stage,dimension,at,table,footer,slots}={})=>{
  if(!text)return false;
  const list=state.notices??(state.notices=[]);
  if(list.some(n=>n.key===key))return false;
- list.push({key,text,brief:String(brief??''),stage:stage??'',dimension:dimension??'',at:Number(at)||Date.now(),...(table?{table}:{}),...(footer?{footer}:{})});
+ list.push({key,text,brief:String(brief??''),stage:stage??'',dimension:dimension??'',at:Number(at)||Date.now(),...(table?{table}:{}),...(footer?{footer}:{}),...(slots?{slots}:{})});
  state.notices=list.slice(-20);
  return true;
 };
 const noticeUpsert=(state,key,payload)=>{
  const list=state.notices??(state.notices=[]);
  const existing=list.find(n=>n.key===key);
- if(existing){existing.text=payload.text;existing.brief=String(payload.brief??'');if(payload.table)existing.table=payload.table;if('footer' in payload)existing.footer=payload.footer;return false;}
+ if(existing){existing.text=payload.text;existing.brief=String(payload.brief??'');if(payload.table)existing.table=payload.table;if('footer' in payload)existing.footer=payload.footer;if(payload.slots)existing.slots=payload.slots;return false;}
  return noticePush(state,key,payload);
 };
 export const withEventFallback=(activity,state)=>{ const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
@@ -453,14 +453,24 @@ const playerRows = players.map(p => {
       // 否则玩家看不到那张卡（实测漏掉过「超负荷」）。
       const rankOf=new Map(pick.map(row=>[row.name,row]));
       const order=[...pick.map(row=>row.name),...offeredNow.filter(name=>!rankOf.has(name))];
-      const lines=order.map(name=>{
-        const row=rankOf.get(name);
-        if(!row)return `${name} · 排名未上榜`;
-        return `${Number(row.rank)>0?'No.'+Number(row.rank):'排名未上榜'} · ${name}${row.tier?' · '+row.tier:''}`;
+      // 三个候选按游戏面板的「左/中/右」排位输出：玩家一眼能对上说的是哪张卡，
+      // 重掷时只有对应位置的内容变化，消息仍是同一条（按轮次 upsert，不新增）。
+      const slotLabels=['左','中','右'];
+      const slots=(state.offers??[]).slice(0,3).map((offer,index)=>{
+        const raw=offer?.name??offerNames([offer])[0]??'';
+        const row=rankOf.get(raw)??null;
+        return {
+          slot:slotLabels[index]??'',
+          name:raw||'待识别',
+          rank:row?(Number(row.rank)>0?'No.'+Number(row.rank):'未上榜'):'未上榜',
+          tier:row?.tier??'',
+        };
       });
+      const lines=slots.map(entry=>entry.slot+' · '+entry.rank+' · '+entry.name+(entry.tier?' · '+entry.tier:''));
       noticeUpsert(state,roundKey,{
         at:Date.now(),stage:'augment',dimension:'augment',
-        text:'海克斯三选一 · '+champName+'排名\n'+lines.join('\n'),
+        slots,
+        text:'海克斯三选一 · '+champName+'排名',
         brief:'海克斯三选一 · '+order.map(name=>{const row=rankOf.get(name);return row?(Number(row.rank)>0?'No.'+Number(row.rank)+' ':'')+row.name:(name+' 未上榜');}).join(' ｜ ').slice(0,90),
       });
     }
@@ -658,7 +668,7 @@ const playerRows = players.map(p => {
     const spoken = state.broadcasts.map(b => ({ role: 'assistant', origin: 'coach', text: b.text, at: Number(b.at) || 0, kind: b.topic === 'praise' ? 'praise' : 'advice', dimension: b.dimension ?? '', stage: b.stage ?? '' }));
     // 原海克斯页/胜率页的内容以同一条时间线出现，玩家不用切页就能看到。
     // table/footer 透传给渲染层：阵容这类内容排成四列表格，比拼一行文字整齐得多。
-    const notices = (state.notices ?? []).map(n => ({ role: 'assistant', origin: 'coach', text: n.text, at: n.at, kind: 'notice', dimension: n.dimension ?? '', stage: n.stage ?? '', ...(n.table?{table:n.table}:{}) , ...(n.footer?{footer:n.footer}:{}) }));
+    const notices = (state.notices ?? []).map(n => ({ role: 'assistant', origin: 'coach', text: n.text, at: n.at, kind: 'notice', dimension: n.dimension ?? '', stage: n.stage ?? '', ...(n.table?{table:n.table}:{}) , ...(n.footer?{footer:n.footer}:{}) , ...(n.slots?{slots:n.slots}:{}) }));
     return [...spoken, ...notices, ...turns].filter(r => r.text).sort((a, b) => a.at - b.at).slice(-40);
    })(),
    // Events are too long to list here; the page keeps only the newest line and updates it.

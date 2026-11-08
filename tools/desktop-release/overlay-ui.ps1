@@ -104,7 +104,40 @@ function Update-ChatJump {
 }
 function Update-OverlaySurface([bool]$force=$false){
  Update-StatusDot
- # 消息里的表格行：阵营 / 英雄 / 胜率 / 强度 四列对齐。
+ # 三选一按游戏面板的「左/中/右」排成三列：每列一顶帽+排名+名字+品质，
+# 重掷时只有对应列内容变化，玩家能直接对上说的是哪张卡。
+function Add-OverlaySlots($slots,[double]$font){
+ $grid=New-Object Windows.Controls.Grid
+ $grid.Margin='0,3,0,0'
+ for($i=0;$i -lt 3;$i++){
+  $column=New-Object Windows.Controls.ColumnDefinition
+  $column.Width=[Windows.GridLength]::new(1,[Windows.GridUnitType]::Star)
+  $grid.ColumnDefinitions.Add($column)|Out-Null
+ }
+ $list=@($slots)
+ for($i=0;$i -lt 3;$i++){
+  $cell=New-Object Windows.Controls.StackPanel
+  $cell.Margin=if($i -gt 0){'8,0,0,0'}else{'0'}
+  if($i -lt $list.Count -and $list[$i]){
+   $entry=$list[$i]
+   $cap=New-OverlayLabel ([string]$entry.slot) ([Math]::Max(10,$font-2)) '#7C8B99'
+   $cap.Margin='0,0,0,1'
+   $rank=New-OverlayLabel ([string]$entry.rank) ([Math]::Max(11,$font-1)) '#E7BE79'
+   $rank.FontWeight='SemiBold';$rank.TextTrimming='CharacterEllipsis'
+   $name=New-OverlayLabel ([string]$entry.name) ([Math]::Max(11,$font-1)) '#E4EBF2'
+   $name.TextWrapping='Wrap'
+   $cell.Children.Add($cap)|Out-Null;$cell.Children.Add($rank)|Out-Null;$cell.Children.Add($name)|Out-Null
+   if($entry.tier){
+    $tier=New-OverlayLabel ([string]$entry.tier) ([Math]::Max(10,$font-2)) '#9CAABA'
+    $cell.Children.Add($tier)|Out-Null
+   }
+  }
+  [Windows.Controls.Grid]::SetColumn($cell,$i)
+  $grid.Children.Add($cell)|Out-Null
+ }
+ return $grid
+}
+# 消息里的表格行：阵营 / 英雄 / 胜率 / 强度 四列对齐。
 # 之前把阵容拼成一行文字，中文字宽不齐看起来很乱，这里按列排版。
 function Add-OverlayTableRow($cells,[bool]$isHead,[double]$font,[bool]$isMe){
  $row=New-Object Windows.Controls.Grid
@@ -200,6 +233,10 @@ if(!$controls.RichContent){return}
     $body=New-OverlayLabel ([string]$row.text) $font $(if($user){'#CBD5E1'}elseif($row.failed){'#F5AD91'}else{'#EBF0F5'})
     Set-HighlightedText $body ([string]$row.text)
     $grid.Children.Add($body)|Out-Null
+    # 三选一：左/中/右三列，和游戏面板位置一致。
+    if($row.slots){
+     $grid.Children.Add((Add-OverlaySlots @($row.slots) $font))|Out-Null
+    }
     # 表格内容（阵容等）：按四列对齐，和以前胜率页一致。
     if($row.table -and $row.table.rows){
      $tablePanel=New-Object Windows.Controls.StackPanel
