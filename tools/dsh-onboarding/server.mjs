@@ -48,6 +48,13 @@ export async function createSetupServer({credentials,stateDir,port=3084,coachPor
  // 探索记录改为本地版：不联网、不上传、没有排行榜（排行榜/跨设备同步才需要服务器）。
 const explorationCatalog=JSON.parse(readFileSync(new URL('./exploration-catalog.json',import.meta.url),'utf8'));
 const exploration=createLocalExploration({stateDir,catalog:explorationCatalog});
+
+// 打完一局自动记录探索足迹：每 20 秒看一眼当前对局，只在本局英雄/模式已确定时写入，
+// 记录本身幂等，重启后也不会重复计数。
+try{
+ const explorationTicker=setInterval(()=>{try{const view=overlay?.view?.();if(view&&view.game==='lol')exploration.recordMatch(view).catch(()=>{});}catch{}},20000);
+ explorationTicker.unref?.();
+}catch{}
  async function saveConfig(next){await writeFile(filename+'.tmp',JSON.stringify(next),{mode:0o600});await rename(filename+'.tmp',filename);config=next;}
  async function acceptCloud(result){
   if(typeof result.sessionToken!=='string'||!/^j[cdw]_[a-f0-9]{64}$/.test(result.sessionToken))throw error(502);

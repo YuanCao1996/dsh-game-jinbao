@@ -17,6 +17,14 @@ const TFT_SEASONS = new Set(['S18', 'S17', 'S16', 'S11', 'S8', 'S4.5', 'S100024'
 
 const LOL_MODES = ['海克斯大乱斗', '极地大乱斗', '匹配', '排位'];
 
+
+// 对局模式（日志里的 KIWI/ARAM/CLASSIC…）→ 图鉴里的模式名。
+const MODE_LABELS = {KIWI: '海克斯大乱斗', ARAM: '极地大乱斗', CLASSIC: '匹配', RANKED_SOLO_5x5: '排位'};
+
+export function modeLabel(mode) {
+  const key = String(mode ?? '').toUpperCase();
+  return MODE_LABELS[key] ?? '';
+}
 export function createLocalExploration({stateDir, catalog = {}, now = () => Date.now()}) {
   const root = join(stateDir, 'exploration');
   const file = join(root, 'records.json');
@@ -96,5 +104,34 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
   const conflict = async () => { throw fail('当前没有可检查的冲突'); };
   const resolve = async () => ({local: true});
 
-  return {view, mark, participation, sync, conflict, resolve};
+  // 打完一局自动把「本局英雄 + 本局模式」记进探索记录：
+  // 只在记录确实变化时落盘，避免每次轮询都写文件。
+  async function recordMatch(view) {
+    const game = view?.game;
+    if (game !== 'lol') return {recorded: [], changed: false};
+    const champion = String(view?.me?.champion ?? view?.selfChampion ?? '').trim();
+    const mode = modeLabel(view?.mode);
+    const recorded = [];
+    let changed = false;
+    const apply = async (category, entity) => {
+      if (!entity) return;
+      let list;
+      try { list = names(game === 'lol' ? 'lol_pc' : game, '', category); } catch { return; }
+      if (!list.includes(entity)) return;
+      recorded.push(entity);
+      await lock(async () => {
+        const store = await load();
+        const id = key('lol_pc', '', category, entity);
+        if (store.entries[id]) return;
+        store.entries[id] = now();
+        await save(store);
+        changed = true;
+      });
+    };
+    await apply('英雄', champion);
+    await apply('模式', mode);
+    return {recorded, changed};
+  }
+
+  return {view, mark, participation, sync, conflict, resolve, recordMatch};
 }
