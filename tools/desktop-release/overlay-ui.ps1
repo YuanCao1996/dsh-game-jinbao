@@ -116,11 +116,14 @@ function Add-OverlaySlots($slots,[double]$font){
  }
  $list=@($slots)
  for($i=0;$i -lt 3;$i++){
-  $cell=New-Object Windows.Controls.StackPanel
+  $inner=New-Object Windows.Controls.StackPanel
+  $isBest=$false
   $cell.Margin=if($i -gt 0){'8,0,0,0'}else{'0'}
   if($i -lt $list.Count -and $list[$i]){
    $entry=$list[$i]
-   $cap=New-OverlayLabel ([string]$entry.slot) ([Math]::Max(10,$font-2)) '#7C8B99'
+   $isBest=($entry.best -eq $true)
+   $capText=if($isBest){([string]$entry.slot)+' · 推荐'}else{[string]$entry.slot}
+   $cap=New-OverlayLabel $capText ([Math]::Max(10,$font-2)) $(if($isBest){'#E7BE79'}else{'#7C8B99'})
    $cap.Margin='0,0,0,1'
    $rank=New-OverlayLabel ([string]$entry.rank) ([Math]::Max(11,$font-1)) '#E7BE79'
    $rank.FontWeight='SemiBold';$rank.TextTrimming='CharacterEllipsis'
@@ -132,8 +135,19 @@ function Add-OverlaySlots($slots,[double]$font){
     $cell.Children.Add($tier)|Out-Null
    }
   }
-  [Windows.Controls.Grid]::SetColumn($cell,$i)
-  $grid.Children.Add($cell)|Out-Null
+  if($isBest){
+   $frame=New-Object Windows.Controls.Border
+   $frame.BorderBrush='#E7BE79'
+   $frame.BorderThickness='2,0,0,0'
+   $frame.Background='#241F15'
+   $frame.Padding='4,2,2,2'
+   $frame.Child=$inner
+   [Windows.Controls.Grid]::SetColumn($frame,$i)
+   $grid.Children.Add($frame)|Out-Null
+  } else {
+   [Windows.Controls.Grid]::SetColumn($inner,$i)
+   $grid.Children.Add($inner)|Out-Null
+  }
  }
  return $grid
 }

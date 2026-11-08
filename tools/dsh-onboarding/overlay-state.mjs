@@ -466,6 +466,13 @@ const playerRows = players.map(p => {
           tier:row?.tier??'',
         };
       });
+      // 排名最高的那张标成推荐：rank 数字最小者，同分保留最左边的。
+      let bestIndex=-1,bestRank=Infinity;
+      slots.forEach((entry,index)=>{
+        const value=entry.rank.startsWith('No.')?Number(entry.rank.slice(3)):NaN;
+        if(Number.isFinite(value)&&value<bestRank){bestRank=value;bestIndex=index;}
+      });
+      if(bestIndex>=0)slots[bestIndex]={...slots[bestIndex],best:true};
       const lines=slots.map(entry=>entry.slot+' · '+entry.rank+' · '+entry.name+(entry.tier?' · '+entry.tier:''));
       noticeUpsert(state,roundKey,{
         at:Date.now(),stage:'augment',dimension:'augment',
