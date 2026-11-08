@@ -53,7 +53,7 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
    if(!item?.chain)return false;
    const tried=praiseTries.get(item.chain);
    // 已经发过、或重试次数/时限用尽，就不再打模型（视图里短暂残留也不重复播）。
-   return !tried||(!tried.published&&tried.attempts<2&&nowMs-tried.at<20000);
+   return !tried||(!tried.published&&tried.attempts<3&&nowMs-tried.at<40000);
   });
   if(!pending.length)return false;
   const item=pending[0];
@@ -87,6 +87,8 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
   // 多杀点评必须排在教练回合之前：一次点评最多 2.5 秒，而教练回合要 13~58 秒，
   // 排在后面就永远抢不到模型槽位，多杀只能听固定文案。
   if(!busy){if(await praiseTurn(v))return;}
+  // 诊断：窗口里有待点评的链但教练正忙时留痕，下次能直接看出是没窗口还是被占用。
+  else if((v?.pendingPraise??[]).length)note(v,'praise_cloud','skipped_busy',{chain:v.pendingPraise[0].chain});
   if(busy||agent.busy?.()){note(v,'skip','busy');return;}
   if(!enabled()){note(v,'skip','disabled');return;}
   if(!live(v)){note(v,'skip','no_live_match');return;}

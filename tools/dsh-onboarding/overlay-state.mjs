@@ -440,7 +440,7 @@ const playerRows = players.map(p => {
       noticeUpsert(state,roundKey,{
         at:Date.now(),stage:'augment',dimension:'augment',
         text:'海克斯三选一 · 该英雄排名\n'+lines.join('\n'),
-        brief:'海克斯三选一 · '+pick.map(row=>`${row.name}${row.tier?' '+row.tier:''}`).join(' ｜ ').slice(0,80),
+        brief:'海克斯三选一 · '+order.map(name=>{const row=rankOf.get(name);return row?(Number(row.rank)>0?'No.'+Number(row.rank)+' ':'')+row.name:(name+' 未上榜');}).join(' ｜ ').slice(0,90),
       });
     }
     // 2) 已选：识别到新的强化
@@ -475,7 +475,7 @@ const playerRows = players.map(p => {
       const quiet=!previous||Date.now()-Number(previous.at)>=90000;
       if(moved&&quiet){
         state.noticeWinRate={at:Date.now(),ally};
-        noticePush(state,'winrate:'+Math.round(ally)+':'+Math.round(Date.now()/60000),{
+        noticePush(state,'winrate:'+Math.round(ally),{
           at:Date.now(),stage:'situation',dimension:'map',
           text:`局势估计更新 · 我方 ${ally}%｜敌方 ${liveEstimate.enemy}% · 击杀 ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`,
           brief:`局势 ${ally}% vs ${liveEstimate.enemy}%`,
@@ -648,7 +648,7 @@ const playerRows = players.map(p => {
   };
 }
 
-export async function createOverlayService({ stateDir, agentChat, agentImage, search, pollMs = 500, equipmentDebounceMs=2000, equipmentCooldownMs=30000, equipmentOpeningRetryMs=15000, knowledgeRetryMs=15000,activity,canAutoRequest,experience=null,praiseCloudGraceMs=12000 }) {
+export async function createOverlayService({ stateDir, agentChat, agentImage, search, pollMs = 500, equipmentDebounceMs=2000, equipmentCooldownMs=30000, equipmentOpeningRetryMs=15000, knowledgeRetryMs=15000,activity,canAutoRequest,experience=null,praiseCloudGraceMs=30000 }) {
   search=createKnowledgeSearch(search);
   const logs = join(stateDir, 'logs'), output = join(stateDir, 'overlay-state.json');
   await mkdir(logs, { recursive: true });

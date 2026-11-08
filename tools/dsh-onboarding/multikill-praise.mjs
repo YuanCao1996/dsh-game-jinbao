@@ -15,7 +15,7 @@ export const PRAISE_MAX_STREAK = 5;
 export const ALLY_MIN_STREAK = 4;
 export const PRAISE_CHAIN_MS = 10_000;
 export const PRAISE_SETTLE_MS = 2_000;
-export const PRAISE_MAX_WAIT_MS = 24_000;
+export const PRAISE_MAX_WAIT_MS = 40_000;
 export const PRAISE_ROLES = Object.freeze(['jinbao', 'liurufeng', 'wangbatian', 'tiezhi']);
 
 const SELF = {
