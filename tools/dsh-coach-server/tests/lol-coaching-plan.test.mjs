@@ -51,14 +51,15 @@ test('published advice expires on purchase, respawn, new choices or TTL, but unr
 test('overlay withdraws obsolete content from battle page and playback while keeping history',()=>{
   const s={...initialOverlayState(),game:'lol',match:'m',phase:'InProgress',me:{champion:'安妮',level:7,dead:true,items:[]}};
   applyOverlayEvent(s,{game:'lol',match:'m',at:Date.now(),broadcast:'下次购买时优先补装备',validity:createAdviceValidity('death',s)},'coach');
-  assert.equal(overlayView(s).playback.length,1);
+  const coachPlayback=view=>view.playback.filter(row=>!String(row.id).startsWith('notice:'));
+  assert.equal(coachPlayback(overlayView(s)).length,1);
   s.me.dead=false;
   const view=overlayView(s);
-  assert.equal(view.playback.length,0);assert.equal(view.revokedPlayback.length,1);
+  assert.equal(coachPlayback(view).length,0);assert.equal(view.revokedPlayback.length,1);
   // Revoked from playback, but the battle page keeps the last text with a staleness
   // marker instead of dropping back to a status label the player cannot act on.
   assert.match(view.advice,/优先补装备/);assert.match(view.advice,/稍早建议，局势已变化/);assert.equal(s.broadcasts.length,1);
-  s.me.dead=true;assert.equal(overlayView(s).playback.length,0);
+  s.me.dead=true;assert.equal(coachPlayback(overlayView(s)).length,0);
 });
 test('polls trigger opening and level six once, then material changes with game-time cooldown', () => {
   const store = adapter.createState();

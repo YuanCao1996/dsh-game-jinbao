@@ -1,18 +1,16 @@
 ﻿# Display-only trace. No arguments, credentials or private reasoning are rendered.
 # 单行持续刷新：默认显示最新一步；刚学到经验时让那条学习行短暂优先显示，
 # 否则它会被紧随其后的工具调用顶掉，玩家看不到“学到了什么”。
-function Select-AgentActivityRow($rows,[int]$stickyMs=5000,[int]$max=4){
+function Select-AgentActivityRow($rows,[int]$stickyMs=5000){
  $all=@($rows|Where-Object {$_ -and $_.id})
  if(!$all.Count){return @()}
  $learn=$all | Where-Object {[string]$_.topic -eq '经验学习'} | Select-Object -Last 1
  if($learn -and $null -ne $learn.at){
   try{$age=([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())-[double]$learn.at;if($age -ge 0 -and $age -lt $stickyMs){return @($learn)}}catch{}
  }
- # 面板显示最近几行（当前步骤 + 事件），不再只留一行——只留一行时玩家永远只看到最新那条。
- # 视图里的行是「最新在前」，取前 N 条后反转成「旧→新」，底部就是最新。
- $pick=@($all | Select-Object -First $max)
- [array]::Reverse($pick)
- return $pick
+ # 规定：动态只占一行，随事件持续刷新（事件已并入这里，不再单独开一行/一块）。
+ # 视图里的行是「最新在前」，取第一条就是最新。
+ return @($all | Select-Object -First 1)
 }
 foreach($name in @('AgentActivityPanel','AgentActivityScroll','AgentActivityRows','AgentActivityLatest')){$controls[$name]=$window.FindName($name)}
 $script:activityRevision=-1;$script:activityScope='';$script:activityNodes=@{};$script:activityFollow=$true;$script:activityRendering=$false;$script:activityJob=$null

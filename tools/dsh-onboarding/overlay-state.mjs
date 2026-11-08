@@ -344,7 +344,9 @@ export const withEventFallback=(activity,state)=>{ const base=activity??{support
  const events=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)&&FEED_KINDS.has(String(event.kind??''))).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
   id:'event-'+(event.at??index)+'-'+(event.key??''),task:'events',topic:'本局事件',
   clock:event.time??'',label:String(event.text??'').slice(0,60),phase:'done'}));
- if(working.length||events.length)rows=[...working,...events];
+ // 单行显示：有正在进行的回合就显示步骤，空闲时显示最新事件。
+ // 两者不混排——混排时"最新"可能是比当前步骤更旧的事件，看起来像卡住。
+ if(working.length||events.length)rows=working.length?working:events;
  if(!rows.length)return base;
  // 最新的排最上面；顶部常驻一行对局状态（时间/英雄/等级/KDA/金币），随状态刷新跳动。
  const me=state.me??{};
@@ -433,6 +435,7 @@ const playerRows = players.map(p => {
   (() => {
     if(state.game!=='lol')return;
     // 没有数据时不要把「暂无数据 暂无」堆两列，只留阵营与英雄名。
+    const champName=shortChampion(me.champion)||String(me.champion||'本英雄');
     const rosterLine=row=>{
       const blank=value=>!value||/^暂无/.test(String(value));
       return [row.side,row.champion,blank(row.winRateText)?'':row.winRateText,blank(row.tierText)?'':row.tierText].filter(Boolean).join(' ');
@@ -455,7 +458,7 @@ const playerRows = players.map(p => {
       });
       noticeUpsert(state,roundKey,{
         at:Date.now(),stage:'augment',dimension:'augment',
-        text:'海克斯三选一 · 该英雄排名\n'+lines.join('\n'),
+        text:'海克斯三选一 · '+champName+'排名\n'+lines.join('\n'),
         brief:'海克斯三选一 · '+order.map(name=>{const row=rankOf.get(name);return row?(Number(row.rank)>0?'No.'+Number(row.rank)+' ':'')+row.name:(name+' 未上榜');}).join(' ｜ ').slice(0,90),
       });
     }
@@ -465,7 +468,7 @@ const playerRows = players.map(p => {
       const row=ranked.find(r=>r.name===picked);
       noticePush(state,'aug-picked:'+picked,{
         at:Date.now(),stage:'augment',dimension:'augment',
-        text:`已选海克斯 · ${picked}`+(row?`（该英雄 ${Number(row.rank)>0?'No.'+Number(row.rank):'排名未上榜'}${row.tier?' · '+row.tier:''}）`:''),
+        text:`已选海克斯 · ${picked}`+(row?`（${champName} ${Number(row.rank)>0?'No.'+Number(row.rank):'排名未上榜'}${row.tier?' · '+row.tier:''}）`:''),
       });
     }
     // 3) 阵容：**同一条消息原地更新**（像以前的胜率页那样只改动变化的地方），
