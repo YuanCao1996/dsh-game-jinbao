@@ -21,11 +21,14 @@ export function speakable(value){
     .replace(/[（(]/g, '，').replace(/[）)]/g, '，')
     .replace(/\s*→\s*/g, ' 到 ')
     .replace(/，{2,}/g, '，')
+    // 收尾的逗号念出来会留一个空停顿
+    .replace(/[，,、]+$/, '')
     .trim();
 }
 // Do not cut an equipment/augment name or spend another model request summarizing.
+// 朗读前先过 speakable：No.20 会被念成「N O 20」，而胶囊/短讯里这种写法很常见。
 export function briefSpeech(value,maxChars=60){
- const text=speechSegments(value,80).join('');let result='';
+ const text=speechSegments(speakable(value),80).join('');let result='';
  for(const sentence of text.match(/[^。！？!?]+[。！？!?]?/g)??[]){
   const clean=sentence.trim();if(!clean||clean.length>maxChars)continue;
   if(result.length+clean.length>maxChars)break;result+=clean;
