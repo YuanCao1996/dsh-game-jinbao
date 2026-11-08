@@ -286,3 +286,16 @@ test('view exposes side alive counts for the deferred coordination window', () =
  s.me.dead=true;
  assert.equal(overlayView(s).alliesAlive,1,'自己死了就从存活里去掉');
 });
+test('mayhem guide is attached only for KIWI mode and only the relevant stages', () => {
+  const confirmation=adapter.log.classify({kind:'augment_picked',augment:'最终形态',who:'self',source:'user-confirmed',confidence:'high'});
+  const base={me:{champion:'灵罗娃娃',items:['纳什之牙']},ownedAugments:['最终形态'],gameSeconds:600,phase:'InProgress'};
+  const kiwi=buildLolCoachingPlan([confirmation],{...base,mode:'KIWI'});
+  assert.equal(kiwi.stage,'postAugment');
+  assert.match(kiwi.prompt,/海克斯大乱斗攻略要点/);
+  assert.match(kiwi.prompt,/三选一先问三件事/);
+  assert.match(kiwi.prompt,/出装顺序/);
+  for(const mode of ['ARAM','CLASSIC','']){
+    const other=buildLolCoachingPlan([confirmation],{...base,mode});
+    assert.doesNotMatch(other.prompt,/海克斯大乱斗攻略要点/);
+  }
+});

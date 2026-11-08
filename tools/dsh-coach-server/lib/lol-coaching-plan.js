@@ -2,6 +2,7 @@
 // for a milestone or a material change; dispatch rebuilds facts from live memory.
 import {isCompletedItem} from '../../lol-companion/item-policy.mjs';
 import {eventWindow} from './event-window.mjs';
+import {MAYHEM_CORE,mayhemGuideText} from './aram-mayhem-guide.js';
 const list = value => Array.isArray(value) ? value : [];
 const names = value => list(value).map(x => typeof x === 'string' ? x : x?.name ?? x?.champion ?? x?.id).filter(Boolean);
 const fingerprint = value => JSON.stringify(value);
@@ -149,10 +150,16 @@ export function buildLolCoachingPlan(events = [], current = null) {
       me: current?.me?.dead === true ? 'dead' : 'alive',
     };
   }
-  return { stage, facts, prompt: [
+  // 海克斯大乱斗：核心决策顺序常驻，详细条目按阶段组装（只在确认 KIWI 模式时附加）。
+  const mayhem = String(current?.mode ?? '').toUpperCase() === 'KIWI' || current?.gameMode === 'KIWI';
+  const mayhemText = mayhem ? mayhemGuideText(stage) : '';
+  const mayhemBrief = mayhemText
+    ? '【海克斯大乱斗攻略要点】' + MAYHEM_CORE + '\n' + mayhemText
+    : '';  return { stage, facts, prompt: [
     '【本轮阶段任务】' + TASKS[stage],
     stage === 'coordination' ? coordinationBrief(current) : '',
     '【本轮筛选事实 JSON】' + JSON.stringify(facts),
+    mayhemBrief,
     '优先执行本轮阶段任务，不沿用历史阶段。输出最多两句、总计不超过60字、单段不换行；紧急局势仅一句。先结论再依据，每句对应本局英雄、强化、装备或事件。不复述面板，不输出泛泛口号，不显示玩家名。',
     '事实与资料分开：缺少决定结论的英雄技能、强化效果、装备或胜率资料时，使用现有DSH资料查询/联网工具，限定本局模式与版本；查不到就明确缺口，不编造数据。大招、金钱、装备和候选以最新事实为准。历史建议不是事实；不重复最近已播报且没有变化的建议。',
   ].filter(Boolean).join('\n') };
