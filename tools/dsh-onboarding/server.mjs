@@ -322,7 +322,7 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
      send(res,200,result);return;
     }catch(problem){
      const status=[400,401,403,404,409,413,429,502,503].includes(problem.status)?problem.status:503;
-     const safe=/^(请先登录已验证的账号|登录账号已变化|服务器地址不可用|响应过大|服务响应异常|账号身份无法确认|探索服务暂不可用|其他设备的数据已变化，需要检查差异|已退出探索榜|该图鉴暂未开放|探索记录无效|当前图鉴中没有该条目|本机探索记录过大|本机探索记录异常|账号身份已变化|待同步记录过多，请先同步|参与状态无效|请先参与探索榜|同步结果无法核验|当前没有可检查的冲突|冲突信息无效|数据再次变化，请重新检查差异)$/.test(problem.message)?problem.message:'探索服务暂不可用，请稍后重试';
+     const safe=/^(请先登录已验证的账号|登录账号已变化|服务器地址不可用|响应过大|服务响应异常|探索图鉴服务尚未开放，请稍后再试|账号身份无法确认|探索服务暂不可用|其他设备的数据已变化，需要检查差异|已退出探索榜|该图鉴暂未开放|探索记录无效|当前图鉴中没有该条目|本机探索记录过大|本机探索记录异常|账号身份已变化|待同步记录过多，请先同步|参与状态无效|请先参与探索榜|同步结果无法核验|当前没有可检查的冲突|冲突信息无效|数据再次变化，请重新检查差异)$/.test(problem.message)?problem.message:'探索服务暂不可用，请稍后重试';
      send(res,status,{error:safe});return;
     }
    }

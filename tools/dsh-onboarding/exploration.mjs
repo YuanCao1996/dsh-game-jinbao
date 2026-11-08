@@ -24,6 +24,9 @@ export function createDesktopExploration({stateDir, serviceBaseUrl, getToken, fe
     const chunks=[];let size=0;
     if(response.body){for await(const chunk of response.body){size+=chunk.length;if(size>524288){await response.body.cancel?.().catch(()=>{});throw fail('响应过大');}chunks.push(Buffer.from(chunk));}}
     const text=Buffer.concat(chunks).toString('utf8');
+    // 远端还没部署这套接口时，nginx 会落到站点 Flask，返回 404 + HTML。
+    // 这时给出「尚未开放」，别让用户看到 JSON 解析失败的「服务响应异常」。
+    if(response.status===404||/^\s*</.test(text))throw fail('探索图鉴服务尚未开放，请稍后再试',response.status||404);
     let value;try{value=JSON.parse(text);}catch{throw fail('服务响应异常',response.status);}
     if(await identity()!==token)throw fail('登录账号已变化',409);
     if(!response.ok)throw fail(value.code==='revision_conflict'?'其他设备的数据已变化，需要检查差异':value.code==='not_participating'?'已退出探索榜':'探索服务暂不可用',response.status);
