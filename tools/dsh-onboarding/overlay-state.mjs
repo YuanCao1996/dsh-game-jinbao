@@ -452,32 +452,31 @@ const playerRows = players.map(p => {
         text:`已选海克斯 · ${picked}`+(row?`（该英雄 ${Number(row.rank)>0?'No.'+Number(row.rank):'排名未上榜'}${row.tier?' · '+row.tier:''}）`:''),
       });
     }
-    // 3) 选人阶段：每个英雄的阵营/胜率/强度
-    if(state.phase==='ChampSelect'&&playerRows.length){
-      noticePush(state,'lineup-select:'+playerRows.map(r=>r.champion).join('|'),{
-        at:Date.now(),stage:'selection',dimension:'plan',
-        text:'选人阶段 · 阵容与胜率\n'+playerRows.map(rosterLine).join('\n'),
-        brief:'选人 · '+playerRows.slice(0,5).map(r=>`${r.side}${r.champion} ${r.winRateText}`).join(' ').slice(0,90),
-      });
-    }
-    // 4) 加载：十人阵容 + 团队加权胜率
-    if((['Loading','GameStart'].includes(state.phase)||(state.phase==='InProgress'&&Number(state.gameSeconds)<90))&&playerRows.length>=6){
-      noticePush(state,'lineup-loading:'+playerRows.map(r=>r.champion).join('|'),{
+    // 3) 阵容：**同一条消息原地更新**（像以前的胜率页那样只改动变化的地方），
+    //    不再按名单变化反复 push（那是刷屏的主因）。
+    //    ARAM/KIWI 没有 LCU 选人会话，最早能拿到名单的时刻就是加载/开局；
+    //    我方先到就先显示我方，敌方到齐后再补敌方，知识到了再补胜率/强度。
+    const roster=playerRows.filter(row=>row.champion);
+    const earlyPhase=state.phase==='ChampSelect'||['Loading','GameStart'].includes(state.phase)||(state.phase==='InProgress'&&Number(state.gameSeconds)<150);
+    if(roster.length&&earlyPhase){
+      const allies=roster.filter(row=>row.side!=='敌');
+      const enemies=roster.filter(row=>row.side==='敌');
+      const known=allies.filter(row=>row.winRate!=null).length;
+      noticeUpsert(state,'lineup',{
         at:Date.now(),stage:'loading',dimension:'plan',
-        text:'双方阵容 · 加载中\n'+playerRows.map(rosterLine).join('\n')+(teamWinRates?'\n'+teamWinRates:''),
-        brief:'双方阵容 · '+(teamWinRates||'').slice(0,90),
+        text:'双方阵容 · '+(enemies.length?'对局双方':'我方已就位')+(known<allies.length?'（胜率陆续补齐）':'')+'\n'
+          +[...allies,...enemies].map(rosterLine).join('\n')+(teamWinRates?'\n'+teamWinRates:''),
+        brief:('阵容 · '+(teamWinRates||'')).slice(0,90),
       });
     }
-    // 5) 胜率明显变化：幅度≥3 个百分点且距上次≥60 秒，避免刷屏
+    // 4) 局势估计：同样原地更新（单条消息），幅度≥1 个百分点才改写，避免无意义刷新
     if(liveEstimate&&Number.isFinite(Number(liveEstimate.ally))){
       const ally=Number(liveEstimate.ally),previous=state.noticeWinRate??null;
-      const moved=!previous||Math.abs(ally-Number(previous.ally))>=5;
-      const quiet=!previous||Date.now()-Number(previous.at)>=90000;
-      if(moved&&quiet){
+      if(!previous||Math.abs(ally-Number(previous.ally))>=1){
         state.noticeWinRate={at:Date.now(),ally};
-        noticePush(state,'winrate:'+Math.round(ally),{
+        noticeUpsert(state,'situation',{
           at:Date.now(),stage:'situation',dimension:'map',
-          text:`局势估计更新 · 我方 ${ally}%｜敌方 ${liveEstimate.enemy}% · 击杀 ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`,
+          text:`局势估计 · 我方 ${ally}%｜敌方 ${liveEstimate.enemy}% · 击杀 ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`,
           brief:`局势 ${ally}% vs ${liveEstimate.enemy}%`,
         });
       }
