@@ -52,6 +52,17 @@ export function initialOverlayState() {
 }
 // Pure projection shared by live polling and log replay tests. Epoch time only orders
 // records; the displayed clock always comes from the game's elapsed seconds.
+// 待确认的已选：面板关闭或换轮才落账；同轮刷新掉这张说明视觉误判，直接丢弃。
+function settlePendingPick(state,reason){
+  const pending=state.pendingPick;
+  if(!pending)return null;
+  state.pendingPick=null;
+  if(reason==='reroll'){state.lastPick=null;return null;}
+  const before=[...state.ownedAugments];
+  projectProgressEvent(state,pending.event);
+  trackAugmentRound(state,pending.event,before);
+  return pending.name;
+}
 export function applyOverlayEvent(state, event, file, {continueStart=false}={}) {
  // 识别盲区是诊断事件，不进入事件页，但它是经验提炼要用的真事实，这里自己计数。
  if(event&&event.kind==='augment_capture_blind'){state.captureBlind=(Number(state.captureBlind)||0)+1;return state;}
@@ -164,6 +175,11 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   }
   if (event.kind === 'player_stats') state.playerStats = list(event.rows);
   if (event.kind === 'augment_offer') {
+    // 轮次变化说明上一轮已结束：把待确认的已选落账；同轮刷新则视为误判丢弃。
+    if(state.pendingPick){
+      const sameRoll=event.roll==null||state.pendingPick.roll==null||event.roll===state.pendingPick.roll;
+      settlePendingPick(state,sameRoll?'reroll':'round');
+    }
     if((event.roll!=null&&event.roll!==state.offerRound)||!state.offers.length)state.offerHistory=[];
     state.offerRound=event.roll??state.offerRound;
     state.offers=list(event.options??event.cards??event.augments).slice(0,3);
@@ -182,7 +198,11 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
       state.lastPick=null;
     }
   }
-  if (event.kind === 'augment_offer_closed') state.offers=[];
+  if (event.kind === 'augment_offer_closed'){
+    // 面板关掉说明这一轮结束了，视觉看到的这张就是最终选择。
+    settlePendingPick(state,'close');
+    state.offers=[];
+  }
   if (event.kind === 'augment_capture_status') { state.augmentCaptureAvailable=event.available===true; state.augmentCaptureReason=text(event.reason); }
   if(event.kind==='augment_picked'&&event.source==='team-user-confirmed'&&Array.isArray(event.replaces)){
     const round=state.augmentRounds.find(row=>row.id===event.roll),name=event.augment??event.name;
@@ -190,6 +210,16 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
       const removed=round.confirmed.filter(value=>event.replaces.includes(value));
       state.ownedAugments=state.ownedAugments.filter(value=>!removed.includes(value)||state.augmentRounds.some(other=>other!==round&&other.confirmed.includes(value)));
       round.confirmed=round.confirmed.filter(value=>!removed.includes(value));
+    }
+  }
+  // 已选必须离开候选才算数：面板还开着、这张卡还在候选里时，先记为待确认，
+  // 等换轮（roll 变化）或面板关闭再落账；同轮刷新掉这张则视为误判，直接丢弃。
+  if(event.kind==='augment_picked'&&!(event.source==='team-user-confirmed')){
+    const name=event.augment??event.name;
+    const open=offerNames(state.offers);
+    if(name&&open.includes(name)){
+      state.pendingPick={name,event,roll:event.roll??state.offerRound??null,at:Date.now()};
+      return state;
     }
   }
   const previousOwned=[...state.ownedAugments];
