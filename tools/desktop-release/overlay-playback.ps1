@@ -53,13 +53,20 @@ function Split-Subtitle([string]$value,[double]$width){
   $position+=$part.Length
   if($part -eq "`n"){if($line){$lines.Add($line);$line=''};continue}
   $measure.Text=$line+$part;$measure.Measure((New-Object Windows.Size([double]::PositiveInfinity,[double]::PositiveInfinity)))
-  if($line -and $measure.DesiredSize.Width -gt $width){$lines.Add($line);$line=$part}else{$line+=$part}
+  # 中文排版：标点不放在行首，宁可让它跟着上一行一起断。
+  $punctuation='，。；！？、：）】”'
+  if($line -and $measure.DesiredSize.Width -gt $width){
+   if($punctuation.Contains($part)-and $line.Length -gt 1){$lines.Add($line+$part);$line=''}
+   else{$lines.Add($line);$line=$part}
+  }else{$line+=$part}
  }
  if($line){$lines.Add($line)};return $lines.ToArray()
 }
 function Push-Subtitle([string]$line,[bool]$animate=$true){
  $characters=0;$elements=[Globalization.StringInfo]::GetTextElementEnumerator($line);while($elements.MoveNext()){$characters++}
- $script:subtitleBaseHold=[Math]::Max(900,[Math]::Min(3600,950+$characters*75))
+  # 句号/问号结尾多停一会儿，逗号处略停，读起来更像说话。
+ $tailBonus=if($line -match '[。！？]$'){600}elseif($line -match '[，；：]$'){250}else{0}
+ $script:subtitleBaseHold=[Math]::Max(900,[Math]::Min(4200,950+$characters*75+$tailBonus))
  $script:subtitleRows.Add($line);while($script:subtitleRows.Count -gt 3){$script:subtitleRows.RemoveAt(0)}
  $height=$script:subtitleRowHeight;$duration=if($script:playbackAccelerated){120}else{240}
  $names=@('OutgoingSubtitle','PreviousSubtitle','NarrowText');$count=$script:subtitleRows.Count
