@@ -544,6 +544,23 @@ function Update-State {
        }
       })
       if($teamThread.Count){$next.thread=$teamThread}
+      # 队友强化汇总：所有人合成一条，避免五个人各刷一条把时间线冲掉。
+      $memberLines=@()
+      foreach($member in @($team.members)){
+       if(!$member){continue}
+       $augments=@($member.augments|Where-Object {$_})
+       if(!$augments.Count){continue}
+       $who=([string]$member.displayName)+$(if($member.champion){'（'+[string]$member.champion+'）'}else{''})
+       $memberLines+=($who+'：'+($augments -join '、'))
+      }
+      if($memberLines.Count){
+       $summaryRow=[pscustomobject]@{
+        role='assistant';origin='team';displayName='';
+        text=('队友强化汇总'+"`n"+($memberLines -join "`n"));
+        kind='advice';at=[double]$(if($team.updatedAt){$team.updatedAt}else{0})
+       }
+       $next.thread=@($next.thread)+@($summaryRow)
+      }
      }
     }
    }

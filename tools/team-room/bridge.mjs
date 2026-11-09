@@ -112,7 +112,15 @@ export async function createTeamBridge({ stateDir, serviceBaseUrl, getToken, get
     const status = roomProgressStatus(current, now());
     const output = { supported: true, mode: settings.mode, activeRoomId: settings.activeRoomId,
       roomName: current.room?.name ?? '', connected: current.connected, status: status || (current.room ? '' : '请先创建或加入队伍'),
-      chatRows, chat: chatRows.map(row => `${row.displayName ?? (row.role === 'assistant' ? '金宝' : '队友')}：${row.text}`).join('\n\n'),
+      chatRows,
+      chat: chatRows.map(row => `${row.displayName ?? (row.role === 'assistant' ? '金宝' : '队友')}：${row.text}`).join('\n\n'),
+      // 成员汇总：昵称 + 本局英雄 + 已选强化（服务端 member_state 提供，缺省为空）
+      members: (current.room?.members ?? []).map(member => ({
+        id: member.id ?? '',
+        displayName: String(member.displayName ?? '').slice(0, 40),
+        champion: String(member.champion ?? '').slice(0, 40),
+        augments: Array.isArray(member.augments) ? member.augments.map(name => String(name).slice(0, 40)).slice(0, 10) : [],
+      })),
       updatedAt: now() };
     await atomic(overlayFile, output);
   }
