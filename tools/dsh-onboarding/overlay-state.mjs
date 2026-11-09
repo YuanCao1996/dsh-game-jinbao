@@ -2,6 +2,9 @@ import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
 import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId, leaderboardRowData } from './leaderboard-pages.mjs';
 import { mkdir, readdir, stat, open, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
+// 本地英雄定位表（roles + 开团/硬控标记），用于选人阶段的阵容判断。
+import { readFileSync as readRosterSync } from 'node:fs';
+const lolRoster=(()=>{try{return JSON.parse(readRosterSync(new URL('./lol-roster.json',import.meta.url),'utf8'));}catch{return {};}})();
 import { WZRY_ADAPTER } from '../dsh-coach-server/lib/adapters/wzry.js';
 import { projectWzryFacts } from '../dsh-coach-server/lib/adapters/wzry-facts.js';
 import { createMatchTracker } from '../dsh-coach-server/lib/match-tracker.js';
@@ -568,6 +571,45 @@ const playerRows = players.map(p => {
         footer:full?(ratesComplete?teamWinRates:'加权样本 · 我方 '+(alliesRated>=5?weighted('友'):'待统计')):'',
         brief:full?(ratesComplete?('阵容 · '+(teamWinRates||'')):('阵容 · 我方 '+(alliesRated>=5?weighted('友'):'待统计'))).slice(0,90):'阵容 · 我方 '+allies.length+' 人已就位',
       });
+    }
+    // 3.5) 选人阶段的阵容分析（独立一条消息）：定位分布、缺什么、我该干什么。
+    if(state.phase==='ChampSelect'){
+      const mine=roster.filter(row=>row.side!=='敌').map(row=>String(row.champion??'')).filter(Boolean);
+      if(mine.length>=3){
+        const info=name=>lolRoster[name]??null;
+        const roleCount=role=>mine.filter(name=>info(name)?.roles.includes(role)).length;
+        const front=roleCount('Tank')+roleCount('Fighter');
+        const damage=roleCount('Mage')+roleCount('Marksman');
+        const engageCount=mine.filter(name=>info(name)?.engage).length;
+        const ccCount=mine.filter(name=>info(name)?.cc).length;
+        const gaps=[];
+        if(front<2)gaps.push('缺前排');
+        if(engageCount===0)gaps.push('缺开团');
+        else if(ccCount<2)gaps.push('硬控偏少');
+        if(damage<2)gaps.push('缺持续输出');
+        const verdict=gaps.length?gaps.join(' · '):'结构完整（前排/开团/输出都有）';
+        const meInfo=info(String(me.champion??''));
+        let role='';
+        if(meInfo){
+          const isFront=meInfo.roles.includes('Tank')||meInfo.roles.includes('Fighter');
+          const isBack=meInfo.roles.includes('Mage')||meInfo.roles.includes('Marksman')||meInfo.roles.includes('Support');
+          if(isFront&&front<2)role='顶前排承伤，别一个人绕后切后排';
+          else if(isFront&&engageCount===0)role='你来开团，进场先控住关键目标';
+          else if(isFront)role='跟主坦一起进场，切对面前后排之间';
+          else if(isBack&&front>=2)role='站后排输出，等前排开团后再进场';
+          else if(isBack)role='没有前排兜底，躲在塔后消耗，别贴身';
+        }
+        const lines=[
+          '我方阵容  '+mine.map(name=>{const row=info(name);return row?name+' '+(row.roles[0]??''):name;}).join(' · '),
+          '阵容判断  '+verdict,
+          ...(role?['你的角色  '+role]:[]),
+        ];
+        noticeUpsert(state,'selection-roles',{
+          at:Date.now(),stage:'selection',dimension:'plan',
+          text:'选人建议 · '+String(me.champion??'本局')+'\n'+lines.join('\n'),
+          brief:(role||verdict).slice(0,90),
+        });
+      }
     }
     // 4) 局势估计：十人胜率没凑齐之前不播报——缺人的估算会误导，玩家会以为那就是双方强度。
     // 同样原地更新（单条消息），幅度≥1 个百分点才改写，避免无意义刷新
