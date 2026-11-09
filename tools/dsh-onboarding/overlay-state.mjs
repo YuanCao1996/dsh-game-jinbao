@@ -379,6 +379,21 @@ function heroStatMatches(row,champion){
 const tierText=value=>value!==null&&value!==undefined&&/^(?:T)?\d+$/i.test(String(value).trim())?'T'+String(value).trim().replace(/^T/i,''):'暂无';
 // 三列卡片已经展示候选与排名时，建议文本里那些「No.N · 名称」就是重复噪音，
 // 在界面层直接去掉，只保留结论句——不能靠提示词让模型自己闭嘴。
+// 「本局已选海克斯」整段不显示：已选由逐条卡片呈现，模型复述的名单会过期也会写错。
+const stripOwnedList=text=>{
+ const lines=String(text??'').split(/\r?\n/);
+ const out=[];let skipping=false;
+ for(const line of lines){
+  if(/^\s*本局已选海克斯\s*$/.test(line)){skipping=true;continue}
+  if(skipping){
+   if(/^\s*$/.test(line)){skipping=false;continue}
+   if(/[、,，]/.test(line)||line.trim().length<=20){continue}
+   skipping=false;
+  }
+  out.push(line);
+ }
+ return out.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+};
 const stripDuplicatedRanks=text=>String(text??'').split(/\r?\n/)
   .filter(line=>!/^\s*No\.\d+/.test(line))
   .filter(line=>!/^\s*海克斯推荐\s*·\s*当前三选一/.test(line))
@@ -591,7 +606,10 @@ const playerRows = players.map(p => {
   const hasAugmentSlots=(state.notices??[]).some(n=>Array.isArray(n.slots)&&n.slots.length);
   if(hasAugmentSlots){
     for(const item of (state.broadcasts??[])){
-      if(typeof item.text==='string'&&/No\.\d+/.test(item.text))item.text=stripDuplicatedRanks(item.text);
+      if(typeof item.text==='string'){
+        if(/No\.\d+/.test(item.text))item.text=stripDuplicatedRanks(item.text);
+        if(item.text.includes('本局已选海克斯'))item.text=stripOwnedList(item.text);
+      }
     }
     for(const item of (state.chat??[])){
       if(item.role==='assistant'&&typeof item.text==='string'&&/No\.\d+/.test(item.text))item.text=stripDuplicatedRanks(item.text);
