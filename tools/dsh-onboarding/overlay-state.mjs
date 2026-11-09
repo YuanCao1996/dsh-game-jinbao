@@ -173,6 +173,9 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     if(freshPick&&rolled.length&&!rolled.includes(lastPick.name)){
       state.ownedAugments=state.ownedAugments.filter(name=>name!==lastPick.name);
       state.notices=(state.notices??[]).filter(n=>n.key!=='aug-picked:'+lastPick.name);
+      // 视觉认错又没把握时别猜：标记成待确认，等 trackAugmentRound 跑完再收尾
+      // （它会因为新候选把这一轮重新置为打开状态，所以标记必须延后处理）。
+      state.uncertainPick={roll:lastPick.roll??null,name:lastPick.name,at:Date.now()};
       state.lastPick=null;
     }
   }
@@ -189,6 +192,18 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   const previousOwned=[...state.ownedAugments];
   projectProgressEvent(state,event);
   trackAugmentRound(state,event,previousOwned);
+  // 待确认收尾：跑完 trackAugmentRound 之后再把那一轮置为已关闭且未确认，
+  // 悬浮窗据此弹出确认面板（选项按适配排名排序，第一名标「优先推荐」）。
+  if(state.uncertainPick){
+    const pending=state.uncertainPick;state.uncertainPick=null;
+    const round=(state.augmentRounds??[]).find(r=>(pending.roll==null||r.id===pending.roll))??(state.augmentRounds??[]).at(-1);
+    if(round){
+      round.confirmed=(round.confirmed??[]).filter(name=>name!==pending.name);
+      round.closed=true;
+      round.closedAt=Date.now();
+      round.dismissed=false;
+    }
+  }
   // 记下最近一次识别到的已选：重掷撤回时用这个状态判断，不再依赖消息卡片是否已生成。
   {
     const added=state.ownedAugments.filter(name=>!previousOwned.includes(name));
