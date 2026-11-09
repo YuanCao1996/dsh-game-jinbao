@@ -113,7 +113,7 @@ function Add-OverlaySlots($slots,[double]$font){
  for($i=0;$i -lt 3;$i++){
   $inner=New-Object Windows.Controls.StackPanel
   $isBest=$false
-  $cell.Margin=if($i -gt 0){'8,0,0,0'}else{'0'}
+  $inner.Margin=if($i -gt 0){'8,0,0,0'}else{'0'}
   if($i -lt $list.Count -and $list[$i]){
    $entry=$list[$i]
    $isBest=($entry.best -eq $true)
@@ -124,10 +124,10 @@ function Add-OverlaySlots($slots,[double]$font){
    $rank.FontWeight='SemiBold';$rank.TextTrimming='CharacterEllipsis'
    $name=New-OverlayLabel ([string]$entry.name) ([Math]::Max(11,$font-1)) '#E4EBF2'
    $name.TextWrapping='Wrap'
-   $cell.Children.Add($cap)|Out-Null;$cell.Children.Add($rank)|Out-Null;$cell.Children.Add($name)|Out-Null
+   $inner.Children.Add($cap)|Out-Null;$inner.Children.Add($rank)|Out-Null;$inner.Children.Add($name)|Out-Null
    if($entry.tier){
     $tier=New-OverlayLabel ([string]$entry.tier) ([Math]::Max(10,$font-2)) '#9CAABA'
-    $cell.Children.Add($tier)|Out-Null
+    $inner.Children.Add($tier)|Out-Null
    }
   }
   if($isBest){

@@ -623,6 +623,8 @@ const playerRows = players.map(p => {
     const earlyPhase=state.phase==='ChampSelect'||!state.phase||['Loading','GameStart'].includes(state.phase)||(state.phase==='InProgress'&&Number(state.gameSeconds)<150);
     if(roster.length&&earlyPhase){
       const allies=roster.filter(row=>row.side!=='敌');
+      // 自己可能同时出现在 me 与 allies 里，去重后再算人数（大乱斗每队 5 人）。
+      const allyNames=[...new Set(allies.map(row=>String(row.champion??'').trim()).filter(Boolean))].slice(0,5);
       const enemies=roster.filter(row=>row.side==='敌');
       const full=enemies.length>=5;
       // 没有数据时留空，由渲染层补「—」，避免出现「暂无数据 暂无」两列噪音。
@@ -634,7 +636,7 @@ const playerRows = players.map(p => {
         table:{head:['阵营','英雄','胜率','强度'],rows:tableRows,me:cell(me.champion)},
         // 十人齐且有全部胜率才给双方加权；没齐时只报我方，不出现「敌方 待补齐」。
         footer:full?(ratesComplete?teamWinRates:'加权样本 · 我方 '+(alliesRated>=5?weighted('友'):'待统计')):'',
-        brief:full?(ratesComplete?('阵容 · '+(teamWinRates||'')):('阵容 · 我方 '+(alliesRated>=5?weighted('友'):'待统计'))).slice(0,90):'阵容 · 我方 '+allies.length+' 人已就位',
+        brief:full?(ratesComplete?('阵容 · '+(teamWinRates||'')):('阵容 · 我方 '+(alliesRated>=5?weighted('友'):'待统计'))).slice(0,90):'阵容 · 我方 '+allyNames.length+' 人已就位',
       });
     }
     // 3.5) 选人阶段的阵容分析（独立一条消息）：定位分布、缺什么、我该干什么。

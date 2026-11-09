@@ -230,7 +230,7 @@ function Set-Collapsed([bool]$on,[switch]$PreserveMode){
   $window.MinWidth=0;$window.MinHeight=0;$window.ResizeMode='NoResize'
   # 收起后默认保持字幕条：只有完全不需要字幕时才退成 56×56 气泡（原来一律退气泡，
   # 收起后看起来就像整块消失了）。
-  $keepNarrow=($script:subtitleMode -or $script:narrowResume -or $script:displayMode -eq 'narrow')
+  $keepNarrow=$true  # 收起后一律是字幕条；只有显式切到「静默小球」模式才用气泡
   if($keepNarrow){
    if($controls.NarrowPanel){$controls.NarrowPanel.Visibility='Visible'}
    $controls.Bubble.Visibility='Collapsed'
