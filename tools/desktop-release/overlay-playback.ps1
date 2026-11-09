@@ -50,14 +50,25 @@ function Split-Subtitle([string]$value,[double]$width){
  while($position -lt $value.Length){
   $part=[Globalization.StringInfo]::GetNextTextElement($value,$position)
   foreach($word in $words){if($value.Substring($position).StartsWith([string]$word,[StringComparison]::Ordinal)){$measure.Text=[string]$word;$measure.Measure((New-Object Windows.Size([double]::PositiveInfinity,[double]::PositiveInfinity)));if($measure.DesiredSize.Width -le $width){$part=[string]$word};break}}
+  # 数字与单位、No.22、15/6/16 这类整体不拆开，避免「53.5」和「%」分到两行。
+  $numberMatch=[regex]::Match($value.Substring($position),'^(?:No\.\d+|\d+/\d+/\d+|\d+(?:\.\d+)?(?:%|秒|分钟|杀|个|层)?)')
+  if($numberMatch.Success -and $numberMatch.Value.Length -gt 1){$part=$numberMatch.Value}
   $position+=$part.Length
   if($part -eq "`n"){if($line){$lines.Add($line);$line=''};continue}
   $measure.Text=$line+$part;$measure.Measure((New-Object Windows.Size([double]::PositiveInfinity,[double]::PositiveInfinity)))
   # 中文排版：标点不放在行首，宁可让它跟着上一行一起断。
   $punctuation='，。；！？、：）】”'
   if($line -and $measure.DesiredSize.Width -gt $width){
-   if($punctuation.Contains($part)-and $line.Length -gt 1){$lines.Add($line+$part);$line=''}
-   else{$lines.Add($line);$line=$part}
+   if($punctuation.Contains($part)-and $line.Length -gt 1){$lines.Add($line+$part);$line='';continue}
+   # 宽度超了先找语义边界：从行尾往回找最近的标点或分隔符，尽量不在词中间断开。
+   $cut=-1
+   for($k=$line.Length-1;$k -ge 1;$k--){if('，。；！？、：·｜| '.Contains($line[$k])){$cut=$k;break}}
+   if($cut -ge [Math]::Max(2,[int]($line.Length*0.5))){
+    $lines.Add($line.Substring(0,$cut+1))
+    $line=$line.Substring($cut+1)+$part
+   }else{
+    $lines.Add($line);$line=$part
+   }
   }else{$line+=$part}
  }
  if($line){$lines.Add($line)};return $lines.ToArray()
@@ -74,6 +85,8 @@ function Push-Subtitle([string]$line,[bool]$animate=$true){
   $view=$controls[$names[$i]];if(!$view){continue};$index=$count-3+$i
   $view.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$view.RenderTransform=New-Object Windows.Media.TranslateTransform
   if($index -lt 0){$view.Text='';$view.Tag=$null;continue}
+  # 字幕模式只显示两行：最旧那行（Outgoing）留空，视线上只有上一句和当前句。
+  if($i -eq 0 -and $script:subtitleMode){$view.Text='';$view.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$view.Opacity=0;continue}
   Set-HighlightedText $view $script:subtitleRows[$index]
   $view.Width=(Get-NarrowWidth);$view.TextAlignment='Center'
   [Windows.Controls.Canvas]::SetTop($view,($i-1)*$height);[Windows.Controls.Canvas]::SetLeft($view,0)
