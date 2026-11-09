@@ -377,6 +377,12 @@ function heroStatMatches(row,champion){
  return !!target&&[row.name,row.title,row.champion].some(value=>{const hero=normalizeHero(value);return !!hero&&(hero===target||target.includes(hero));});
 }
 const tierText=value=>value!==null&&value!==undefined&&/^(?:T)?\d+$/i.test(String(value).trim())?'T'+String(value).trim().replace(/^T/i,''):'暂无';
+// 三列卡片已经展示候选与排名时，建议文本里那些「No.N · 名称」就是重复噪音，
+// 在界面层直接去掉，只保留结论句——不能靠提示词让模型自己闭嘴。
+const stripDuplicatedRanks=text=>String(text??'').split(/\r?\n/)
+  .filter(line=>!/^\s*No\.\d+/.test(line))
+  .filter(line=>!/^\s*海克斯推荐\s*·\s*当前三选一/.test(line))
+  .join('\n').replace(/\n{3,}/g,'\n\n').trim();
 const rosterChampions=state=>[...new Set([state.me.champion,...state.allies.map(p=>p.champion),...state.enemies.map(p=>p.champion),...state.bench.map(p=>p.champion)].filter(v=>typeof v==='string'&&v.trim()))].slice(0,state.phase==='ChampSelect'?30:11);
 // 资料库偶尔把内部文件错误原文当提示语返回，玩家看不懂也不需要看路径，这里统一换成一句人话。
 const friendlyKnowledgeMessage=message=>{
@@ -581,7 +587,17 @@ const playerRows = players.map(p => {
     // 3) 阵容：单条消息原地更新，内容用表格（阵营/英雄/胜率/强度）——
     //    以前拼成一行文字，中文宽度不齐看起来很乱；现在交给渲染层排成四列。
     //    选人阶段只列我方且不算加权；等加载页敌方五人都到齐，才出十人 + 加权胜率。
-    const roster=playerRows.filter(row=>row.champion);
+    // 本轮已有带 slots 的三选一卡片时，建议文本去掉重复的排名行。
+  const hasAugmentSlots=(state.notices??[]).some(n=>Array.isArray(n.slots)&&n.slots.length);
+  if(hasAugmentSlots){
+    for(const item of (state.broadcasts??[])){
+      if(typeof item.text==='string'&&/No\.\d+/.test(item.text))item.text=stripDuplicatedRanks(item.text);
+    }
+    for(const item of (state.chat??[])){
+      if(item.role==='assistant'&&typeof item.text==='string'&&/No\.\d+/.test(item.text))item.text=stripDuplicatedRanks(item.text);
+    }
+  }
+  const roster=playerRows.filter(row=>row.champion);
     // 十个人都在 roster 里、且每个人都有胜率，才算凑齐；缺人时不要拿半份数据当双方强度。
     const ratesComplete=roster.length>=10&&roster.every(row=>row.winRate!=null);
     const alliesRated=roster.filter(row=>row.side!=='敌'&&row.winRate!=null).length;
