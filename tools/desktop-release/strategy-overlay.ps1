@@ -99,7 +99,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <StackPanel>
      <StackPanel x:Name="RichContent" Visibility="Collapsed" Margin="2,2,8,0"/>
      <TextBlock x:Name="PageText" Text="等待新的游戏日志…" TextWrapping="Wrap" Foreground="#E2E8F0" FontSize="14" LineHeight="24" Margin="4"
-      FontFamily="Consolas,NSimSun,Microsoft YaHei UI" ToolTip="正文使用等宽字体，保证多列对齐"/>
+      FontFamily="Consolas,NSimSun,Microsoft YaHei UI"/>
      <StackPanel x:Name="PlayersTable" Visibility="Collapsed" Margin="4"/>
       <StackPanel x:Name="LeaderboardTable" Visibility="Collapsed" Margin="2,2,2,0"/>
      </StackPanel>

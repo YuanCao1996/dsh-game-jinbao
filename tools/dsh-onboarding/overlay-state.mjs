@@ -165,6 +165,16 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     state.offerRound=event.roll??state.offerRound;
     state.offers=list(event.options??event.cards??event.augments).slice(0,3);
     state.offerHistory=[...new Set([...state.offerHistory,...offerNames(state.offers)])].slice(0,6);
+    // 同一轮里还有重掷：如果刚识别到的「已选」这张已经不在新候选里，说明那次是提前触发
+    // （玩家其实又刷新了），撤掉这条记录与对应消息，避免错报已选海克斯。
+    const justPicked=state.ownedAugments.at(-1);
+    const pickedNotice=justPicked?(state.notices??[]).find(n=>n.key==='aug-picked:'+justPicked):null;
+    const freshPick=pickedNotice&&Date.now()-Number(pickedNotice.at??0)<20000;
+    const rolled=offerNames(state.offers);
+    if(freshPick&&rolled.length&&!rolled.includes(justPicked)){
+      state.ownedAugments=state.ownedAugments.filter(name=>name!==justPicked);
+      state.notices=(state.notices??[]).filter(n=>n.key!=='aug-picked:'+justPicked);
+    }
   }
   if (event.kind === 'augment_offer_closed') state.offers=[];
   if (event.kind === 'augment_capture_status') { state.augmentCaptureAvailable=event.available===true; state.augmentCaptureReason=text(event.reason); }
@@ -493,11 +503,17 @@ const playerRows = players.map(p => {
       });
       if(bestIndex>=0)slots[bestIndex]={...slots[bestIndex],best:true};
       const lines=slots.map(entry=>entry.slot+' · '+entry.rank+' · '+entry.name+(entry.tier?' · '+entry.tier:''));
+      // 语音只给一句结论：三个都在 30 名开外就让玩家刷新，否则直接推荐排名最高的那张。
+      const rankOfSlot=entry=>{const hit=/^No\.(\d+)$/.exec(String(entry.rank??''));return hit?Number(hit[1]):null;};
+      const rankedSlots=slots.map(entry=>({entry,value:rankOfSlot(entry)})).filter(item=>item.value!=null);
+      const bestSlot=rankedSlots.sort((a,b)=>a.value-b.value)[0]??null;
+      const offerBrief=!bestSlot?'三个都没进榜，建议刷新换一批'
+        :bestSlot.value>30?'三个排名都在 30 名以外，建议刷新看看':('推荐选 '+bestSlot.entry.name+'（'+bestSlot.entry.rank+(bestSlot.entry.tier?' '+bestSlot.entry.tier:'')+'）');
       noticeUpsert(state,roundKey,{
         at:Date.now(),stage:'augment',dimension:'augment',
         slots,
         text:'海克斯三选一 · '+champName+'排名',
-        brief:'海克斯三选一 · '+order.map(name=>{const row=rankOf.get(name);return row?(Number(row.rank)>0?'No.'+Number(row.rank)+' ':'')+row.name:(name+' 未上榜');}).join(' ｜ ').slice(0,90),
+        brief:offerBrief.slice(0,90),
       });
     }
     // 2) 已选：识别到新的强化

@@ -150,7 +150,7 @@ function Add-OverlaySlots($slots,[double]$font){
 # 之前把阵容拼成一行文字，中文字宽不齐看起来很乱，这里按列排版。
 function Add-OverlayTableRow($cells,[bool]$isHead,[double]$font,[bool]$isMe){
  $row=New-Object Windows.Controls.Grid
- $specs=@(@(30,0),@(1.0,0),@(58,1),@(30,2))
+ $specs=@(@(32,0),@(1.0,0),@(60,1),@(44,2))
  foreach($spec in $specs){
   $column=New-Object Windows.Controls.ColumnDefinition
   if([double]$spec[0] -le 1){$column.Width=[Windows.GridLength]::new([double]$spec[0],[Windows.GridUnitType]::Star)}
