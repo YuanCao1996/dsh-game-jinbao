@@ -220,8 +220,8 @@ if(!$controls.RichContent){return}
     }
     $card.Padding='0,2,0,8'
     $card.Background='Transparent'
-    $card.BorderBrush=if($highlight){'#E7BE79'}else{'#1F2A36'}
-    $card.BorderThickness=if($highlight){'2,0,0,1'}else{'0,0,0,1'}
+    $card.BorderBrush='#1F2A36'
+    $card.BorderThickness='0,0,0,1'
     $grid=New-Object Windows.Controls.StackPanel
     if($teamMember){$grid.HorizontalAlignment='Right'}
     # 头部一行：时间 + 说话人 + 类别标签。原来时间/标签独占左侧一列，
