@@ -208,15 +208,22 @@ if(!$controls.RichContent){return}
    $lastSpeaker=''
    foreach($row in $bubbles){
     $user=$row.role -eq 'user'
+    # 队伍成员（队友）的消息靠右显示、且不带类别标签；金宝的回复靠左并保留标签。
+    $teamMember=($row.origin -eq 'team' -and [string]$row.role -ne 'assistant')
     $category=Get-OverlayCategory $row
     # 符文是本局要当场用的，保留金色竖线强调。
     $highlight=(@($category.labels) -contains '符文')
     $card=New-Object Windows.Controls.Border;$card.CornerRadius=0
+    if($teamMember){
+     $card.HorizontalAlignment='Right'
+     $card.MaxWidth=[Math]::Max(200,([double]$controls.RichContent.ActualWidth*0.86))
+    }
     $card.Padding='0,2,0,8'
     $card.Background='Transparent'
     $card.BorderBrush=if($highlight){'#E7BE79'}else{'#1F2A36'}
     $card.BorderThickness=if($highlight){'2,0,0,1'}else{'0,0,0,1'}
     $grid=New-Object Windows.Controls.StackPanel
+    if($teamMember){$grid.HorizontalAlignment='Right'}
     # 头部一行：时间 + 说话人 + 类别标签。原来时间/标签独占左侧一列，
     # 正文被挤窄 62px，整块面板因此偏宽；合并成一行后正文吃满宽度。
     $header=New-Object Windows.Controls.WrapPanel
@@ -233,7 +240,7 @@ if(!$controls.RichContent){return}
      $speaker=New-OverlayLabel $speakerName 11 $speakerColor;$speaker.FontWeight='SemiBold';$speaker.Margin='0,0,6,3';$speaker.VerticalAlignment='Center'
      $header.Children.Add($speaker)|Out-Null
     }
-    foreach($tagInfo in @($category.tags)){
+    foreach($tagInfo in @(if($teamMember){@()}else{$category.tags})){
      # 标签跟在时间戳那一行后面，扫一眼就能看清类别。
      $tag=New-OverlayLabel $tagInfo.label ([Math]::Max(11,$font-1)) $tagInfo.color;$tag.FontWeight='SemiBold';$tag.Margin='0,0,6,3';$tag.VerticalAlignment='Center'
      $header.Children.Add($tag)|Out-Null
