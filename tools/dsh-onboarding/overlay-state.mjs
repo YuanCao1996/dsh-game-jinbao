@@ -202,6 +202,13 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     // 面板关掉说明这一轮结束了，视觉看到的这张就是最终选择。
     settlePendingPick(state,'close');
     state.offers=[];
+    // 这一轮完全没判定出来（视觉盲区/歧义）时，把轮次置为已关闭未确认，
+    // 三秒后悬浮窗会弹「刚才选了哪个」，由玩家点一下，而不是静默跳过。
+    const closedRound=(state.augmentRounds??[]).at(-1);
+    if(closedRound&&!closedRound.confirmed?.length&&!closedRound.dismissed&&closedRound.options?.length){
+      closedRound.closed=true;
+      closedRound.closedAt=Date.now();
+    }
   }
   if (event.kind === 'augment_capture_status') { state.augmentCaptureAvailable=event.available===true; state.augmentCaptureReason=text(event.reason); }
   if(event.kind==='augment_picked'&&event.source==='team-user-confirmed'&&Array.isArray(event.replaces)){
@@ -1105,7 +1112,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
         }
         }catch(e){failed(e); /* Keep successful candidates and retry this slot later. */ }
       })]);
-      if (stillCurrent()) knowledge = { rows: [...offered.flatMap(name=>cache.candidates.get(name)??[]),...cache.rows,...[...cache.heroes.values()].flat()].filter(row => row?._viewKind==='hero'|| (typeof row?.champion === 'string' && row.champion.includes(champion))||row?.name===champion||row?.title===champion), message: errors.includes(429)?'检索请求受限，稍后重试':errors.some(s=>s===401||s===403)?'检索授权暂不可用，请查看设置':errors.length?'检索暂时失败，正在重试':'未收录匹配的英雄数据', failed:errors.length>0 };
+      if (stillCurrent()) knowledge = { rows: [...offered.flatMap(name=>cache.candidates.get(name)??[]),...cache.rows,...[...cache.heroes.values()].flat()].filter(row => row?._viewKind==='hero'|| (typeof row?.champion === 'string' && row.champion.includes(champion))||row?.name===champion||row?.title===champion), message: errors.includes(429)?'检索请求受限，稍后重试':errors.some(s=>s===401||s===403)?'检索授权暂不可用，请查看设置':errors.length?'检索暂时失败，正在重试':([...cache.heroes.values()].flat().length?'':'未收录匹配的英雄数据'), failed:errors.length>0 };
     } catch (e) {
       if(stillCurrent())knowledge = { message: e.status === 401 || e.status === 403 ? '请在设置页登录并开通攻略检索权限；自带模型密钥与检索权限独立。' : '推荐检索暂时不可用，可在聊天中咨询。' };
     } finally {

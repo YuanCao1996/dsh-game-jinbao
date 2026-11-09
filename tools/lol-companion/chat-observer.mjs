@@ -1,4 +1,4 @@
-import {parseChat,AUGMENT_VERB_RE} from './chat.mjs';
+﻿import {parseChat,AUGMENT_VERB_RE} from './chat.mjs';
 const normalized=value=>String(value??'').replace(/[\s:：!！·•,，。.]/g,'').toLowerCase();
 function lookup(map,value){
   if(value.startsWith('~fix~'))return null;
@@ -83,7 +83,8 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
           // An attributed augment is unique per player and match, so a minute of re-reads
           // is still the same fact; unattributed lines are shared by everyone in the match
           // and must expire quickly or two players collapse into one event.
-          const window=message.kind==='purchase'?3000:champion?120000:6000;
+          // 无归属的识别被整局共享，窗口太短会让同一句话被重复上报（实测同一条出现 3 次），提到 30 秒。
+          const window=message.kind==='purchase'?3000:champion?120000:30000;
           if(last!==undefined&&at-last<window)continue;
           seen.set(key,at);
           if(seen.size>512)seen.delete(seen.keys().next().value);
