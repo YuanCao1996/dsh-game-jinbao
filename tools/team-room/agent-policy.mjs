@@ -26,8 +26,11 @@ function gamePolicy(context) {
 }
 
 
-// 必要时点名：只 @ 队伍里真实存在的人，也可以完全不 @。
+// 必要时点名：只 @ 队伍里真实存在的人，也可以完全不 @；
+// 队伍里大家更认英雄不认昵称，指人时要带上该成员的英雄常用名。
 const mentionPolicy = '回答只针对某一位或几位队友时，可以用 @昵称 点名（例如 @小明 你这波先别上），也可以完全不 @；'
+  + '指人或给建议时要说清是谁的英雄（例如「诺克萨斯之手这波先别上」），用英雄常用名而不是只写昵称；'
+  + '不确定某位成员这局玩什么就不要替他安英雄。'
   + '只 @ 队伍里真实存在的人，不编造昵称，不 @ 全员，也不为了点名叫人而凑字数。';
 export const roomSystemPolicy = (context, mentorInstruction = '') => policy + gamePolicy(context) + mentorInstruction + teammatePolicy + mentionPolicy
   + '关键时刻优先简短具体的建议。角色只影响表达；群聊始终不播报语音。';

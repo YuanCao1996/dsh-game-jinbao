@@ -232,7 +232,7 @@ if(!$controls.RichContent){return}
     $timeText.Margin='0,0,6,3';$timeText.VerticalAlignment='Center'
     $header.Children.Add($timeText)|Out-Null
     # 说话人（同一个人连续说话时只说一次）。
-    $speakerName=if($row.origin -eq 'team' -and $row.displayName){[string]$row.displayName}elseif($user){if($row.origin -eq 'phone'){'你 · 手机'}else{'你 · 电脑'}}elseif($row.failed){'本次未完成'}else{'金宝'}
+    $speakerName=if($row.origin -eq 'team' -and $row.displayName){[string]$row.displayName+$(if($row.champion){' · '+[string]$row.champion}else{''})}elseif($user){if($row.origin -eq 'phone'){'你 · 手机'}else{'你 · 电脑'}}elseif($row.failed){'本次未完成'}else{'金宝'}
     $speakerColor=if($row.failed){'#F5AD91'}elseif($highlight){'#E7BE79'}else{'#8FA0B0'}
     $repeatSpeaker=(-not $highlight) -and ($speakerName -eq $lastSpeaker)
     $lastSpeaker=if($highlight){''}else{$speakerName}
