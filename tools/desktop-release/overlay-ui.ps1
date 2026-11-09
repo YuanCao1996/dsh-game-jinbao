@@ -10,13 +10,8 @@ function New-OverlaySurfaceBrush([string]$hex){
 function Update-OverlayComposer {
  if(!$controls.ComposerPlaceholder){return}
  $controls.ComposerPlaceholder.Visibility=if($controls.QuestionBox.Text){'Collapsed'}else{'Visible'}
+ # 聊天对象（队伍/个人）由网页配置决定；悬浮窗不再提供切换按钮。
  $teamMode=$script:snapshot.teamChatMode -eq 'team'
- if($controls.TeamModeButton){
-  $controls.TeamModeButton.Visibility=if($script:snapshot.teamSupported){'Visible'}else{'Collapsed'}
-  $controls.TeamManageButton.Visibility=$controls.TeamModeButton.Visibility
-  $controls.TeamModeButton.Content=if($teamMode){'队伍'}else{'个人'}
-  $controls.ComposerPlaceholder.Text=if($teamMode){'队伍消息 · @金宝 提问'}else{'问问教练 · Enter 发送'}
- }
  $controls.SendButton.Content=if($script:job){'思考中'}else{'发送'}
  $controls.SendButton.ToolTip=if($script:job){'教练正在回复，请稍候'}else{'Enter 发送；Shift+Enter 换行'}
  # 推荐追问不再做成按钮：直接作为输入框里的提示问题自动出现；没有具体建议时用"看画面"兜底。

@@ -110,8 +110,6 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <TextBox x:Name="QuestionBox" Grid.Column="0" MaxLength="1000" MinHeight="22" AcceptsReturn="False" TextWrapping="NoWrap" MaxHeight="22" Padding="4,1" FontSize="12" Background="#19212A" Foreground="#F1F5F9" BorderBrush="#394A59" ToolTip="Enter 发送；Shift+Enter 换行"/>
      <TextBlock x:Name="ComposerPlaceholder" Grid.Column="0" Text="问问教练 · Enter 发送" Foreground="#8E9DAE" FontSize="11" Margin="9,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
      <StackPanel x:Name="ComposerActions" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,4,0">
-      <Button x:Name="TeamModeButton" Content="个人" FontSize="11" Padding="6,2" ToolTip="切换个人与队伍聊天" Visibility="Collapsed"/>
-      <Button x:Name="TeamManageButton" Content="队伍" FontSize="11" Padding="6,2" ToolTip="队伍管理" Visibility="Collapsed"/>
       <TextBlock x:Name="ChatStatusText" Foreground="#E7BE79" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="120" Margin="4,0,0,0" Visibility="Collapsed"/>
      </StackPanel>
      <Button x:Name="SendButton" Grid.Column="2" Content="发送" Background="#CBA86C" Foreground="#151A20" BorderBrush="#E7BE79" MinWidth="40" MinHeight="22" Padding="6,1" FontWeight="SemiBold"/>
@@ -158,7 +156,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
 $window=[Windows.Markup.XamlReader]::Load((New-Object Xml.XmlNodeReader $xaml))
 $controls=@{}
 foreach($name in @('MainBorder','OpacitySlider','OpacityText','Expanded','Header','TitleText','TimeText','SummaryText','LauncherText','ActionButton','Tabs','PageScroll','PageText','ChatPanel','QuestionBox','SendButton','Footer','HintText','SettingsButton','CollapseButton','CloseButton','Bubble','BubbleBall','BubbleBadge','BubbleBadgeText')){$controls[$name]=$window.FindName($name)}
-foreach($name in @('RichContent','ComposerPlaceholder','ModeButton','LatestMessageButton','ChatStatusText','TeamModeButton','TeamManageButton')){$controls[$name]=$window.FindName($name)}
+foreach($name in @('RichContent','ComposerPlaceholder','ModeButton','LatestMessageButton','ChatStatusText')){$controls[$name]=$window.FindName($name)}
 $script:scrollPositions=@{};$script:scrollFollow=@{}
  # 布局改造新增的控件也必须显式注册，否则运行时拿到的是 $null（状态点会静默不更新）。
 foreach($name in @('StatusDot','StatusText','ComposerActions')){$controls[$name]=$window.FindName($name)}
@@ -647,17 +645,9 @@ function Send-Question {
  if($script:job){$script:pendingQuestion=$question;$controls.QuestionBox.Text=''}
 }
 $controls.SendButton.Add_Click({Send-Question})
-$controls.TeamModeButton.Add_Click({
- $mode=if($script:snapshot.teamChatMode -eq 'team'){'personal'}else{'team'}
- Start-Request 'team' @{action='mode';data=@{mode=$mode}}
-})
-$controls.TeamManageButton.Add_Click({
- try{
-  $url=[IO.File]::ReadAllText((Join-Path $StateDir 'settings-link.txt')).Trim()
-  if($url -notmatch '^http://127\.0\.0\.1:[0-9]+/#[a-f0-9]{64}$'){return}
-  $uri=[Uri]$url;Start-Process ($uri.GetLeftPart([UriPartial]::Authority)+'/team-room'+$uri.Fragment)
- }catch{}
-})
+# 悬浮窗不再提供「个人/队伍」切换与队伍管理按钮：
+# 聊天对象由网页的队伍页配置（team-room-settings.json 的 mode），
+# 悬浮窗只按该配置显示队伍或个人信息。
 # 点一下输入框就该能打字：全局快捷键在游戏内可能被拦截，输入不能只依赖它。
 $script:focusComposer={
   if(!$script:interactiveMode){Set-Interaction $true}
