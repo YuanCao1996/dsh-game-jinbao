@@ -513,6 +513,9 @@ const playerRows = players.map(p => {
     //    以前拼成一行文字，中文宽度不齐看起来很乱；现在交给渲染层排成四列。
     //    选人阶段只列我方且不算加权；等加载页敌方五人都到齐，才出十人 + 加权胜率。
     const roster=playerRows.filter(row=>row.champion);
+    // 十个人都在 roster 里、且每个人都有胜率，才算凑齐；缺人时不要拿半份数据当双方强度。
+    const ratesComplete=roster.length>=10&&roster.every(row=>row.winRate!=null);
+    const alliesRated=roster.filter(row=>row.side!=='敌'&&row.winRate!=null).length;
     const earlyPhase=state.phase==='ChampSelect'||['Loading','GameStart'].includes(state.phase)||(state.phase==='InProgress'&&Number(state.gameSeconds)<150);
     if(roster.length&&earlyPhase){
       const allies=roster.filter(row=>row.side!=='敌');
@@ -525,13 +528,12 @@ const playerRows = players.map(p => {
         at:Date.now(),stage:'loading',dimension:'plan',
         text:full?'双方阵容 · 十人胜率':'我方阵容 · 选人中'+'（敌方未知）',
         table:{head:['阵营','英雄','胜率','强度'],rows:tableRows,me:cell(me.champion)},
-        footer:full?teamWinRates:'',
-        brief:full?('阵容 · '+(teamWinRates||'')).slice(0,90):'阵容 · 我方 '+allies.length+' 人已就位',
+        // 十人齐且有全部胜率才给双方加权；没齐时只报我方，不出现「敌方 待补齐」。
+        footer:full?(ratesComplete?teamWinRates:'加权样本 · 我方 '+(alliesRated>=5?weighted('友'):'待统计')):'',
+        brief:full?(ratesComplete?('阵容 · '+(teamWinRates||'')):('阵容 · 我方 '+(alliesRated>=5?weighted('友'):'待统计'))).slice(0,90):'阵容 · 我方 '+allies.length+' 人已就位',
       });
     }
     // 4) 局势估计：十人胜率没凑齐之前不播报——缺人的估算会误导，玩家会以为那就是双方强度。
-    // 十个人都在 roster 里、且每个人都有胜率，才算凑齐（缺一个都不报，避免误导读局势）。
-    const ratesComplete=roster.length>=10&&roster.every(row=>row.winRate!=null);
     // 同样原地更新（单条消息），幅度≥1 个百分点才改写，避免无意义刷新
     if(ratesComplete&&liveEstimate&&Number.isFinite(Number(liveEstimate.ally))){
       const ally=Number(liveEstimate.ally),previous=state.noticeWinRate??null;
