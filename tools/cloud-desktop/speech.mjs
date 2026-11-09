@@ -58,7 +58,8 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
     try{
      lastCode='';const segments=[item.text];emit('speech_started',{segments:1});
      for(const text of segments){
-      if(closed||controller.signal.aborted||epoch!==generation||stale(item))break;
+      // 已经开始出声就别中途切断：过期只用于丢弃还在排队的条目。
+      if(closed||controller.signal.aborted||epoch!==generation||(!played&&stale(item)))break;
       phase='synthesizing';publish();const audio=await synthesize(text,config.role,controller.signal,config.source);
       if(controller.signal.aborted||epoch!==generation||stale(item))break;
       phase='playing';played=true;publish();const started=now();await play(audio,controller.signal);emit('speech_segment_done',{elapsedMs:now()-started});
@@ -103,7 +104,9 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
   tick(){
    if(closed)return;const v=view(),key=currentKey();
    if(scope!==key){stop();scope=key;seen.clear();recent.clear();cooldownUntil=0;}
-   if(active&&stale(active)){active.controller.abort();}
+   // 正在出声时只允许「换对局/关闭语音」打断；过期判断留给还在排队的条目，
+   // 否则合成+播放只要超过有效期，末尾就会被人为切断。
+   if(active&&(active.scope!==currentKey()||!config.enabled||(phase!=='playing'&&stale(active)))){active.controller.abort();}
    prune();
    for(const item of (v.playback??[]).slice(-40)){
     if(!item||typeof item.id!=='string'||seen.has(item.id))continue;

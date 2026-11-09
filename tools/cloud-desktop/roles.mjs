@@ -27,7 +27,7 @@ export function speakable(value){
 }
 // Do not cut an equipment/augment name or spend another model request summarizing.
 // 朗读前先过 speakable：No.20 会被念成「N O 20」，而胶囊/短讯里这种写法很常见。
-export function briefSpeech(value,maxChars=60){
+export function briefSpeech(value,maxChars=80){
  const text=speechSegments(speakable(value),80).join('');let result='';
  for(const sentence of text.match(/[^。！？!?]+[。！？!?]?/g)??[]){
   const clean=sentence.trim();if(!clean||clean.length>maxChars)continue;
