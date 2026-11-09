@@ -573,8 +573,13 @@ const playerRows = players.map(p => {
       });
     }
     // 3.5) 选人阶段的阵容分析（独立一条消息）：定位分布、缺什么、我该干什么。
+    // 职业标签统一用中文，中文玩家看得更快。
+    const roleZh={Tank:'坦克',Fighter:'战士',Mage:'法师',Marksman:'射手',Support:'辅助',Assassin:'刺客'};
     if(state.phase==='ChampSelect'){
-      const mine=roster.filter(row=>row.side!=='敌').map(row=>String(row.champion??'')).filter(Boolean);
+      // 选人阶段敌方与备选也在 roster 里，只取我方（side==='友'）；取不到时退回 allies。
+      const mineRows=roster.filter(row=>row.side==='友');
+      const mine=(mineRows.length?mineRows:roster.filter(row=>row.side!=='敌'&&row.side!=='备选'))
+        .map(row=>String(row.champion??'')).filter(Boolean);
       if(mine.length>=3){
         const info=name=>lolRoster[name]??null;
         const roleCount=role=>mine.filter(name=>info(name)?.roles.includes(role)).length;
@@ -600,7 +605,7 @@ const playerRows = players.map(p => {
           else if(isBack)role='没有前排兜底，躲在塔后消耗，别贴身';
         }
         const lines=[
-          '我方阵容  '+mine.map(name=>{const row=info(name);return row?name+' '+(row.roles[0]??''):name;}).join(' · '),
+          '我方阵容  '+mine.map(name=>{const row=info(name);const zh=roleZh[row?.roles?.[0]]??row?.roles?.[0]??'';return row?(name+(zh?' '+zh:'')):name;}).join(' · '),
           '阵容判断  '+verdict,
           ...(role?['你的角色  '+role]:[]),
         ];
@@ -988,9 +993,15 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       }
       await Promise.all([base(),...rosterChampions(state).filter(name=>game==='lol'&&(force||!cache.heroes.has(name))).map(async name=>{
         try{
-          const result=await search({game,query:name,dataset:'aram-ranking',limit:1});
-          const found=(result.results??[]).map(item=>({...item.data,_viewKind:'hero'})).filter(row=>heroStatMatches(row,name));
-          if(found.length)cache.heroes.set(name,found);
+          // 先用游戏里的称号查，查不到再用本名查一次：索引里的行以本名为主键，
+          // 只按称号匹配会整批落空（实测一局里十个人全是「—」）。
+          const localName=lolRoster[name]?.name;
+          const terms=(typeof localName==='string'&&localName&&localName!==name)?[name,localName]:[name];
+          for(const term of terms){
+            const result=await search({game,query:term,dataset:'aram-ranking',limit:1});
+            const found=(result.results??[]).map(item=>({...item.data,_viewKind:'hero'})).filter(row=>heroStatMatches(row,name)||heroStatMatches(row,term));
+            if(found.length){cache.heroes.set(name,found);break;}
+          }
         }catch(e){failed(e);}
       }),...offered.filter(name=>game==='lol'&&champion&&(force||!cache.candidates.has(name))).map(async name=>{
         try{
