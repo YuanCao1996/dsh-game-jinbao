@@ -167,13 +167,13 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     state.offerHistory=[...new Set([...state.offerHistory,...offerNames(state.offers)])].slice(0,6);
     // 同一轮里还有重掷：如果刚识别到的「已选」这张已经不在新候选里，说明那次是提前触发
     // （玩家其实又刷新了），撤掉这条记录与对应消息，避免错报已选海克斯。
-    const justPicked=state.ownedAugments.at(-1);
-    const pickedNotice=justPicked?(state.notices??[]).find(n=>n.key==='aug-picked:'+justPicked):null;
-    const freshPick=pickedNotice&&Date.now()-Number(pickedNotice.at??0)<20000;
+    const lastPick=state.lastPick??null;
+    const freshPick=!!lastPick&&Date.now()-Number(lastPick.at??0)<20000;
     const rolled=offerNames(state.offers);
-    if(freshPick&&rolled.length&&!rolled.includes(justPicked)){
-      state.ownedAugments=state.ownedAugments.filter(name=>name!==justPicked);
-      state.notices=(state.notices??[]).filter(n=>n.key!=='aug-picked:'+justPicked);
+    if(freshPick&&rolled.length&&!rolled.includes(lastPick.name)){
+      state.ownedAugments=state.ownedAugments.filter(name=>name!==lastPick.name);
+      state.notices=(state.notices??[]).filter(n=>n.key!=='aug-picked:'+lastPick.name);
+      state.lastPick=null;
     }
   }
   if (event.kind === 'augment_offer_closed') state.offers=[];
@@ -189,6 +189,11 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   const previousOwned=[...state.ownedAugments];
   projectProgressEvent(state,event);
   trackAugmentRound(state,event,previousOwned);
+  // 记下最近一次识别到的已选：重掷撤回时用这个状态判断，不再依赖消息卡片是否已生成。
+  {
+    const added=state.ownedAugments.filter(name=>!previousOwned.includes(name));
+    if(added.length)state.lastPick={name:added.at(-1),roll:event.roll??state.offerRound??null,at:Date.now()};
+  }
   if (event.kind === 'event') {
     const seconds = Number(event.time ?? event.EventTime);
     const name = event.name ?? event.EventName;
