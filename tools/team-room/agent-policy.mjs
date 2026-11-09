@@ -25,5 +25,9 @@ function gamePolicy(context) {
   return mode === 'ARAM' ? '本局是普通极地大乱斗，不存在海克斯选择；不可当作海克斯大乱斗或经典召唤师峡谷。' : '英雄联盟模式尚未确认时先查当前局，不能自动当作经典模式或海克斯大乱斗。';
 }
 
-export const roomSystemPolicy = (context, mentorInstruction = '') => policy + gamePolicy(context) + mentorInstruction + teammatePolicy
+
+// 必要时点名：只 @ 队伍里真实存在的人，也可以完全不 @。
+const mentionPolicy = '回答只针对某一位或几位队友时，可以用 @昵称 点名（例如 @小明 你这波先别上），也可以完全不 @；'
+  + '只 @ 队伍里真实存在的人，不编造昵称，不 @ 全员，也不为了点名叫人而凑字数。';
+export const roomSystemPolicy = (context, mentorInstruction = '') => policy + gamePolicy(context) + mentorInstruction + teammatePolicy + mentionPolicy
   + '关键时刻优先简短具体的建议。角色只影响表达；群聊始终不播报语音。';
