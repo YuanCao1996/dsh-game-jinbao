@@ -70,6 +70,13 @@ function Set-DisplayMode([string]$mode){
   Set-Interaction $false
   $window.ResizeMode='NoResize';$controls.Expanded.Visibility='Collapsed';$controls.NarrowPanel.Visibility='Visible';$controls.ResizeGrip.Visibility='Visible';$controls.ResizeGrip.Cursor='SizeWE';$controls.ResizeGrip.Width=14;$controls.ResizeGrip.Height=14;$controls.ResizeGrip.Margin=0
   Set-NarrowMetrics;$window.UpdateLayout();$script:playbackLastTick=Get-PlaybackNow
+  # 收起后如果没有可播内容，窗口会变成全透明的一张空条——玩家以为悬浮窗消失了。
+  # 这里补一个占位提示，保证收起状态下始终看得见、也能点回去。
+  if(!$script:activePlayback -and !$script:playbackQueue.Count){
+   Set-HighlightedText $controls.NarrowText '金宝待命中 · 点这里展开'
+   $controls.NarrowText.FontSize=[Math]::Max(13,$controls.NarrowText.FontSize)
+   $controls.NarrowText.Foreground='#9CAABA'
+  }
   if(!$script:activePlayback -and !$script:playbackQueue.Count -and !$script:snapshot.ended){$latest=@($script:snapshot.playback)|Select-Object -Last 1;if($latest -and (Get-PlaybackNow)-[double]$latest.at -lt 30000 -and (!$latest.expiresAt -or (Get-PlaybackNow) -lt [double]$latest.expiresAt)){$script:playbackQueue.Add($latest)}}
   $modeClock.Start()
  }elseif($mode -eq 'silent'){Set-Collapsed $true -PreserveMode}
