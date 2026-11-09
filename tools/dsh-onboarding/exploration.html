@@ -4,6 +4,8 @@
 // 必须在其他脚本之前注册：否则脚本早期报错时监听还没装上，页面就白屏无提示。
 (function(){
  function show(msg){try{var s=document.getElementById('status');if(s){s.textContent=msg;s.style.color='#B45309';}}catch(_){}}
+ // 兜底：不管脚本顺序如何，$ 都能用（某些缓存版本的脚本先用了 $ 再声明）。
+ window.$=window.$||function(id){return document.getElementById(id)};
  window.addEventListener('error',function(e){show('页面脚本出错：'+(e.message||'未知')+'（请截图发给金宝）');});
  window.addEventListener('unhandledrejection',function(e){show('请求失败：'+((e.reason&&e.reason.message)||'未知')+'（请截图发给金宝）');});
  // 看门狗：4 秒后仍停在"正在读取"说明脚本没跑起来。
