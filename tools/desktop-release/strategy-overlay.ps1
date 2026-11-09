@@ -543,7 +543,11 @@ function Update-State {
          else{([double]$(if($team.updatedAt){$team.updatedAt}else{0}))-(([double]$(if($teamRows.Count){$teamRows.Count}else{1}))-([double]$(if($teamRow.seq){$teamRow.seq}else{0})))*1000})
        }
       })
-      if($teamThread.Count){$next.thread=$teamThread}
+      # 队伍模式不再整段替换时间线：把群聊并进现有消息流，按时间排序，
+      # 这样三选一排名、已选海克斯、阵容、局势这些信息不会因为开了队伍就消失。
+      if($teamThread.Count){
+       $next.thread=@(@($next.thread)+@($teamThread)|Sort-Object -Property at -Stable|Select-Object -Last 40)
+      }
       # 队友强化汇总：所有人合成一条，避免五个人各刷一条把时间线冲掉。
       $memberLines=@()
       foreach($member in @($team.members)){
