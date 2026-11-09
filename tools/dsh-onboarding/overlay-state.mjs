@@ -359,7 +359,10 @@ export const withEventFallback=(activity,state)=>{ const base=activity??{support
  // 之前为了防刷屏把装备和疑似识别滤掉了，但玩家需要看到这些细节，改为放宽并在别处控制总量。
  const FEED_KINDS=new Set(['Ace','TurretKilled','InhibKilled','InhibRespawningSoon','InhibRespawned','DragonKill','BaronKill','HeraldKill','Multikill','Death','augment_offer','augment_picked','inventory','augment_mutate','chat_events','purchase']);
  const stateKinds=new Set(['GameStart','GameEnd']);
- const events=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)&&FEED_KINDS.has(String(event.kind??''))).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
+ // 归属未确认的识别不进面板：OCR 合并了行时说不清是谁的强化，显示出来只会误导。
+ const unattributed=event=>String(event.kind??'')==='augment_mutate'
+  && /归属未确认|：无 ·|：未知 ·|归属不明/.test(String(event.text??''));
+ const events=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)&&FEED_KINDS.has(String(event.kind??''))&&!unattributed(event)).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
   id:'event-'+(event.at??index)+'-'+(event.key??''),task:'events',topic:'本局事件',
   clock:event.time??'',label:String(event.text??'').slice(0,60),phase:'done'}));
  // 单行显示：有正在进行的回合就显示步骤，空闲时显示最新事件。
