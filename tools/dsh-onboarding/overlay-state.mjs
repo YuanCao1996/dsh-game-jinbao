@@ -529,8 +529,11 @@ const playerRows = players.map(p => {
         brief:full?('阵容 · '+(teamWinRates||'')).slice(0,90):'阵容 · 我方 '+allies.length+' 人已就位',
       });
     }
-    // 4) 局势估计：同样原地更新（单条消息），幅度≥1 个百分点才改写，避免无意义刷新
-    if(liveEstimate&&Number.isFinite(Number(liveEstimate.ally))){
+    // 4) 局势估计：十人胜率没凑齐之前不播报——缺人的估算会误导，玩家会以为那就是双方强度。
+    // 十个人都在 roster 里、且每个人都有胜率，才算凑齐（缺一个都不报，避免误导读局势）。
+    const ratesComplete=roster.length>=10&&roster.every(row=>row.winRate!=null);
+    // 同样原地更新（单条消息），幅度≥1 个百分点才改写，避免无意义刷新
+    if(ratesComplete&&liveEstimate&&Number.isFinite(Number(liveEstimate.ally))){
       const ally=Number(liveEstimate.ally),previous=state.noticeWinRate??null;
       if(!previous||Math.abs(ally-Number(previous.ally))>=1){
         state.noticeWinRate={at:Date.now(),ally};
