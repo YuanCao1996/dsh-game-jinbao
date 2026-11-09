@@ -235,7 +235,8 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
       if(!state.events.some(e=>e.key===key)){
         const result=name==='GameEnd'?(event.Result==='Win'?'胜利':event.Result==='Lose'?'失败':null):null;
         state.events.push({key,time:clock(seconds),text:label+(result?' · '+result:''),kind:name});
-        state.events=state.events.slice(-40);
+        // 与 progress-events 保持一致：关键事件也不该被 40 条上限挤掉。
+        state.events=state.events.slice(-200);
       }
     }
   }
