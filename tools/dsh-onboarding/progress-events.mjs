@@ -10,7 +10,9 @@ export function addProgressEvent(state,key,description,seconds,topic,kind){
   const time=Number.isFinite(seconds)&&seconds>=0?String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(Math.floor(seconds%60)).padStart(2,'0'):'时间未知';
   // `kind` travels with the event so the Agent can tell an equipment change from an
   // augment confirmation without spending a query round-trip to find out.
-  state.events.push({key,text:description,time,...(topic?{topic}:{}),...(typeof kind==='string'&&kind?{kind:kind.slice(0,40)}:{})});state.events=state.events.slice(-40);
+  state.events.push({key,text:description,time,...(topic?{topic}:{}),...(typeof kind==='string'&&kind?{kind:kind.slice(0,40)}:{})});
+  // 装备更新与聊天 OCR 都在事件流里之后，40 条会被瞬间刷掉关键事件，放到 200。
+  state.events=state.events.slice(-200);
 }
 const heroes=state=>[state.me,...state.allies,...state.enemies].filter(p=>p?.champion);
 const identity=value=>String(value??'').replace(/[\s·]/g,'').toLowerCase();

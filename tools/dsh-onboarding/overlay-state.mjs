@@ -119,7 +119,20 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   }
   const mode=normalizeLolMode(event.mode??event.queue??event.state?.mode);
   if(state.game==='lol'&&mode)state.mode=mode;
-  if(event.kind==='champ_select_end'){
+  if(event.kind==='chat_events'){
+  // 游戏内聊天框 OCR 到的公告：目前是「某人买入了某件装备」，逐条并进事件流。
+  for(const item of list(event.events)){
+   if(!item||item.kind!=='purchase')continue;
+   const who=String(item.champion??'').trim();
+   const what=String(item.item??item.itemRaw??'').trim();
+   if(!what)continue;
+   const key='purchase:'+[who,what,Number(item.time)||0].join('|');
+   if(state.events.some(entry=>entry.key===key))continue;
+   state.events.push({key,time:Number.isFinite(Number(item.time))?clock(Number(item.time)):clock(state.gameSeconds),text:'装备更新：'+(who?who+' · ':'')+'买入 '+what,kind:'purchase'});
+  }
+  state.events=state.events.slice(-200);
+ }
+ if(event.kind==='champ_select_end'){
     state.ended=event.cancelled===true;state.phase=event.cancelled?'Lobby':'Loading';
     if(event.cancelled){state.me={};state.allies=[];state.enemies=[];state.bench=[];}
   }
@@ -341,7 +354,9 @@ export const withEventFallback=(activity,state)=>{ const base=activity??{support
  const working=rows.filter(row=>KEEP_WORKING.has(String(row?.phase??'')));
  // 只把「确实发生了什么」的事件放进动态：团灭/塔/水晶/龙/先锋/多杀/阵亡/海克斯三选一与已选。
  // 疑似识别、面板关闭提示、装备更新这些既不准也不重要，会把关键事件挤掉。
- const FEED_KINDS=new Set(['Ace','TurretKilled','InhibKilled','InhibRespawningSoon','InhibRespawned','DragonKill','BaronKill','HeraldKill','Multikill','Death','augment_offer','augment_picked']);
+ // 事件流展示范围：关键对局事件 + 装备更新 + 疑似强化识别 + 聊天框 OCR 到的买卖/强化公告。
+ // 之前为了防刷屏把装备和疑似识别滤掉了，但玩家需要看到这些细节，改为放宽并在别处控制总量。
+ const FEED_KINDS=new Set(['Ace','TurretKilled','InhibKilled','InhibRespawningSoon','InhibRespawned','DragonKill','BaronKill','HeraldKill','Multikill','Death','augment_offer','augment_picked','inventory','augment_mutate','chat_events','purchase']);
  const stateKinds=new Set(['GameStart','GameEnd']);
  const events=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)&&FEED_KINDS.has(String(event.kind??''))).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
   id:'event-'+(event.at??index)+'-'+(event.key??''),task:'events',topic:'本局事件',
