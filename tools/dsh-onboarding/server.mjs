@@ -308,6 +308,13 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
    if(!same(req.headers['x-jinbao-setup'],nonce)){send(res,403,{error:'设置页面已失效，请从金宝重新打开设置页面。'});return;}
    if(req.headers.origin&&req.headers.origin!=='http://'+expectedHost)throw error(403);
    if(teamRoutes&&await teamRoutes(req,res))return;
+   // 登录剩余有效期：设置页据此提示「还剩 X 小时，重启应用会自动续期」。
+   if(req.url==='/api/login-lifetime'&&req.method==='GET'){
+    let lifetime=null;try{lifetime=JSON.parse(await readFile(join(stateDir,'cloud-login.json'),'utf8'));}catch{}
+    const expiresAt=lifetime&&Number.isFinite(Number(lifetime.expiresAt))?Number(lifetime.expiresAt):null;
+    send(res,200,{expiresAt,remainingMs:expiresAt?Math.max(0,expiresAt-Date.now()):null,state:cloudRenew.state});
+    return;
+   }
    if(req.url==='/api/exploration/suggestion'&&req.method==='GET'){const view=overlay.view();send(res,200,{suggestion:currentHeroSuggestion(view),modeSuggestion:currentModeSuggestion(view)});return;}
    if(req.url.startsWith('/api/exploration')){
     try{
@@ -616,6 +623,19 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
  await writeFile(join(stateDir,'settings-link.txt'),url,{mode:0o600});
  // Renew on a timer so the session no longer depends on someone opening the settings page.
  const renewTimer=setInterval(()=>{void renewCloudSession().catch(()=>{});},60000);
+ // 启动时补一次续期：App 关机跨过过期时刻时，60 秒定时器救不回来（过期后只能重新登录）。
+ // 只在「已过可续期时间」或「剩余不足 36 小时」时触发，避免每次启动都换一次令牌。
+ void (async()=>{try{
+  let lifetime=null;try{lifetime=JSON.parse(await readFile(join(stateDir,'cloud-login.json'),'utf8'));}catch{}
+  if(lifetime&&Number.isFinite(lifetime.expiresAt)){
+   const remaining=Number(lifetime.expiresAt)-Date.now();
+   const due=Number.isFinite(lifetime.renewAfter)?Date.now()>Number(lifetime.renewAfter):true;
+   if(due||remaining<36*3600*1000)await renewCloudSession({force:true});
+   await writeFile(join(stateDir,'cloud-session.json'),JSON.stringify({
+    expiresAt:Number(lifetime.expiresAt),remainingMs:Math.max(0,remaining),
+    state:cloudRenew.state,checkedAt:Date.now()},{mode:0o600})).catch(()=>{});
+  }
+ }catch{}})();
  renewTimer.unref?.();
  let httpClosing;
  const stopAccepting=()=>{accepting=false;team?.stopAccepting();if(!httpClosing){httpClosing=new Promise(resolve=>server.close(()=>resolve()));server.closeAllConnections();}};
