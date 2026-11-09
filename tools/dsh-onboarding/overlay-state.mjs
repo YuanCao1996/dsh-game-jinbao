@@ -848,7 +848,31 @@ const playerRows = players.map(p => {
     // 原海克斯页/胜率页的内容以同一条时间线出现，玩家不用切页就能看到。
     // table/footer 透传给渲染层：阵容这类内容排成四列表格，比拼一行文字整齐得多。
     const notices = (state.notices ?? []).map(n => ({ role: 'assistant', origin: 'coach', text: n.text, at: n.at, kind: 'notice', dimension: n.dimension ?? '', stage: n.stage ?? '', ...(n.table?{table:n.table}:{}) , ...(n.footer?{footer:n.footer}:{}) , ...(n.slots?{slots:n.slots}:{}) }));
-    return [...spoken, ...notices, ...turns].filter(r => r.text).sort((a, b) => a.at - b.at).slice(-40);
+    // 时间线渲染前统一去重：三选一的候选/排名由卡片呈现，建议里再列一遍只是噪音；
+    // 「本局已选海克斯」整份名单同理（已选有逐条卡片，模型复述会过期）。
+    const cleanAdvice=row=>{
+      if(!row||typeof row.text!=='string')return row;
+      if(row.kind!=='advice'&&row.kind!=='notice')return row;
+      let lines=row.text.split(/\r?\n/);
+      const hasRankLines=lines.some(line=>/^\s*No\.\d+\s*·/.test(line));
+      if(hasRankLines){
+        lines=lines.filter(line=>!/^\s*No\.\d+\s*·/.test(line)&&!/^\s*海克斯推荐\s*·\s*当前三选一/.test(line));
+      }
+      if(lines.some(line=>/^\s*本局已选海克斯\s*$/.test(line))){
+        const out=[];let skip=false;
+        for(const line of lines){
+          if(/^\s*本局已选海克斯\s*$/.test(line)){skip=true;continue}
+          if(skip){if(/^\s*$/.test(line)){skip=false;continue}
+            if(/[、,，]/.test(line)||line.trim().length<=24){continue}
+            skip=false;}
+          out.push(line);
+        }
+        lines=out;
+      }
+      const text=lines.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+      return text===row.text?row:{...row,text};
+    };
+    return [...spoken, ...notices, ...turns].map(cleanAdvice).filter(r => r.text).sort((a, b) => a.at - b.at).slice(-40);
    })(),
    // Events are too long to list here; the page keeps only the newest line and updates it.
    eventTicker: (() => { const last = state.events.at(-1); return last ? `${last.time ?? ''} ${last.text ?? ''}`.trim() : ''; })(),
