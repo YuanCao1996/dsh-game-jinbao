@@ -127,6 +127,18 @@ export function buildLolCoachingPlan(events = [], current = null) {
     me: hero(me), allies: list(current?.allies ?? roster.allies).map(hero),
     enemies: list(current?.enemies ?? roster.enemies).map(hero),
     ownedAugments: current?.ownedAugments ?? s.teamfight?.pickedAugments ?? [],
+    // 多杀硬字段：游戏事件里的 KillStreak 是权威值，提示词据此播报，禁止模型自己数或改口。
+    multikill: (() => {
+      const hit = [...events].reverse().find(e => e.kind === 'event' && String(e.name ?? e.EventName ?? '') === 'Multikill');
+      if (!hit) return null;
+      const streak = Number(hit.KillStreak ?? hit.killStreak ?? 0);
+      if (!Number.isFinite(streak) || streak < 2) return null;
+      const killer = String(hit.killer ?? hit.KillerName ?? '');
+      const me2=String(current?.me?.champion ?? '').trim();
+      const allies=list(current?.allies ?? roster.allies).map(p=>String(p?.champion ?? ''));
+      const mine = !!killer && !!me2 && (killer.includes(me2) || allies.some(name => name && killer.includes(name)));
+      return { streak, killer, mine, label: streak + '杀' };
+    })(),
     // Round evidence retains confirmed vs inferred selection provenance.
     augmentRounds: list(current?.augmentRounds).slice(-6),
     // Same window as the overlay and the cloud Agent, so a turn never reasons about a
@@ -162,6 +174,7 @@ export function buildLolCoachingPlan(events = [], current = null) {
     mayhemBrief,
     '优先执行本轮阶段任务，不沿用历史阶段。输出最多两句、总计不超过60字、单段不换行；紧急局势仅一句。先结论再依据，每句对应本局英雄、强化、装备或事件。不复述面板，不输出泛泛口号，不显示玩家名。',
     '事实与资料分开：缺少决定结论的英雄技能、强化效果、装备或胜率资料时，使用现有DSH资料查询/联网工具，限定本局模式与版本；查不到就明确缺口，不编造数据。大招、金钱、装备和候选以最新事实为准。历史建议不是事实；不重复最近已播报且没有变化的建议。',
+    '多杀数量只认 facts.multikill.streak（2=双杀，3=三杀，4=四杀，5=五杀及以上），不得自行数击杀或改写措辞；该字段为 null 时不要提多杀。',
   ].filter(Boolean).join('\n') };
 }
 
