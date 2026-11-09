@@ -98,7 +98,9 @@ export async function createTeamBridge({ stateDir, serviceBaseUrl, getToken, get
     }
   }
   async function flush() {
-    const chatRows = current.messages.slice(-80).map(row => ({ role: row.role ?? 'user', displayName: row.displayName,
+    // 智能体选择不接话时会输出「不回复」标记：这类条目不进群聊视图。
+  const visibleMessages = current.messages.filter(row => !String(row.text ?? '').includes('【不回复】'));
+  const chatRows = visibleMessages.slice(-80).map(row => ({ role: row.role ?? 'user', displayName: row.displayName,
       text: adviceStatusLabel(row)?adviceStatusLabel(row)+'\n'+row.text:row.text, origin: 'team', seq: row.seq, replyTo: row.replyTo }));
     const status = roomProgressStatus(current, now());
     const output = { supported: true, mode: settings.mode, activeRoomId: settings.activeRoomId,
@@ -223,7 +225,9 @@ export async function createTeamBridge({ stateDir, serviceBaseUrl, getToken, get
         const text = String(data.text ?? '').trim();
         if (!text || text.length > 2000) throw new Error('invalid_message');
         const message = await client.send(roomId, { clientMessageId: data.clientMessageId ?? randomUUID(), text,
-          ask: data.ask === true || mentionsRoomMentor(text, current.room), replyTo: data.replyTo ?? null });
+          // 第六个队友：每条消息都交给它自己判断要不要接话；
+          // 被 @ 或点名时后端会要求必须回复，不在这里拦截。
+          ask: true, replyTo: data.replyTo ?? null });
         let admission = null;
         if (message.message.trigger === 'ask') {
           try { await client.enqueue(roomId, message.message.seq); }

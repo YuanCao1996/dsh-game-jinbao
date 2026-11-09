@@ -17,7 +17,7 @@ function Update-OverlayComposer {
  # 推荐追问不再做成按钮：直接作为输入框里的提示问题自动出现；没有具体建议时用"看画面"兜底。
  $suggestion=[string]$script:snapshot.suggestedQuestion
  if(!$teamMode -and !$suggestion -and $script:snapshot.match -and !$script:snapshot.ended){$suggestion='看看当前画面，我现在该注意什么？'}
- $base=if($teamMode){'队伍消息 · @金宝 提问'}else{'问问教练 · Enter 发送'}
+ $base=if($teamMode){'队伍消息 · 直接说话，金宝会自己判断要不要接'}else{'问问教练 · Enter 发送'}
  if($controls.ComposerPlaceholder){
   $controls.ComposerPlaceholder.Text=if($teamMode -or !$suggestion){$base}else{$base+'　例如：'+$suggestion}
   $controls.ComposerPlaceholder.ToolTip=$suggestion
