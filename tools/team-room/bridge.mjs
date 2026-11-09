@@ -101,7 +101,9 @@ export async function createTeamBridge({ stateDir, serviceBaseUrl, getToken, get
     // 智能体选择不接话时会输出「不回复」标记：这类条目不进群聊视图。
   const visibleMessages = current.messages.filter(row => !String(row.text ?? '').includes('【不回复】'));
   const chatRows = visibleMessages.slice(-80).map(row => ({ role: row.role ?? 'user', displayName: row.displayName,
-      text: adviceStatusLabel(row)?adviceStatusLabel(row)+'\n'+row.text:row.text, origin: 'team', seq: row.seq, replyTo: row.replyTo }));
+      text: adviceStatusLabel(row)?adviceStatusLabel(row)+'\n'+row.text:row.text, origin: 'team', seq: row.seq, replyTo: row.replyTo,
+      // 服务端有消息时间就用它；没有时由悬浮窗按 seq 兜底排序。
+      at: [row.at, row.createdAt, row.sentAt].find(value => Number.isFinite(value)) ?? null }));
     const status = roomProgressStatus(current, now());
     const output = { supported: true, mode: settings.mode, activeRoomId: settings.activeRoomId,
       roomName: current.room?.name ?? '', connected: current.connected, status: status || (current.room ? '' : '请先创建或加入队伍'),

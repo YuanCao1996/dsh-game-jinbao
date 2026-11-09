@@ -532,6 +532,18 @@ function Update-State {
      $next|Add-Member -NotePropertyName teamChatStatus -NotePropertyValue ([string]$team.status) -Force
      if($team.mode -eq 'team'){
       $next.chat=[string]$team.chat;$next.chatRows=@($team.chatRows)
+      # 队伍模式下，战况时间线要显示队友与金宝的群消息，而不是个人教练流。
+      $teamRows=@($team.chatRows|Where-Object {$_ -and $_.text})
+      $teamThread=@(foreach($teamRow in $teamRows){
+       [pscustomobject]@{
+        role=[string]$teamRow.role;origin='team';displayName=[string]$teamRow.displayName;
+        text=[string]$teamRow.text;
+        kind=if([string]$teamRow.role -eq 'assistant'){'advice'}else{'chat'};
+        at=$(if($null -ne $teamRow.at){[double]$teamRow.at}
+         else{([double]$(if($team.updatedAt){$team.updatedAt}else{0}))-(([double]$(if($teamRows.Count){$teamRows.Count}else{1}))-([double]$(if($teamRow.seq){$teamRow.seq}else{0})))*1000})
+       }
+      })
+      if($teamThread.Count){$next.thread=$teamThread}
      }
     }
    }
