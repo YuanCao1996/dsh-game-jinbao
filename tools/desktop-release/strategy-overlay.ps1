@@ -227,13 +227,28 @@ function Set-Collapsed([bool]$on,[switch]$PreserveMode){
  if($on){
   if($script:displayMode -eq 'large'){$script:expandedWidth=$window.Width;$script:expandedHeight=$window.Height}
   $controls.Expanded.Visibility='Collapsed';$controls.ResizeGrip.Visibility='Collapsed'
-  if($controls.NarrowPanel){$controls.NarrowPanel.Visibility='Collapsed'}
-  $controls.Bubble.Visibility='Visible'
   $window.MinWidth=0;$window.MinHeight=0;$window.ResizeMode='NoResize'
-  $window.Width=56;$window.Height=56
-  $window.Left=$area.Right-$window.Width
-  $window.Top=[Math]::Max($area.Top,[Math]::Min($window.Top,$area.Bottom-$window.Height))
-  $controls.MainBorder.CornerRadius='28';$controls.MainBorder.Padding='0';$controls.MainBorder.BorderThickness=0
+  # 收起后默认保持字幕条：只有完全不需要字幕时才退成 56×56 气泡（原来一律退气泡，
+  # 收起后看起来就像整块消失了）。
+  $keepNarrow=($script:subtitleMode -or $script:narrowResume -or $script:displayMode -eq 'narrow')
+  if($keepNarrow){
+   if($controls.NarrowPanel){$controls.NarrowPanel.Visibility='Visible'}
+   $controls.Bubble.Visibility='Collapsed'
+   $script:displayMode='narrow';$script:narrowResume=$false
+   $rowHeight=[Math]::Ceiling(([double]$controls.FontSlider.Value+1)*1.6+4)
+   $window.Width=[Math]::Min([Math]::Max(260,$script:narrowWidth),$area.Width-20)
+   $window.Height=if($script:subtitleMode){2*$rowHeight+24}else{$rowHeight+24}
+   $window.Left=$area.Right-$window.Width
+   $window.Top=[Math]::Max($area.Top,[Math]::Min($window.Top,$area.Bottom-$window.Height))
+   $controls.MainBorder.CornerRadius='12';$controls.MainBorder.Padding='8,6';$controls.MainBorder.BorderThickness=0
+  }else{
+   if($controls.NarrowPanel){$controls.NarrowPanel.Visibility='Collapsed'}
+   $controls.Bubble.Visibility='Visible'
+   $window.Width=56;$window.Height=56
+   $window.Left=$area.Right-$window.Width
+   $window.Top=[Math]::Max($area.Top,[Math]::Min($window.Top,$area.Bottom-$window.Height))
+   $controls.MainBorder.CornerRadius='28';$controls.MainBorder.Padding='0';$controls.MainBorder.BorderThickness=0
+  }
  }else{
   $window.MinWidth=360;$window.MinHeight=320;$window.ResizeMode='CanResize'
   $window.Width=$script:expandedWidth;$window.Height=$script:expandedHeight

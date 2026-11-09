@@ -30,7 +30,8 @@ function Set-NarrowMetrics {
  $subtitleSize=[Math]::Min(24,$size+1)
  foreach($name in @('NarrowText','PreviousSubtitle','OutgoingSubtitle')){if($controls[$name]){$controls[$name].FontSize=$subtitleSize}}
  $script:subtitleRowHeight=[Math]::Ceiling($subtitleSize*1.6+4)
- if($script:displayMode -eq 'narrow' -and !$script:collapsed){
+ // 收起时如果是字幕模式，也要排字幕条尺寸（原来收起后不再排版，结果停在 56×56）。
+ if($script:displayMode -eq 'narrow' -and (!$script:collapsed -or $script:subtitleMode)){
   $window.MinWidth=[Math]::Min(260,$area.Width-20);$window.MinHeight=40
   $window.Width=[Math]::Min([Math]::Max($window.MinWidth,$script:narrowWidth),$area.Width-20)
   $window.Height=if($script:subtitleMode){2*$script:subtitleRowHeight+24}else{$script:subtitleRowHeight+24}

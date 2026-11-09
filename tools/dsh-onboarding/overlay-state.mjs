@@ -585,7 +585,8 @@ const playerRows = players.map(p => {
     // 十个人都在 roster 里、且每个人都有胜率，才算凑齐；缺人时不要拿半份数据当双方强度。
     const ratesComplete=roster.length>=10&&roster.every(row=>row.winRate!=null);
     const alliesRated=roster.filter(row=>row.side!=='敌'&&row.winRate!=null).length;
-    const earlyPhase=state.phase==='ChampSelect'||['Loading','GameStart'].includes(state.phase)||(state.phase==='InProgress'&&Number(state.gameSeconds)<150);
+    // 加载页常常拿不到 phase（实测为空字符串），空 phase 也要出表，否则敌方 5 人的胜率永远不显示。
+    const earlyPhase=state.phase==='ChampSelect'||!state.phase||['Loading','GameStart'].includes(state.phase)||(state.phase==='InProgress'&&Number(state.gameSeconds)<150);
     if(roster.length&&earlyPhase){
       const allies=roster.filter(row=>row.side!=='敌');
       const enemies=roster.filter(row=>row.side==='敌');
