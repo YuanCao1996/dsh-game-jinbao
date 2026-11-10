@@ -187,7 +187,16 @@ function Playback-Tick {
    $controls.NarrowText.Text='等待新的对局建议…';$modeClock.Stop();return
   }
   $modeClock.Stop();Clear-PlaybackRows
-  if(!$script:collapsed){Set-Collapsed $true -PreserveMode}
+  # 空闲时保持用户选定的形态：这里以前会 Set-Collapsed，播报一停就缩走，
+  # 下一条播报又自动展开，表现为「消失一会儿又自己恢复」。
+  if($script:displayMode -eq 'narrow'){
+   try{
+    Set-HighlightedText $controls.NarrowText '金宝待命中 · 点这里展开'
+    $controls.NarrowText.Foreground='#9CAABA'
+    $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null)
+    $controls.NarrowCanvas.Opacity=1
+   }catch{}
+  }
   return
  }
  # 按积压条数分级加速：一条积压略快，多积压明显缩短，避免长句把整队拖住。

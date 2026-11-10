@@ -241,6 +241,13 @@ function Set-Collapsed([bool]$on,[switch]$PreserveMode){
    $window.Left=$area.Right-$window.Width
    $window.Top=[Math]::Max($area.Top,[Math]::Min($window.Top,$area.Bottom-$window.Height))
    $controls.MainBorder.CornerRadius='12';$controls.MainBorder.Padding='8,6';$controls.MainBorder.BorderThickness=0
+   # 收起成字幕条时如果当前没有内容，补一行占位，避免整条透明看起来像消失。
+   try{
+    if(-not ([string]$controls.NarrowText.Text).Trim()){Set-HighlightedText $controls.NarrowText '金宝待命中 · 点这里展开';$controls.NarrowText.Foreground='#9CAABA'}
+    $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null)
+    $controls.NarrowCanvas.Opacity=1
+    $controls.NarrowPanel.Visibility='Visible'
+   }catch{}
   }else{
    if($controls.NarrowPanel){$controls.NarrowPanel.Visibility='Collapsed'}
    $controls.Bubble.Visibility='Visible'
