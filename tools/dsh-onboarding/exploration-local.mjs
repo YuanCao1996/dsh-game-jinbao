@@ -87,6 +87,11 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       participating: false,
       local: true,
       board: {entries: []},
+      // 上次一起打的时间（毫秒），卡片用来显示「上次一起 ?月?日」。
+      lastPlayed: Object.fromEntries(list.map(name => [name,
+        store.matches.filter(row => row.category === category && row.entity === name)
+          .reduce((latest, row) => Math.max(latest, Number(row.endedAt) || 0), 0)
+      ]).filter(([, at]) => at > 0)),
       // 每个条目最近的对局回忆（只含本机记录），按时间倒序，最多 8 条。
       memories: Object.fromEntries(list.map(name => [name,
         store.matches.filter(row => row.category === category && row.entity === name)
