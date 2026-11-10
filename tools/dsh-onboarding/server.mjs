@@ -278,6 +278,22 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
     res.writeHead(200,{'Content-Type':req.url.endsWith('.jpg')?'image/jpeg':'image/png','Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'});
     res.end(await readFile(new URL('.'+req.url,import.meta.url)));return;
    }
+   // 英雄头像本地缓存：/exploration-icon/<alias>.jpg
+   // 首次请求时从公开 CDN 下载并写盘，之后只读本地文件，页面不再依赖外部网络。
+   if(req.method==='GET'&&req.url.startsWith('/exploration-icon/')){
+    const alias=decodeURIComponent(String(req.url.slice('/exploration-icon/'.length))).replace(/\.jpg$/i,'');
+    if(!/^[A-Za-z0-9_.]{1,40}$/.test(alias)){send(res,400,{error:'bad alias'});return;}
+    const iconDir=join(stateDir,'exploration-icons');await mkdir(iconDir,{recursive:true});
+    const iconFile=join(iconDir,alias+'.jpg');
+    let iconBytes=null;try{iconBytes=await readFile(iconFile);}catch{}
+    if(!iconBytes){
+     try{const upstream=await fetch('https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/'+alias+'_0.jpg');
+      if(upstream.ok){iconBytes=Buffer.from(await upstream.arrayBuffer());await writeFile(iconFile,iconBytes);}}catch{}
+    }
+    if(!iconBytes){send(res,404,{error:'icon missing'});return;}
+    res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'public, max-age=604800','Content-Length':iconBytes.length});
+    res.end(iconBytes);return;
+   }
    if(req.method==='GET'&&req.url==='/exploration'){
     res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src https://game.gtimg.cn; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
     res.end(await readFile(new URL('./exploration.html',import.meta.url)));return;
