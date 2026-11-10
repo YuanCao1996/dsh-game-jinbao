@@ -1,3 +1,8 @@
+import {readFileSync as readLocalFile} from 'node:fs';
+import {fileURLToPath as localFileUrl} from 'node:url';
+// 称号 → Data Dragon alias；图标走公开 CDN，是否真的请求由页面上的「加载图标」开关决定。
+const explorationAliases=(()=>{try{return JSON.parse(readLocalFile(localFileUrl(new URL('./exploration-aliases.json',import.meta.url)),'utf8'));}catch{return {};}})();
+const championIcon=name=>{const alias=explorationAliases[name];return alias?'https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/'+alias+'_0.jpg':null;};
 // 本地版探索记录：不联网、不上传、没有排行榜。
 //
 // 只需要回答一件事：我自己探索过哪些英雄/模式。排行榜、跨设备同步、服务端防作弊
@@ -74,7 +79,7 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       names: list,
       selected,
       aliases: {},
-      icons: {},
+      icons: Object.fromEntries(list.map(name=>[name,championIcon(name)]).filter(([,url])=>!!url)),
       catalogComplete: list.length > 0,
       pending: 0,
       // 本地版没有排行榜，页面会据此隐藏参与/榜单区域
