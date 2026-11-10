@@ -1266,7 +1266,19 @@ try{
   $window.Dispatcher.add_UnhandledException({param($sender,$eventArgs)
    try{
     $ex=$eventArgs.Exception
-    Log-OverlayState 'unhandled-ui' @{message=[string]$ex.Message;type=[string]$ex.GetType().FullName;stack=([string]$ex.StackTrace) -replace '\s+',' '}
+    $errRecord=$null
+    try{$errRecord=$ex.ErrorRecord}catch{}
+    Log-OverlayState 'unhandled-ui' @{
+     message=[string]$ex.Message
+     type=[string]$ex.GetType().FullName
+     script=([string]$errRecord.InvocationInfo.ScriptName)
+     line=[int]$errRecord.InvocationInfo.ScriptLineNumber
+     code=(([string]$errRecord.InvocationInfo.Line).Trim() -replace '\s+',' ')
+     position=(([string]$errRecord.InvocationInfo.PositionMessage) -replace '\s+',' ')
+     target=([string]$errRecord.TargetObject)
+     stack=(([string]$ex.StackTrace) -replace '\s+',' ').Substring(0,[Math]::Min(600,(([string]$ex.StackTrace) -replace '\s+',' ').Length))
+    }
+    try{Log-OverlayState ('unhandled-ui-pos') @{position=(([string]$ex.InvocationInfo.PositionMessage) -replace '\s+',' ')}}catch{}
    }catch{}
   })
  }catch{}
