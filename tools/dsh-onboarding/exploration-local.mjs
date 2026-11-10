@@ -123,35 +123,30 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
 
   // 从视图里尽量稳地抽出一局的关键信息：抽不到就留空，不编造。
   function matchMemory(view, champion, mode) {
-    const text = value => String(value ?? '');
-    const statLine = text(view?.stats) || text(view?.liveStats) || '';
-    const kdaMatch = statLine.match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/);
-    const events = Array.isArray(view?.events) ? view.events : [];
-    const texts = events.map(event => text(event?.text));
-    const highlights = [];
-    const multi = texts.find(line => /三杀|四杀|五杀|双杀/.test(line));
-    if (multi) highlights.push((multi.match(/三杀|四杀|五杀|双杀/) ?? [''])[0]);
-    const aces = texts.filter(line => line.includes('团灭')).length;
-    if (aces) highlights.push('团灭 ×' + aces);
-    const owned = Array.isArray(view?.augments) ? view.augments : [];
-    const augments = owned.map(item => typeof item === 'string' ? item : text(item?.name)).filter(Boolean).slice(0, 6);
-    const resultText = texts.find(line => /胜利|失败/.test(line)) ?? '';
-    const win = /胜利/.test(resultText) ? true : /失败/.test(resultText) ? false : null;
+    const str = value => String(value ?? '').trim();
+    const live = view?.liveStats && typeof view.liveStats === 'object' ? view.liveStats : null;
+    // KDA：真实视图里只有 liveStats.kda / summary 这两种来源，别去猜别的字段。
+    const kdaText = str(live?.kda) || (str(view?.summary).match(/(\d+\s*\/\s*\d+\s*\/\s*\d+)/) ?? [''])[0];
+    const kdaMatch = kdaText.match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/);
+    // 时长：gameTime 是 mm:ss。
+    const clock = str(live?.clock) || str(view?.gameTime);
+    const clockMatch = clock.match(/^(\d{1,3}):(\d{2})$/);
+    const durationSeconds = clockMatch ? Number(clockMatch[1]) * 60 + Number(clockMatch[2]) : null;
     const startedAt = Number(view?.matchStartedAt) || null;
     const endedAt = Date.now();
-    const durationSeconds = startedAt ? Math.max(0, Math.round((endedAt - startedAt) / 1000)) : (Number(view?.gameSeconds) || null);
     return {
-      id: text(view?.match) || champion + '@' + endedAt,
+      id: str(view?.match) || champion + '@' + endedAt,
       category: '英雄',
       entity: champion,
       mode,
       startedAt,
       endedAt,
       durationSeconds,
+      level: Number(live?.level) || null,
       kda: kdaMatch ? [Number(kdaMatch[1]), Number(kdaMatch[2]), Number(kdaMatch[3])] : null,
-      win,
-      augments,
-      highlights,
+      win: null,
+      augments: [],
+      highlights: [],
     };
   }
 
@@ -189,6 +184,8 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       await lock(async () => {
         const store = await load();
         if (!Array.isArray(store.matches)) store.matches = [];
+        // 清掉旧版抽取失败写进来的空回忆（KDA、时长、等级全空）。
+        store.matches = store.matches.filter(row => row && (row.kda || row.durationSeconds || row.level));
         if (store.matches.some(row => row.id === memory.id)) return;
         store.matches.push(memory);
         // 只保留最近 500 局，避免文件无限增长。

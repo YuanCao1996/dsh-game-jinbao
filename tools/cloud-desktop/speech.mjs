@@ -1,4 +1,4 @@
-import {readFile,writeFile,rename,mkdir} from 'node:fs/promises';
+import {readFile,writeFile,rename,mkdir,appendFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runSpeechProcess} from './speech-process.mjs';
@@ -41,6 +41,13 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
  try{const saved=JSON.parse(await readFile(path,'utf8'));if(typeof saved.enabled==='boolean')config.enabled=saved.enabled;if(typeof saved.chat==='boolean')config.chat=saved.chat;if(roles.some(r=>r.id===saved.role))config.role=saved.role;if(['official','byok'].includes(saved.source))config.source=saved.source;}catch(error){if(error.code==='ENOENT')try{config.enabled=JSON.parse(await readFile(join(stateDir,'overlay-display.json'),'utf8')).speech===true;}catch{}}
  const currentKey=()=>{const v=view();return (v.game||'lol')+':'+(v.match||'waiting');};
  const emit=(action,value={})=>{try{trace({action,role:config.role,...value});}catch{}};
+ // 语音审计：把「本来要念的文本」和「实际念出去的文本」都落盘，
+ // 之后可以跟界面显示内容逐条比对（谁被压缩、谁被丢弃、谁被中断）。
+ const auditFile=join(stateDir,'logs','speech.jsonl');
+ let auditWrite=Promise.resolve();
+ const audit=entry=>{auditWrite=auditWrite.catch(()=>{}).then(async()=>{
+  try{await mkdir(join(stateDir,"logs"),{recursive:true});
+   await appendFile(auditFile,JSON.stringify({at:now(),scope:currentKey(),role:config.role,...entry})+'\n',{mode:0o600});}catch{}});};
  const state=()=>({supported:true,...config,roleName:roleById(config.role).name,voice:roleById(config.role).voice,model:roleById(config.role).model,state:phase,queueDepth:queue.length,lastCode,roles,minIntervalMs,maxChars:60,pendingLimit:1,nextSpeechAt:Number.isFinite(nextSpeechAt)?nextSpeechAt:0,quietRemainingMs:Number.isFinite(nextSpeechAt)?Math.max(0,nextSpeechAt-now()):0});
  let statusWrite=Promise.resolve();
  const publish=()=>{statusWrite=statusWrite.catch(()=>{}).then(async()=>{await writeFile(join(stateDir,'speech-status.json.tmp'),JSON.stringify({at:now(),...state()}),{mode:0o600});await rename(join(stateDir,'speech-status.json.tmp'),join(stateDir,'speech-status.json'));}).catch(()=>{});};
@@ -53,10 +60,10 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
    while(queue.length&&!closed){
     prune();if(!queue.length)break;
     if(!queue[0].preview&&queue[0].topic!=='praise'&&now()<nextSpeechAt)break;
-    const item=queue.shift();if(stale(item)){emit('speech_discarded');continue;}
+    const item=queue.shift();if(stale(item)){emit('speech_discarded');audit({event:'discarded',id:String(item.id??''),reason:'stale',spoken:item.text});continue;}
     const epoch=generation,controller=new AbortController();let played=false;active={...item,controller};
     try{
-     lastCode='';const segments=[item.text];emit('speech_started',{segments:1});
+     lastCode='';const segments=[item.text];emit('speech_started',{segments:1});audit({event:'started',id:String(item.id??''),spoken:item.text});
      for(const text of segments){
       // 已经开始出声就别中途切断：过期只用于丢弃还在排队的条目。
       if(closed||controller.signal.aborted||epoch!==generation||(!played&&stale(item)))break;
@@ -65,7 +72,9 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
       phase='playing';played=true;publish();const started=now();await play(audio,controller.signal);emit('speech_segment_done',{elapsedMs:now()-started});
       await pause(speechPause(text),controller.signal);
      }
-     emit(controller.signal.aborted||epoch!==generation||stale(item)?'speech_discarded':'speech_completed');
+     const aborted=controller.signal.aborted||epoch!==generation||stale(item);
+     audit({event:aborted?'interrupted':'completed',id:String(item.id??''),spoken:item.text});
+     emit(aborted?'speech_discarded':'speech_completed');
     }catch(error){
      if(controller.signal.aborted){emit('speech_cancelled');}
      else{lastCode=['speech_login_required','speech_key_required','speech_rate_limited','speech_audio_invalid','speech_playback_failed'].includes(error.code)?error.code:'speech_provider_unavailable';phase='unavailable';cooldownUntil=now()+15000;queue=[];emit('speech_failed',{code:lastCode});}
@@ -75,6 +84,7 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
  }
  function enqueue(item){
   if(closed||(!item.preview&&(!config.enabled||item.topic==='chat'&&!config.chat))||!item.text?.trim()||item.scope!==currentKey())return false;
+  const originalText=item.text;
   item={...item,text:briefSpeech(item.text),expiresAt:Math.min(item.expiresAt,now()+20000)};
   if(!item.text){emit('speech_discarded',{reason:'text_too_long'});return false;}
   if(item.preview&&(active?.preview||queue.some(entry=>entry.preview)))return false;
@@ -86,6 +96,7 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
   // gone, but two chains still cannot talk back to back.
   if(item.topic==='praise'){if(now()-lastPraiseAt<8000){emit('speech_discarded',{reason:'praise_throttled'});return false;}lastPraiseAt=now();}
   recent.set(signature,now());if(recent.size>128)recent.delete(recent.keys().next().value);
+  audit({event:'queued',id:String(item.id??''),kind:item.topic??'',original:String(originalText??''),spoken:item.text});
   if(queue.length)emit('speech_queue_trimmed');
   queue=[item]; // At most one pending manual answer; newest replaces older.
   emit('speech_queued');publish();pump();return true;

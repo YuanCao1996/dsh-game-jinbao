@@ -222,6 +222,14 @@ function Playback-Tick {
   }
  }elseif($script:playbackPhase -eq 'fade'){
   if($script:playbackQueue.Count){Finish-Playback;Playback-Tick}
-  elseif($script:lineElapsed -ge 280){Finish-Playback;Clear-PlaybackRows;Set-Collapsed $true -PreserveMode;$modeClock.Stop()}
+  elseif($script:lineElapsed -ge 280){
+   Finish-Playback;Clear-PlaybackRows
+   # 用户主动收起成字幕条时，播完保持条状并显示占位；之前这里会 Set-Collapsed，
+   # 于是播完自动缩走、下一条播报又自动弹回来，看起来像"消失又自己恢复"。
+   if($script:displayMode -eq 'narrow'){
+    try{Set-HighlightedText $controls.NarrowText '金宝待命中 · 点这里展开';$controls.NarrowText.Foreground='#9CAABA';$controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$controls.NarrowCanvas.Opacity=1}catch{}
+    $modeClock.Stop()
+   }else{Set-Collapsed $true -PreserveMode;$modeClock.Stop()}
+  }
  }
 }
