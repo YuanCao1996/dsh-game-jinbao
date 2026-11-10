@@ -297,7 +297,7 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
     res.end(iconBytes);return;
    }
    if(req.method==='GET'&&req.url==='/exploration'){
-    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src https://game.gtimg.cn; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
+    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' https://game.gtimg.cn; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
     res.end(await readFile(new URL('./exploration.html',import.meta.url)));return;
    }
    // First-run guide: real overlay screenshots plus CSS transitions. The filenames are
