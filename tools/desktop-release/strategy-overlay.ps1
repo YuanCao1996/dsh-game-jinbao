@@ -1262,6 +1262,19 @@ try{
  $window.add_IsVisibleChanged({try{Log-OverlayState 'window-visible' @{visible=[bool]$window.IsVisible}}catch{}})
  $window.add_StateChanged({try{Log-OverlayState 'window-state' @{state=[string]$window.WindowState}}catch{}})
 }catch{}
+ try{
+  $window.Dispatcher.add_UnhandledException({param($sender,$eventArgs)
+   try{
+    $ex=$eventArgs.Exception
+    Log-OverlayState 'unhandled-ui' @{message=[string]$ex.Message;type=[string]$ex.GetType().FullName;stack=([string]$ex.StackTrace) -replace '\s+',' '}
+   }catch{}
+  })
+ }catch{}
+ try{
+  [AppDomain]::CurrentDomain.add_UnhandledException({param($sender,$eventArgs)
+   try{Log-OverlayState 'unhandled-appdomain' @{message=[string]$eventArgs.ExceptionObject.Message;stack=([string]$eventArgs.ExceptionObject.StackTrace) -replace '\s+',' '}}catch{}
+  })
+ }catch{}
 $window.ShowDialog() | Out-Null
   if($SelfTest){$script:testResult | ConvertTo-Json -Compress}
   else{
