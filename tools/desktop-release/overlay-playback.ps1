@@ -138,6 +138,7 @@ function Prepare-PlaybackLayout([bool]$resume=$false){
  $script:lineElapsed=0;$script:playbackPhase='playing';$script:playbackLastTick=Get-PlaybackNow
 }
 function Wake-NarrowPlayback {
+ try{Log-OverlayState 'wake'}catch{}
  if($script:collapsed){Set-Collapsed $false -PreserveMode;Set-NarrowMetrics;$window.UpdateLayout()}
  $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$controls.NarrowCanvas.Opacity=1
  $script:playbackLastTick=Get-PlaybackNow;$modeClock.Start()

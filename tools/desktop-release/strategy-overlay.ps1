@@ -36,6 +36,33 @@ $StateDir=[IO.Path]::GetFullPath($StateDir)
 $stateFile=Join-Path $StateDir 'overlay-state.json'
 $boundsFile=Join-Path $StateDir 'strategy-overlay-bounds.json'
 $preferencesFile=Join-Path $StateDir 'strategy-overlay-preferences.json'
+
+# 悬浮窗形态日志：收起/展开/调整大小/空闲都写一行，用来复现「消失又恢复」。
+function Log-OverlayState([string]$source,[hashtable]$extra=@{}){
+ try{
+  $dir=Join-Path $StateDir 'logs'
+  if(!(Test-Path $dir)){New-Item -ItemType Directory -Path $dir -Force|Out-Null}
+  $row=[ordered]@{
+   at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+   source=$source
+   displayMode=[string]$script:displayMode
+   collapsed=[bool]$script:collapsed
+   subtitleMode=[bool]$script:subtitleMode
+   phase=[string]$script:playbackPhase
+   hasActive=[bool]$script:activePlayback
+   queue=$([int]$script:playbackQueue.Count)
+   w=[Math]::Round($window.Width);h=[Math]::Round($window.Height)
+   l=[Math]::Round($window.Left);t=[Math]::Round($window.Top)
+  }
+  try{$row.expandedVisible=[string]$controls.Expanded.Visibility}catch{}
+  try{$row.narrowVisible=[string]$controls.NarrowPanel.Visibility}catch{}
+  try{$row.canvasOpacity=[double]$controls.NarrowCanvas.Opacity}catch{}
+  try{$row.narrowText=([string]$controls.NarrowText.Text).Trim()}catch{}
+  foreach($key in $extra.Keys){$row[$key]=$extra[$key]}
+  $line=($row|ConvertTo-Json -Compress -Depth 4)
+  Add-Content -LiteralPath (Join-Path $dir 'overlay-mode.jsonl') -Value $line -Encoding UTF8
+ }catch{}
+}
 $controlFile=Join-Path $StateDir 'overlay-control.json'
 $hash=[Security.Cryptography.SHA256]::Create()
 try{$identity=([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($StateDir.ToLowerInvariant())))).Replace('-','').Substring(0,16)}finally{$hash.Dispose()}
@@ -222,6 +249,7 @@ function Update-OverlayRedraw {
 $script:narrowResume=$false
 
 function Set-Collapsed([bool]$on,[switch]$PreserveMode){
+ try{Log-OverlayState 'collapse-enter' @{on=[bool]$on;preserve=[bool]$PreserveMode}}catch{}
  if($script:collapsed -eq $on){return}
  # 顺序很重要：先把内容切掉再改尺寸，否则整棵界面树会按 56×56 重新排版一次，就是那一下卡顿。
  if($on){
@@ -271,6 +299,7 @@ function Set-Collapsed([bool]$on,[switch]$PreserveMode){
  if(!$on -and $PreserveMode -and $script:displayMode -eq 'narrow'){$controls.Expanded.Visibility='Collapsed';$controls.NarrowPanel.Visibility='Visible'}
  # 透明度、指针穿透这些不参与这一帧，放到后台优先级再算。
  try{$window.Dispatcher.BeginInvoke([Windows.Threading.DispatcherPriority]::Background,[Action]{try{Set-BackgroundOpacity;Set-PointerMode $true;Update-OverlayRedraw}catch{}})|Out-Null}catch{}
+ try{Log-OverlayState 'collapse-exit' @{on=[bool]$on}}catch{}
 }
 function Save-Preferences {
  $json=@{backgroundOpacity=[Math]::Round($controls.OpacitySlider.Value);bodyFontSize=[Math]::Round($controls.FontSlider.Value);showInCapture=[bool]$script:showInCapture;capturePreferenceVersion=2} | ConvertTo-Json -Compress
@@ -717,7 +746,7 @@ $controls.QuestionBox.Add_PreviewKeyDown({param($sender,$eventArgs)
 })
 # 收起形态由网页设置决定：小球 / 窄条字幕 / 窄条跑马灯。
 # 收起固定为窄条；是字幕还是跑马灯由网页设置的「窄条形式」决定。
-$controls.CollapseButton.Add_Click({Set-DisplayMode 'narrow'})
+$controls.CollapseButton.Add_Click({try{Log-OverlayState 'click-collapse'}catch{};Set-DisplayMode 'narrow'})
 $controls.CloseButton.Add_Click({$window.Close()})
 # The collapsed ball deliberately has no close button: a click expands it and the tray menu exits.
 $controls.ActionButton.Add_Click({
@@ -1227,7 +1256,13 @@ try{
    Save-ShortcutDiagnostics
   })
   $timer.Start();if(!$SelfTest){$pointerTimer.Start();$script:hotkeyWatch.Start()}
-  $window.ShowDialog() | Out-Null
+  try{
+ $window.add_SizeChanged({try{Log-OverlayState 'window-resize'}catch{}})
+ $window.add_LocationChanged({try{Log-OverlayState 'window-move'}catch{}})
+ $window.add_IsVisibleChanged({try{Log-OverlayState 'window-visible' @{visible=[bool]$window.IsVisible}}catch{}})
+ $window.add_StateChanged({try{Log-OverlayState 'window-state' @{state=[string]$window.WindowState}}catch{}})
+}catch{}
+$window.ShowDialog() | Out-Null
   if($SelfTest){$script:testResult | ConvertTo-Json -Compress}
   else{
    Save-Bounds
