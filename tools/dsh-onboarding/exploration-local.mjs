@@ -41,9 +41,9 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
   async function load() {
     try {
       const raw = JSON.parse(await readFile(file, 'utf8'));
-      if (raw && typeof raw === 'object' && raw.entries && typeof raw.entries === 'object') return raw;
+      if (raw && typeof raw === 'object' && raw.entries && typeof raw.entries === 'object'){ if(!Array.isArray(raw.matches)) raw.matches = []; return raw; }
     } catch {}
-    return {version: 1, entries: {}};
+    return {version: 1, entries: {}, matches: []};
   }
 
   async function save(store) {
@@ -87,6 +87,11 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       participating: false,
       local: true,
       board: {entries: []},
+      // 每个条目最近的对局回忆（只含本机记录），按时间倒序，最多 8 条。
+      memories: Object.fromEntries(list.map(name => [name,
+        store.matches.filter(row => row.category === category && row.entity === name)
+          .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0)).slice(0, 8)
+      ]).filter(([, rows]) => rows.length)),
     };
   }
 
@@ -109,6 +114,41 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
   const sync = async () => ({pending: 0, local: true});
   const conflict = async () => { throw fail('当前没有可检查的冲突'); };
   const resolve = async () => ({local: true});
+
+
+  // 从视图里尽量稳地抽出一局的关键信息：抽不到就留空，不编造。
+  function matchMemory(view, champion, mode) {
+    const text = value => String(value ?? '');
+    const statLine = text(view?.stats) || text(view?.liveStats) || '';
+    const kdaMatch = statLine.match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/);
+    const events = Array.isArray(view?.events) ? view.events : [];
+    const texts = events.map(event => text(event?.text));
+    const highlights = [];
+    const multi = texts.find(line => /三杀|四杀|五杀|双杀/.test(line));
+    if (multi) highlights.push((multi.match(/三杀|四杀|五杀|双杀/) ?? [''])[0]);
+    const aces = texts.filter(line => line.includes('团灭')).length;
+    if (aces) highlights.push('团灭 ×' + aces);
+    const owned = Array.isArray(view?.augments) ? view.augments : [];
+    const augments = owned.map(item => typeof item === 'string' ? item : text(item?.name)).filter(Boolean).slice(0, 6);
+    const resultText = texts.find(line => /胜利|失败/.test(line)) ?? '';
+    const win = /胜利/.test(resultText) ? true : /失败/.test(resultText) ? false : null;
+    const startedAt = Number(view?.matchStartedAt) || null;
+    const endedAt = Date.now();
+    const durationSeconds = startedAt ? Math.max(0, Math.round((endedAt - startedAt) / 1000)) : (Number(view?.gameSeconds) || null);
+    return {
+      id: text(view?.match) || champion + '@' + endedAt,
+      category: '英雄',
+      entity: champion,
+      mode,
+      startedAt,
+      endedAt,
+      durationSeconds,
+      kda: kdaMatch ? [Number(kdaMatch[1]), Number(kdaMatch[2]), Number(kdaMatch[3])] : null,
+      win,
+      augments,
+      highlights,
+    };
+  }
 
   // 打完一局自动把「本局英雄 + 本局模式」记进探索记录：
   // 只在记录确实变化时落盘，避免每次轮询都写文件。
@@ -136,6 +176,23 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
     };
     await apply('英雄', champion);
     await apply('模式', mode);
+
+    // 对局结束时补一条回忆：只在本机保存，用于图鉴里点开英雄看「一起打过什么」。
+    const ended = view?.ended === true || String(view?.phase ?? '') === 'EndOfGame' || String(view?.title ?? '').includes('对局结束');
+    if (ended && champion) {
+      const memory = matchMemory(view, champion, mode);
+      await lock(async () => {
+        const store = await load();
+        if (!Array.isArray(store.matches)) store.matches = [];
+        if (store.matches.some(row => row.id === memory.id)) return;
+        store.matches.push(memory);
+        // 只保留最近 500 局，避免文件无限增长。
+        if (store.matches.length > 500) store.matches = store.matches.slice(-500);
+        await save(store);
+        changed = true;
+      });
+      recorded.push('回忆');
+    }
     return {recorded, changed};
   }
 
