@@ -186,7 +186,16 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
         if (!Array.isArray(store.matches)) store.matches = [];
         // 清掉旧版抽取失败写进来的空回忆（KDA、时长、等级全空）。
         store.matches = store.matches.filter(row => row && (row.kda || row.durationSeconds || row.level));
-        if (store.matches.some(row => row.id === memory.id)) return;
+        const existing = store.matches.find(row => row.id === memory.id);
+        if (existing) {
+          // 同一局可能先用旧版/不完整数据记过：新记录更全时就地覆盖，
+          // 而不是直接丢弃（实测一局 KDA 被早先的空记录挡住）。
+          const richer = (row, other) =>
+            (row.kda ? 1 : 0) + (row.level ? 1 : 0) + (row.durationSeconds ? 1 : 0)
+            > (other.kda ? 1 : 0) + (other.level ? 1 : 0) + (other.durationSeconds ? 1 : 0);
+          if (richer(memory, existing)) Object.assign(existing, memory);
+          return;
+        }
         store.matches.push(memory);
         // 只保留最近 500 局，避免文件无限增长。
         if (store.matches.length > 500) store.matches = store.matches.slice(-500);
