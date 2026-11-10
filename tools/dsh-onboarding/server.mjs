@@ -285,7 +285,9 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
     if(!/^[A-Za-z0-9_.]{1,40}$/.test(alias)){send(res,400,{error:'bad alias'});return;}
     const iconDir=join(stateDir,'exploration-icons');await mkdir(iconDir,{recursive:true});
     const iconFile=join(iconDir,alias+'.jpg');
-    let iconBytes=null;try{iconBytes=await readFile(iconFile);}catch{}
+    let iconBytes=null;
+     // 先读随包发布的图标（tools/dsh-onboarding/exploration-icons），命中就完全不联网。
+     try{iconBytes=await readFile(new URL('./exploration-icons/'+alias+'.jpg',import.meta.url));}catch{}
     if(!iconBytes){
      try{const upstream=await fetch('https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/'+alias+'_0.jpg');
       if(upstream.ok){iconBytes=Buffer.from(await upstream.arrayBuffer());await writeFile(iconFile,iconBytes);}}catch{}
