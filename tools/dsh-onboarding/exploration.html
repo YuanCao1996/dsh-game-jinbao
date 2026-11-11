@@ -1,60 +1,427 @@
-﻿<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金宝 · 探索</title><style>
-:root{color-scheme:light;font-family:system-ui,"Microsoft YaHei",sans-serif;color:#29322f;background:#f4f5f1}*{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:auto;padding:36px 28px}h1{font-size:32px;margin:0}p{color:#748078;line-height:1.7}.hero{padding:30px;border-radius:24px;background:linear-gradient(120deg,#fff9ed,#edf4ef);border:1px solid #e9eee6}.eyebrow{color:#b37a38;font-size:12px;letter-spacing:.15em}.controls{display:flex;gap:10px;flex-wrap:wrap;margin:24px 0}button,select{font:inherit;border:1px solid #dce5dc;border-radius:12px;background:#fff;padding:10px 16px;color:#344039;cursor:pointer}button:hover{border-color:#d5a264;background:#fff8ed}button:focus-visible,select:focus-visible{outline:3px solid #dba85a}button:disabled{opacity:.5;cursor:wait}.selected{background:#f9e8d0;border-color:#e3b170}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:12px}.card{min-height:98px;text-align:left;background:#fff;border:1px solid #e5ebe3;border-radius:18px;padding:15px;transition:transform .16s,border-color .16s}.card:hover{transform:translateY(-3px)}.card img{width:48px;height:48px;object-fit:cover;border-radius:12px;display:block;margin-bottom:10px;background:#f0f2ed}.card span{display:block;margin-top:12px;color:#9ba69c;font-size:12px}.card[data-done=true]{border-color:#e5b675;background:#fffbf4}.card[data-done=true] span{color:#a76e2f}.panel{margin-top:24px;background:#fff;border:1px solid #e6ece4;border-radius:20px;padding:22px}.actions{display:flex;gap:8px;flex-wrap:wrap}.status{min-height:26px}ol{padding-left:22px}li{padding:4px}small{color:#77847a}@media(prefers-reduced-motion:reduce){*{transition:none!important}}@media(max-width:600px){main{padding:18px}.hero{padding:22px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金宝 · 探索</title><style>
+/* ── 物理层：纸张、墨色、赭石、发丝线。颜色锁定在这一处，其余只用变量。 ── */
+:root{
+  color-scheme:light;
+  --paper:#f7f4ec; --paper-lift:#fffdf7; --paper-card:#fffdf9;
+  --ink:#2b2a26; --ink-soft:#6f6a5e; --ink-faint:#9a9384;
+  --line:rgba(122,102,72,.16); --line-strong:rgba(122,102,72,.28);
+  --ochre:#a9762f; --ochre-soft:rgba(169,118,47,.10);
+  --olive:#4f7a4a; --olive-soft:rgba(79,122,74,.10);
+  --brick:#a9563c; --brick-soft:rgba(169,86,60,.10);
+  --radius:18px; --radius-sm:12px;
+  --shadow-rest:0 1px 0 rgba(122,102,72,.06);
+  --shadow-lift:0 14px 30px -18px rgba(73,58,36,.42), 0 2px 6px -4px rgba(73,58,36,.18);
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;font-family:var(--font);color:var(--ink);
+  background:
+    radial-gradient(120% 80% at 50% -10%, #fffdf6 0%, var(--paper) 46%, #f2eee3 100%);
+  background-attachment:fixed;
+  line-height:1.65;letter-spacing:.005em;
+}
+/* 颗粒 + 暗角：两张不参与布局的薄膜，让纯色背景不死板 */
+body::before,body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0}
+body::before{
+  opacity:.038;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+body::after{background:radial-gradient(115% 85% at 50% 0%, transparent 42%, rgba(86,70,45,.07) 100%)}
+main{position:relative;z-index:1;max-width:1120px;margin:auto;padding:34px 28px 72px}
+
+/* ── 通用排版：字重张力 + 小字距标签 ── */
+h1,h2,h3{margin:0;font-weight:640;letter-spacing:-.012em;line-height:1.24}
+h1{font-size:clamp(30px,3.4vw,40px);font-weight:660}
+h2{font-size:21px}
+h3{font-size:16px}
+p{margin:0;color:var(--ink-soft)}
+small{color:var(--ink-faint);font-size:12.5px}
+.eyebrow{display:inline-block;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ochre);font-weight:600}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+a{color:var(--ochre);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+
+/* ── 顶部题头 ── */
+.topline{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}
+.back{display:inline-flex;align-items:center;gap:7px;color:var(--ink-soft);font-size:13.5px}
+.back:hover{color:var(--ochre);text-decoration:none}
+.hero{
+  position:relative;padding:34px 34px 30px;border-radius:26px;
+  background:linear-gradient(158deg,var(--paper-lift) 0%,#fbf7ee 58%,#f4f1e6 100%);
+  border:1px solid var(--line);box-shadow:var(--shadow-rest);
+  overflow:hidden;
+}
+.hero::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(80% 120% at 100% 0%, rgba(169,118,47,.10), transparent 62%);
+}
+.hero h1{margin:10px 0 12px}
+.hero .lede{max-width:56ch;font-size:15px}
+.hero-foot{display:flex;flex-wrap:wrap;gap:18px;align-items:baseline;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.stat{display:flex;align-items:baseline;gap:7px}
+.stat b{font-size:20px;font-weight:660;font-variant-numeric:tabular-nums}
+.stat span{font-size:12.5px;color:var(--ink-faint)}
+
+/* ── 工具条 ── */
+.toolbar{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin:26px 0 10px}
+select,input[type=search],button{font:inherit;color:var(--ink)}
+select,input[type=search]{
+  border:1px solid var(--line-strong);border-radius:11px;background:rgba(255,253,247,.9);
+  padding:9px 13px;transition:border-color .18s var(--ease),box-shadow .18s var(--ease)
+}
+select:hover,input[type=search]:hover{border-color:rgba(169,118,47,.42)}
+select:focus-visible,input[type=search]:focus-visible,button:focus-visible{
+  outline:2px solid rgba(169,118,47,.55);outline-offset:2px
+}
+input[type=search]{min-width:172px}
+button{
+  border:1px solid var(--line-strong);border-radius:11px;background:rgba(255,253,247,.9);
+  padding:9px 15px;cursor:pointer;
+  transition:border-color .18s var(--ease),background .18s var(--ease),transform .14s var(--ease)
+}
+button:hover{border-color:rgba(169,118,47,.5);background:#fff9ec}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.45;cursor:wait}
+.check{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-soft);cursor:pointer}
+.check input{accent-color:var(--ochre);width:15px;height:15px}
+.hint-line{margin:0 0 4px;font-size:12.5px;color:var(--ink-faint)}
+#status{margin:12px 0 4px;font-size:13.5px;color:var(--ink-soft);min-height:22px}
+
+/* ── 回忆画廊：时间线 ── */
+.gallery{
+  margin-top:34px;padding:30px 30px 24px;border-radius:24px;
+  background:linear-gradient(180deg,rgba(255,253,247,.92),rgba(252,249,241,.72));
+  border:1px solid var(--line);box-shadow:var(--shadow-rest)
+}
+.gallery-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:6px}
+.gallery-head p{font-size:13.5px;max-width:52ch}
+.trail{list-style:none;margin:22px 0 0;padding:0;position:relative}
+/* 脊柱：一条发丝线，从第一颗节点往下 */
+.trail::before{
+  content:"";position:absolute;left:23px;top:10px;bottom:14px;width:1px;
+  background:linear-gradient(180deg,var(--line-strong),rgba(122,102,72,.08))
+}
+.day-label{
+  position:relative;margin:26px 0 10px;padding-left:56px;
+  font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ochre);font-weight:600
+}
+.day-label:first-child{margin-top:0}
+.day-label::before{
+  content:"";position:absolute;left:19px;top:50%;width:9px;height:9px;margin-top:-4.5px;
+  border-radius:50%;background:var(--paper);border:1.5px solid var(--ochre)
+}
+.node{position:relative;padding-left:56px;margin-bottom:14px}
+.node::before{
+  content:"";position:absolute;left:18px;top:22px;width:11px;height:11px;border-radius:50%;
+  background:var(--paper-lift);border:1.5px solid var(--line-strong);
+  transition:border-color .2s var(--ease),background .2s var(--ease),transform .2s var(--ease)
+}
+.node[data-win="true"]::before{border-color:var(--olive);background:var(--olive)}
+.node[data-win="false"]::before{border-color:var(--brick);background:var(--brick)}
+.recall{
+  display:block;width:100%;text-align:left;cursor:pointer;
+  border:1px solid var(--line);border-radius:var(--radius);background:var(--paper-card);
+  padding:16px 18px;box-shadow:var(--shadow-rest);
+  transition:transform .2s var(--ease),box-shadow .2s var(--ease),border-color .2s var(--ease)
+}
+.recall:hover{transform:translateY(-2px);box-shadow:var(--shadow-lift);border-color:rgba(169,118,47,.34)}
+.recall-top{display:flex;align-items:center;gap:12px}
+.avatar{
+  width:44px;height:44px;border-radius:12px;object-fit:cover;flex:none;
+  background:linear-gradient(140deg,#efe9dc,#e4ddcc);border:1px solid var(--line)
+}
+.avatar-fallback{display:grid;place-items:center;font-size:15px;font-weight:640;color:var(--ochre)}
+.who{min-width:0;flex:1}
+.who b{font-size:16.5px;font-weight:640;display:block;line-height:1.3}
+.who span{font-size:12.5px;color:var(--ink-faint)}
+.badge{
+  flex:none;font-size:12px;font-weight:640;padding:3px 9px;border-radius:999px;letter-spacing:.02em
+}
+.badge[data-win="true"]{color:var(--olive);background:var(--olive-soft)}
+.badge[data-win="false"]{color:var(--brick);background:var(--brick-soft)}
+.badge[data-win="unknown"]{color:var(--ink-faint);background:rgba(122,102,72,.08)}
+.recall-mid{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:baseline;margin-top:12px}
+.kda{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.kda em{font-style:normal;color:var(--ink-faint);font-weight:400;font-size:12.5px;margin-right:6px}
+.meta{font-size:12.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{
+  font-size:12px;padding:2.5px 9px;border-radius:999px;
+  border:1px solid var(--line);color:var(--ink-soft);background:rgba(255,253,247,.7)
+}
+.chip[data-kind="highlight"]{border-color:rgba(169,118,47,.3);color:var(--ochre);background:var(--ochre-soft)}
+.quill{
+  margin-top:12px;padding:11px 14px;border-radius:var(--radius-sm);
+  background:linear-gradient(100deg,var(--ochre-soft),rgba(169,118,47,.04));
+  border-left:2px solid rgba(169,118,47,.5);
+  font-size:13.5px;color:#7d5c28;line-height:1.7
+}
+.quill b{font-weight:640}
+.trail-empty{
+  margin-top:18px;padding:26px;border-radius:var(--radius);
+  border:1px dashed var(--line-strong);text-align:center;color:var(--ink-faint);font-size:13.5px
+}
+
+/* ── 英雄图鉴 ── */
+.atlas{margin-top:38px}
+.atlas-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:11px}
+.card{
+  text-align:left;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px;cursor:pointer;box-shadow:var(--shadow-rest);
+  transition:transform .18s var(--ease),box-shadow .18s var(--ease),border-color .18s var(--ease)
+}
+.card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lift);border-color:rgba(169,118,47,.34)}
+.card img{width:46px;height:46px;object-fit:cover;border-radius:11px;display:block;margin-bottom:10px;background:#efe9dc}
+.card strong{display:block;font-size:14.5px;font-weight:620;line-height:1.35}
+.card span{display:block;margin-top:9px;color:var(--ink-faint);font-size:12px}
+.card[data-done="true"]{border-color:rgba(169,118,47,.32);background:linear-gradient(180deg,#fffdf7,#fff9ec)}
+.card[data-done="true"] span{color:var(--ochre)}
+
+/* ── 排名面板（本地版隐藏，保留结构） ── */
+.panel{margin-top:30px;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+ol#ranking{padding-left:20px;margin:10px 0 0}
+
+/* ── 回忆抽屉 ── */
+#memoryDrawer{
+  position:fixed;top:0;right:0;width:min(430px,94vw);height:100dvh;overflow:auto;z-index:30;
+  padding:26px 26px 32px;background:var(--paper-lift);
+  border-left:1px solid var(--line-strong);
+  box-shadow:-28px 0 60px -30px rgba(73,58,36,.4);
+  animation:drawer-in .26s var(--ease)
+}
+@keyframes drawer-in{from{transform:translateX(18px);opacity:.4}to{transform:none;opacity:1}}
+#memoryClose{
+  position:absolute;top:18px;right:18px;border:0;background:transparent;font-size:20px;
+  line-height:1;color:var(--ink-faint);cursor:pointer;padding:6px;border-radius:8px
+}
+#memoryClose:hover{background:rgba(122,102,72,.08);color:var(--ink)}
+.drawer-who{display:flex;gap:14px;align-items:center;margin:6px 44px 18px 0}
+.drawer-who img{width:64px;height:64px;border-radius:16px;object-fit:cover;border:1px solid var(--line)}
+.drawer-who b{display:block;font-size:22px;font-weight:650;line-height:1.25}
+.drawer-who span{font-size:12.5px;color:var(--ink-faint)}
+.drawer-sec{margin:18px 0 10px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ochre);font-weight:600}
+.recall-mini{border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:9px;background:var(--paper-card)}
+.recall-mini .row{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.recall-mini .kda-sm{margin-top:6px;font-size:15px;font-weight:640;font-variant-numeric:tabular-nums}
+.mark-btn{
+  width:100%;margin-top:16px;padding:12px;border-radius:var(--radius-sm);font-size:14px;cursor:pointer;
+  border:1px solid rgba(79,122,74,.4);background:rgba(79,122,74,.08);color:var(--olive);font-weight:600
+}
+.mark-btn[data-done="true"]{border-color:rgba(169,118,47,.42);background:var(--ochre-soft);color:#8a6a2f}
+
+/* ── 收尾 ── */
+.footnote{margin-top:42px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-faint)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media(max-width:720px){
+  main{padding:18px 16px 56px}
+  .hero{padding:24px 20px}
+  .gallery{padding:22px 18px}
+  .trail::before{left:15px}
+  .node,.day-label{padding-left:40px}
+  .node::before{left:10px}
+  .day-label::before{left:11px}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #memoryDrawer{width:100vw}
+}
 </style><script>
 (function(){
  function show(msg){try{var s=document.getElementById('status');if(s){s.textContent=msg;s.style.color='#B45309';}}catch(_){}}
  window.$=window.$||function(id){return document.getElementById(id)};
+ // 兜底：不管脚本顺序如何，$ 都能用。
  window.addEventListener('error',function(e){show('页面脚本出错：'+(e.message||'未知')+'（请截图发给金宝）');});
  window.addEventListener('unhandledrejection',function(e){show('请求失败：'+((e.reason&&e.reason.message)||'未知')+'（请截图发给金宝）');});
  window.addEventListener('load',function(){setTimeout(function(){try{var s=document.getElementById('status');if(s&&/正在读取/.test(s.textContent))show('读取没有开始：脚本可能已中断（请截图发给金宝）');}catch(_){}},4000)});
 })();
 </script>
-</head><body><main><a id="back" href="/" style="display:inline-block;margin:0 0 18px;color:#876036;text-decoration:none">← 返回设置</a><header class="hero"><span class="eyebrow">JINBAO · EXPLORATION</span><h1>探索未至之境</h1><p>每一次新的尝试，都值得被记录。只有实际体验过的内容才计入探索足迹。</p><small>这是本机记录：只保存在你自己的电脑上，不上传、不参与排行榜。</small><br><small id="summary">正在读取图鉴…</small></header><div class="controls"><select id="game" aria-label="选择游戏"><option value="lol_pc">英雄联盟 · 电脑</option><option value="wzry">王者荣耀</option><option value="jinchanchan">金铲铲之战</option></select><select id="season" aria-label="选择赛季" hidden><option>S18</option><option>S17</option><option>S16</option><option>S11</option><option>S8</option><option>S4.5</option><option>S100024</option></select><select id="category" aria-label="选择分类"></select><input id="search" type="search" placeholder="搜索名称" aria-label="搜索图鉴" style="font:inherit;border:1px solid #dce5dc;border-radius:12px;padding:10px 14px;min-width:170px"><select id="filter" aria-label="筛选探索状态"><option value="done">已探索</option><option value="all">全部状态</option><option value="todo">待探索</option></select><label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#748078"><input type="checkbox" id="icons"> 加载图标</label><button id="refresh">刷新图鉴</button><button id="suggestion" hidden></button></div><small>默认只显示已探索的英雄。头像由本地缓存提供：首次显示时下载一次并保存在本机，之后离线可用。</small><p id="status" class="status" role="status" aria-live="polite"></p><div id="grid" class="grid"></div><section class="panel" id="rankPanel"><h2>探索榜</h2><p>按游戏、赛季和分类统计。排名基于玩家提交的探索足迹，不代表官方战绩。</p><p id="rankState"></p><ol id="ranking"></ol><div class="actions"><button id="join">参与探索榜</button><button id="sync">同步本机足迹</button><button id="leave">退出榜单</button><button id="review" hidden>检查同步差异</button></div><small>参与后其他玩家可看到你的昵称、探索数量和排名；不上传截图或完整对局记录。</small></section><aside id="memoryDrawer" hidden style="position:fixed;top:0;right:0;width:min(420px,92vw);height:100dvh;background:#fffdf8;border-left:1px solid #e7e0d2;box-shadow:-16px 0 40px rgba(90,70,40,.12);padding:22px;overflow:auto;z-index:20">
-  <button id="memoryClose" style="float:right;border:0;background:transparent;font-size:20px;cursor:pointer;color:#8a8070">×</button>
+</head><body><main>
+<div class="topline"><a id="back" class="back" href="/">← 返回设置</a></div>
+
+<header class="hero">
+  <span class="eyebrow">Jinbao · Exploration</span>
+  <h1>探索未至之境</h1>
+  <p class="lede">每一次新的尝试，都值得被记录。只有实际体验过的内容才计入探索足迹。</p>
+  <div class="hero-foot">
+    <div class="stat"><b id="statTouched" class="num">—</b><span>项已探索</span></div>
+    <div class="stat"><b id="statTotal" class="num">—</b><span>项已收录</span></div>
+    <div class="stat"><b id="statMatches" class="num">—</b><span>局回忆</span></div>
+    <small style="margin-left:auto">只保存在这台电脑上，不上传、不参与排行榜</small>
+  </div>
+</header>
+
+<div class="toolbar">
+  <select id="game" aria-label="选择游戏"><option value="lol_pc">英雄联盟 · 电脑</option><option value="wzry">王者荣耀</option><option value="jinchanchan">金铲铲之战</option></select>
+  <select id="season" aria-label="选择赛季" hidden><option>S18</option><option>S17</option><option>S16</option><option>S11</option><option>S8</option><option>S4.5</option><option>S100024</option></select>
+  <select id="category" aria-label="选择分类"></select>
+  <input id="search" type="search" placeholder="搜索名称" aria-label="搜索图鉴">
+  <select id="filter" aria-label="筛选探索状态"><option value="done">已探索</option><option value="all">全部状态</option><option value="todo">待探索</option></select>
+  <label class="check"><input type="checkbox" id="icons"> 加载图标</label>
+  <button id="refresh">刷新</button>
+  <button id="suggestion" hidden></button>
+</div>
+<p class="hint-line">头像由本地缓存提供：首屏下载一次即存本机，之后离线可用。</p>
+<p id="status" role="status" aria-live="polite"></p>
+
+<section class="gallery" aria-labelledby="galleryTitle">
+  <div class="gallery-head">
+    <div>
+      <span class="eyebrow">Trail</span>
+      <h2 id="galleryTitle">回忆画廊</h2>
+    </div>
+    <p>最近的写在最前，像一条越走越长的足迹。</p>
+  </div>
+  <ol class="trail" id="trail"></ol>
+</section>
+
+<section class="atlas" aria-labelledby="atlasTitle">
+  <div class="atlas-head">
+    <div>
+      <span class="eyebrow">Atlas</span>
+      <h2 id="atlasTitle">英雄图鉴</h2>
+    </div>
+    <p id="summary">正在读取图鉴…</p>
+  </div>
+  <div id="grid" class="grid"></div>
+</section>
+
+<section class="panel" id="rankPanel" hidden>
+  <h2>探索榜</h2>
+  <p>按游戏、赛季和分类统计。排名基于玩家提交的探索足迹，不代表官方战绩。</p>
+  <p id="rankState"></p>
+  <ol id="ranking"></ol>
+  <div class="actions"><button id="join">参与探索榜</button><button id="sync">同步本机足迹</button><button id="leave">退出榜单</button><button id="review" hidden>检查同步差异</button></div>
+</section>
+
+<p class="footnote">金宝会记住每一次一起探索：用了哪个英雄、打了多久、拿了什么海克斯。这些记录只存在你的电脑里。</p>
+
+<aside id="memoryDrawer" hidden aria-label="英雄回忆">
+  <button id="memoryClose" aria-label="关闭">×</button>
   <div id="memoryBody"></div>
 </aside>
 </main><script>
-// 图标来自腾讯资源服务器：加载会暴露本机网络地址，默认关闭，由用户显式开启。
-function iconsAllowed(){try{return localStorage.getItem("jinbao-icons-allowed")!=="0"}catch{return true}}window.jinbaoIconsAllowed=function(value){try{localStorage.setItem("jinbao-icons-allowed",value?"1":"0")}catch{}location.reload()};const incomingNonce=location.hash.slice(1);let nonce=incomingNonce;try{if(/^[a-f0-9]{64}$/.test(incomingNonce))sessionStorage.setItem('jinbao-settings-setup',incomingNonce);else if(!incomingNonce)nonce=sessionStorage.getItem('jinbao-settings-setup')||'';}catch{}history.replaceState(null,'',location.pathname);document.getElementById('back').href='/#'+nonce;const $=id=>document.getElementById(id);let view=null,busy=false,reloadRequested=false;
-async function api(data){const q=new URLSearchParams({game:$('game').value,season:$('game').value==='jinchanchan'?$('season').value:'',category:$('category').value});const r=await fetch('/api/exploration'+(data?'':'?'+q),{method:data?'POST':'GET',headers:{'X-Jinbao-Setup':nonce,...(data?{'Content-Type':'application/json'}:{})},...(data?{body:JSON.stringify(data)}:{})});const result=await r.json();if(!r.ok)throw Error(result.error||'暂时无法连接探索服务');return result}
+function iconsAllowed(){try{return localStorage.getItem("jinbao-icons-allowed")!=="0"}catch{return true}}
+window.jinbaoIconsAllowed=function(value){try{localStorage.setItem("jinbao-icons-allowed",value?"1":"0")}catch{}location.reload()};
+const incomingNonce=location.hash.slice(1);let nonce=incomingNonce;
+try{if(/^[a-f0-9]{64}$/.test(incomingNonce))sessionStorage.setItem('jinbao-settings-setup',incomingNonce);else if(!incomingNonce)nonce=sessionStorage.getItem('jinbao-settings-setup')||'';}catch{}
+history.replaceState(null,'',location.pathname);
+document.getElementById('back').href='/#'+nonce;
+const $=id=>document.getElementById(id);
+let view=null,busy=false,reloadRequested=false;
+
+async function api(data){
+  const q=new URLSearchParams({game:$('game').value,season:$('game').value==='jinchanchan'?$('season').value:'',category:$('category').value});
+  const r=await fetch('/api/exploration'+(data?'':'?'+q),{method:data?'POST':'GET',headers:{'X-Jinbao-Setup':nonce,...(data?{'Content-Type':'application/json'}:{})},...(data?{body:JSON.stringify(data)}:{})});
+  const result=await r.json();
+  if(!r.ok)throw Error(result.error||'暂时无法连接探索服务');
+  return result;
+}
 function categories(){const game=$('game').value;$('season').hidden=game!=='jinchanchan';$('category').replaceChildren();for(const name of game==='jinchanchan'?($('season').value==='S18'?['阵容','弈子','羁绊','模式']:['阵容','弈子','羁绊']):['英雄','模式']){const option=document.createElement('option');option.value=option.textContent=name;$('category').append(option)}}
 async function run(fn){if(busy)return;busy=true;try{await fn()}catch(e){$('status').textContent=e.message;$('review').hidden=!/差异|变化/.test(e.message)}finally{busy=false;if(reloadRequested){reloadRequested=false;queueMicrotask(refresh)}}}
 
-// 回忆抽屉：点英雄卡片打开，展示这台电脑上和它一起打过的局，以及标记入口。
-function openMemory(name, done, data, game, season, category){
-  const drawer=$('memoryDrawer'), body=$('memoryBody');
+const esc=value=>String(value==null?'':value).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const fmtTime=ts=>{try{const d=new Date(Number(ts));return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}catch{return ''}};
+const fmtDay=ts=>{try{const d=new Date(Number(ts)),now=new Date();const same=(a,b)=>a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();if(same(d,now))return '今天';const y=new Date(now.getTime()-86400000);if(same(d,y))return '昨天';return (d.getMonth()+1)+'月'+d.getDate()+'日'}catch{return ''}};
+const dayKey=ts=>{try{const d=new Date(Number(ts));return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()}catch{return 'unknown'}};
+const mins=sec=>Math.max(1,Math.round((Number(sec)||0)/60));
+const kdaText=row=>Array.isArray(row.kda)?row.kda.join(' / '):'—';
+const resultLabel=row=>row.win===true?'胜':row.win===false?'负':'—';
+const resultKey=row=>row.win===true?'true':row.win===false?'false':'unknown';
+// 金宝的一句话：只用本机记录里的字段拼，不编造。
+function quillLine(row){
+  const bits=[];
+  const k=Array.isArray(row.kda)?row.kda.join('/'):'';
+  if(k)bits.push('这把 '+k);
+  if(row.win===true)bits.push('赢了');else if(row.win===false)bits.push('输了');
+  if(row.highlights&&row.highlights.length)bits.push(row.highlights[0]+'那波很关键');
+  if(!bits.length)return '';
+  return '<div class="quill"><b>金宝记得</b>：'+esc(bits.join('，'))+'。</div>';
+}
+function avatarMarkup(name,icon,size){
+  if(icon&&iconsAllowed()){
+    return '<img class="avatar" src="'+esc(icon)+'" alt="" width="'+size+'" height="'+size+'" loading="lazy">';
+  }
+  return '<div class="avatar avatar-fallback">'+esc(String(name||'?').slice(0,1))+'</div>';
+}
+
+/* ── 回忆画廊：按天分组的时间线，最近在前 ── */
+function renderTrail(data,game,season,category){
+  const trail=$('trail');
+  if(!trail)return;
+  const rows=Array.isArray(data.timeline)?data.timeline:[];
+  $('statMatches').textContent=rows.length;
+  if(!rows.length){
+    trail.innerHTML='<li class="trail-empty">从下一局开始，这里会出现你和每个英雄的第一次相遇 —— KDA、这局拿了什么海克斯、有没有三杀。<br>打一局，回来看。</li>';
+    return;
+  }
+  let html='',lastDay='';
+  for(const row of rows){
+    const key=dayKey(row.endedAt);
+    if(key!==lastDay){
+      lastDay=key;
+      html+='<li class="day-label">'+esc(fmtDay(row.endedAt))+'</li>';
+    }
+    const chips=[];
+    if(row.mode)chips.push('<span class="chip">'+esc(row.mode)+'</span>');
+    if(Array.isArray(row.augments))for(const a of row.augments.slice(0,3))chips.push('<span class="chip">'+esc(a)+'</span>');
+    if(Array.isArray(row.highlights))for(const h of row.highlights.slice(0,2))chips.push('<span class="chip" data-kind="highlight">'+esc(h)+'</span>');
+    html+='<li class="node" data-win="'+resultKey(row)+'">'
+      +'<button class="recall" data-entity="'+esc(row.entity)+'">'
+        +'<div class="recall-top">'
+          +avatarMarkup(row.entity,row.icon,44)
+          +'<div class="who"><b>'+esc(row.entity)+'</b><span>'+esc(fmtDay(row.endedAt))+' '+esc(fmtTime(row.endedAt))+(row.level?' · Lv'+esc(row.level):'')+'</span></div>'
+          +'<span class="badge" data-win="'+resultKey(row)+'">'+esc(resultLabel(row))+' · '+mins(row.durationSeconds)+' 分钟</span>'
+        +'</div>'
+        +'<div class="recall-mid">'
+          +'<span class="kda"><em>KDA</em>'+esc(kdaText(row))+'</span>'
+          +(row.mode?'<span class="meta">'+esc(row.mode)+'</span>':'')
+        +'</div>'
+        +(chips.length?'<div class="chips">'+chips.join('')+'</div>':'')
+        +quillLine(row)
+      +'</button></li>';
+  }
+  trail.innerHTML=html;
+  // 点回忆 → 打开该英雄的抽屉
+  trail.querySelectorAll('.recall').forEach(button=>{
+    button.onclick=()=>{
+      const name=button.dataset.entity;
+      const done=(data.selected||[]).includes(name);
+      openMemory(name,done,data,game,season,category);
+    };
+  });
+}
+
+/* ── 回忆抽屉 ── */
+function openMemory(name,done,data,game,season,category){
+  const drawer=$('memoryDrawer'),body=$('memoryBody');
   if(!drawer||!body)return;
   const icon=data.icons?.[name];
-  const first=null; // 首次探索时间由 data.selected 推断，这里不展示精确值以免误导
-  const rows=(data.memories&&data.memories[name])||[];
-  const esc=value=>String(value==null?'':value).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
-  const fmt=ts=>{try{const d=new Date(Number(ts));return (d.getMonth()+1)+'月'+d.getDate()+'日 '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}catch{return ''}};
-  const mins=sec=>Math.max(1,Math.round((Number(sec)||0)/60));
+  const rows=((data.memories&&data.memories[name])||[]).slice();
+  const total=rows.length;
   body.innerHTML=''
-   + '<div style="display:flex;gap:14px;align-items:center;margin-bottom:16px">'
-   + (icon&&iconsAllowed()?'<img src="'+esc(icon)+'" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:16px;background:#f0f2ed">':'')
-   + '<div><div style="font-size:22px;font-weight:700">'+esc(name)+'</div>'
-   + '<div style="color:#8a8070;font-size:13px;margin-top:4px">'+esc(category)+' · '+esc(game==='lol_pc'?'英雄联盟·电脑':game)+'</div>'
-   + '<div style="color:#8a8070;font-size:13px;margin-top:2px">'+(rows.length?('一起打过 '+rows.length+' 局（本机记录）'):'还没有本机对局记录')+'</div>'
-   + '</div></div>'
-   + (rows.length?rows.map(row=>{
-       const kda=Array.isArray(row.kda)?row.kda.join(' / '):'—';
-       const result=row.win===true?'胜':row.win===false?'负':'—';
-       const color=row.win===true?'#2f7d4f':row.win===false?'#b45309':'#8a8070';
-       return '<div style="border:1px solid #eee5d5;border-radius:14px;padding:12px;margin-bottom:10px;background:#fff">'
-        +'<div style="display:flex;justify-content:space-between;font-size:13px;color:#8a8070"><span>'+esc(fmt(row.endedAt))+'</span><span style="color:'+color+';font-weight:600">'+esc(result)+' · '+mins(row.durationSeconds)+' 分钟</span></div>'
-        +'<div style="margin-top:6px;font-size:15px;font-weight:600">KDA '+esc(kda)+'</div>'
-        +((row.augments&&row.augments.length)?'<div style="margin-top:6px;font-size:13px;color:#6b6558">海克斯：'+esc(row.augments.join(' · '))+'</div>':'')
-        +((row.highlights&&row.highlights.length)?'<div style="margin-top:4px;font-size:13px;color:#b45309">'+esc(row.highlights.join(' · '))+'</div>':'')
-        +'</div>';
-     }).join(''):'<div style="color:#8a8070;font-size:13px;line-height:1.7">从下一局开始，这里会记录和它一起打的每局：KDA、这局拿了哪些海克斯、有没有三杀团灭。全部只存在这台电脑上。</div>')
-   + (rows.length?(()=>{const r=rows[0];const k=Array.isArray(r.kda)?r.kda.join('/'):'';const bits=[];
-       if(k)bits.push('这把 '+k);
-       if(r.win===true)bits.push('赢了');else if(r.win===false)bits.push('输了');
-       if(r.highlights&&r.highlights.length)bits.push(r.highlights[0]+'那波很关键');
-       return bits.filter(Boolean).length?'<div style="margin:4px 0 14px;padding:12px;border-radius:14px;background:#fff7e8;color:#8a6a2f;font-size:14px;line-height:1.6">金宝记得：'+esc(bits.filter(Boolean).join('，'))+'。</div>':'';
-     })():'')
-   + '<button id="memoryMark" style="margin-top:8px;width:100%;padding:12px;border-radius:12px;border:1px solid '+(done?'#d9c9a8':'#cfe0cf')+';background:'+(done?'#fff7e8':'#f2f8f2')+';color:'+(done?'#8a6a2f':'#2f6b3a')+';font-size:14px;cursor:pointer">'+(done?'取消「已探索」标记':'标记为已探索')+'</button>';
+    +'<div class="drawer-who">'
+      +avatarMarkup(name,icon,64)
+      +'<div><b>'+esc(name)+'</b>'
+        +'<span>'+esc(category)+' · '+esc(game==='lol_pc'?'英雄联盟·电脑':game)+'</span><br>'
+        +'<span>'+(total?('一起打过 '+total+' 局（本机记录）'):'还没有本机对局记录')+'</span>'
+      +'</div>'
+    +'</div>'
+    +(total
+      ?'<div class="drawer-sec">最近的对局</div>'+rows.map(row=>(
+          '<div class="recall-mini">'
+          +'<div class="row"><span>'+esc(fmtDay(row.endedAt))+' '+esc(fmtTime(row.endedAt))+'</span>'
+            +'<span class="badge" data-win="'+resultKey(row)+'">'+esc(resultLabel(row))+' · '+mins(row.durationSeconds)+' 分钟</span></div>'
+          +'<div class="kda-sm"><em style="font-style:normal;color:var(--ink-faint);font-weight:400;font-size:12px;margin-right:6px">KDA</em>'+esc(kdaText(row))+'</div>'
+          +((row.augments&&row.augments.length)?'<div class="chips">'+row.augments.map(a=>'<span class="chip">'+esc(a)+'</span>').join('')+'</div>':'')
+          +((row.highlights&&row.highlights.length)?'<div class="chips">'+row.highlights.map(h=>'<span class="chip" data-kind="highlight">'+esc(h)+'</span>').join('')+'</div>':'')
+          +quillLine(row)
+          +'</div>'
+        )).join('')
+      :'<div class="trail-empty" style="margin-top:6px">从下一局开始，这里会记录和它一起打的每局：KDA、这局拿了哪些海克斯、有没有三杀团灭。</div>')
+    +'<button id="memoryMark" class="mark-btn" data-done="'+done+'">'+(done?'取消「已探索」标记':'标记为已探索')+'</button>';
   drawer.hidden=false;
   $('memoryClose').onclick=()=>{drawer.hidden=true};
   $('memoryMark').onclick=()=>run(async()=>{
@@ -66,17 +433,73 @@ function openMemory(name, done, data, game, season, category){
 
 // 里程碑：探索数量到达 10/50/100/173 时给一句祝贺，只在跨过的那一刻显示一次。
 function checkMilestone(count){
- const marks=[10,50,100,173];
- if(!count)return null;
- const reached=marks.filter(m=>count>=m).pop();
- if(!reached)return null;
- let seen=0;try{seen=Number(localStorage.getItem('jinbao-exploration-milestone'))||0}catch{}
- if(seen>=reached)return null;
- try{localStorage.setItem('jinbao-exploration-milestone',String(reached))}catch{}
- return reached;
+  const marks=[10,50,100,173];
+  if(!count)return null;
+  const reached=marks.filter(m=>count>=m).pop();
+  if(!reached)return null;
+  let seen=0;try{seen=Number(localStorage.getItem('jinbao-exploration-milestone'))||0}catch{}
+  if(seen>=reached)return null;
+  try{localStorage.setItem('jinbao-exploration-milestone',String(reached))}catch{}
+  return reached;
 }
-async function refresh(){if(busy){reloadRequested=true;return}await run(async()=>{$('status').textContent='正在读取探索足迹…';const game=$('game').value,season=game==='jinchanchan'?$('season').value:'',category=$('category').value;const data=await api();
-const milestone=checkMilestone((data.selected||[]).length);
-if(milestone){$('status').textContent='🎉 已经一起探索了 '+milestone+' 个英雄，继续加油！';}if(game!==$('game').value||season!==($('game').value==='jinchanchan'?$('season').value:'')||category!==$('category').value)return;view=data;const selected=new Set(data.selected);$('summary').textContent=`当前图鉴 ${selected.size} 项已探索 · ${data.names.length} 项已收录${data.catalogComplete?"":" · 资料尚不完整"}`;const rankPanel=document.getElementById('rankPanel');if(rankPanel)rankPanel.hidden=data.local===true;$('status').textContent=data.pending?`本机有 ${data.pending} 项待同步操作`:(data.catalogComplete?'点击条目，确认是否实际体验过':'该赛季资料尚不完整，仅展示已收录内容');$('grid').replaceChildren();for(const name of data.names){const done=selected.has(name),card=document.createElement('button'),label=document.createElement('strong'),hint=document.createElement('span');card.className='card';card.dataset.done=done;card.dataset.name=name.toLowerCase();label.textContent=name;const lastPlayedAt=(data.lastPlayed&&data.lastPlayed[name])||0;const daysAgo=lastPlayedAt?Math.floor((Date.now()-lastPlayedAt)/86400000):null;const lastDate=lastPlayedAt?((new Date(lastPlayedAt).getMonth()+1)+'月'+new Date(lastPlayedAt).getDate()+' 日'):'';hint.textContent=done?(daysAgo!=null&&daysAgo>=30?('✓ 上次一起 '+lastDate):'✓ 已探索'):'尚未探索';const icon=data.icons?.[name];if(iconsAllowed()&&typeof icon==="string"&&(icon.startsWith("/exploration-icon/")||icon.startsWith("https://game.gtimg.cn/"))){const img=document.createElement("img");img.loading="lazy";img.alt="";img.onerror=()=>img.remove();img.src=icon;card.append(img)}card.append(label,hint);card.onclick=()=>openMemory(name,done,data,game,season,category);$('grid').append(card)}$('rankState').textContent=data.participating?'你已参与探索榜':'你尚未参与探索榜';$('join').hidden=data.participating;$('sync').hidden=$('leave').hidden=!data.participating;$('ranking').replaceChildren();for(const row of data.board.entries||[]){const li=document.createElement('li');li.textContent=`第 ${row.rank} 名 · ${row.name} · ${row.count} 项${row.is_me?'（我）':''}`;$('ranking').append(li)}applyFilter();loadSuggestion(game,season,category,selected,data.names,data.aliases)})}
-$('join').onclick=()=>run(async()=>{if(!confirm('参与后，其他玩家可看到你的昵称、探索数量和排名。是否同意参与？'))return;await api({action:'participation',enabled:true});busy=false;await refresh()});$('leave').onclick=()=>run(async()=>{if(!confirm('退出后不再公开排名，也不再同步。已上传资料保留至账号注销。确认退出？'))return;await api({action:'participation',enabled:false});busy=false;await refresh()});$('sync').onclick=()=>run(async()=>{await api({action:'sync'});busy=false;await refresh()});$('review').onclick=()=>run(async()=>{const c=await api({action:'conflict'});if(!confirm(`${c.entity}\n云端：${c.remote?'已探索':'未探索'}\n本机待处理：${c.operation==='add'?'标记已探索':'撤销记录'}\n\n按本机操作继续？`))return;await api({action:'resolve',operationId:c.operationId,revision:c.revision});$('review').hidden=true;await api({action:'sync'});busy=false;await refresh()});async function loadSuggestion(game,season,category,selected,names,aliases){const button=$('suggestion');button.hidden=true;try{const r=await fetch('/api/exploration/suggestion',{headers:{'X-Jinbao-Setup':nonce}}),data=await r.json(),s=category==='模式'?data.modeSuggestion:data.suggestion;if(!r.ok||!s||s.game!==game||s.season!==season||s.category!==category||game!==$('game').value||category!==$('category').value)return;const name=names.includes(s.entity)?s.entity:aliases?.[s.alias];if(!name||!names.includes(name)||selected.has(name))return;button.textContent='本局待确认：'+name;button.hidden=false;button.onclick=()=>run(async()=>{const latest=await fetch('/api/exploration/suggestion',{headers:{'X-Jinbao-Setup':nonce}}),result=await latest.json(),current=category==='模式'?result.modeSuggestion:result.suggestion;if(!latest.ok||!current||current.entity!==s.entity||current.alias!==s.alias||current.game!==s.game||!s.matchKey||current.matchKey!==s.matchKey){button.hidden=true;$('status').textContent='本局识别状态已变化，请重新查看';return}if(!confirm('识别到本局可能使用了「'+name+'」。确认是你本人实际体验后才计入探索。'))return;await api({action:'markSuggestion',game,season,category,entity:name,matchKey:s.matchKey,observedEntity:s.entity,alias:s.alias});busy=false;await refresh()})}catch{button.hidden=true}}const iconsToggle=document.getElementById('icons');if(iconsToggle){iconsToggle.checked=iconsAllowed();iconsToggle.onchange=()=>window.jinbaoIconsAllowed(iconsToggle.checked)}function applyFilter(){const text=$('search').value.trim().toLowerCase(),filter=$('filter').value;for(const card of $('grid').children){const matches=card.dataset.name.includes(text)&&(filter==='all'||(filter==='done')===(card.dataset.done==='true'));card.hidden=!matches}}$('search').oninput=applyFilter;$('filter').onchange=applyFilter;$('game').onchange=()=>{categories();refresh()};$('season').onchange=()=>{const selected=$('category').value;categories();if([...$('category').options].some(option=>option.value===selected))$('category').value=selected;refresh()};$('category').onchange=$('refresh').onclick=refresh;categories();refresh();
+
+async function refresh(){
+  if(busy){reloadRequested=true;return}
+  await run(async()=>{
+    $('status').textContent='正在读取探索足迹…';
+    const game=$('game').value,season=game==='jinchanchan'?$('season').value:'',category=$('category').value;
+    const data=await api();
+    const milestone=checkMilestone((data.selected||[]).length);
+    if(milestone){$('status').textContent='已经一起探索了 '+milestone+' 个英雄，继续加油。'}
+    if(game!==$('game').value||season!==($('game').value==='jinchanchan'?$('season').value:'')||category!==$('category').value)return;
+    view=data;
+
+    const selected=new Set(data.selected);
+    $('statTouched').textContent=selected.size;
+    $('statTotal').textContent=data.names.length;
+    $('summary').textContent=`${selected.size} 项已探索 · ${data.names.length} 项已收录${data.catalogComplete?"":" · 资料尚不完整"}`;
+    const rankPanel=$('rankPanel');if(rankPanel)rankPanel.hidden=data.local===true;
+    $('status').textContent=data.pending?`本机有 ${data.pending} 项待同步操作`:(data.catalogComplete?'点开任意一条回忆，可以看那一局的细节':'该赛季资料尚不完整，仅展示已收录内容');
+
+    renderTrail(data,game,season,category);
+
+    $('grid').replaceChildren();
+    for(const name of data.names){
+      const done=selected.has(name),card=document.createElement('button'),label=document.createElement('strong'),hint=document.createElement('span');
+      card.className='card';card.dataset.done=done;card.dataset.name=name.toLowerCase();
+      label.textContent=name;
+      const lastPlayedAt=(data.lastPlayed&&data.lastPlayed[name])||0;
+      const daysAgo=lastPlayedAt?Math.floor((Date.now()-lastPlayedAt)/86400000):null;
+      const lastDate=lastPlayedAt?((new Date(lastPlayedAt).getMonth()+1)+'月'+new Date(lastPlayedAt).getDate()+' 日'):'';
+      hint.textContent=done?(daysAgo!=null&&daysAgo>=30?('上次一起 '+lastDate):'已探索'):'尚未探索';
+      const icon=data.icons?.[name];
+      if(iconsAllowed()&&typeof icon==="string"&&(icon.startsWith("/exploration-icon/")||icon.startsWith("https://game.gtimg.cn/"))){
+        const img=document.createElement("img");img.loading="lazy";img.alt="";img.onerror=()=>img.remove();img.src=icon;card.append(img);
+      }
+      card.append(label,hint);
+      card.onclick=()=>openMemory(name,done,data,game,season,category);
+      $('grid').append(card);
+    }
+    $('rankState').textContent=data.participating?'你已参与探索榜':'你尚未参与探索榜';
+    $('join').hidden=data.participating;$('sync').hidden=$('leave').hidden=!data.participating;
+    $('ranking').replaceChildren();
+    for(const row of data.board.entries||[]){
+      const li=document.createElement('li');li.textContent=`第 ${row.rank} 名 · ${row.name} · ${row.count} 项${row.is_me?'（我）':''}`;
+      $('ranking').append(li);
+    }
+  });
+}
+
+$('game').onchange=()=>{categories();refresh()};
+$('season').onchange=()=>{const selected=$('category').value;categories();if([...$('category').options].some(option=>option.value===selected))$('category').value=selected;refresh()};
+$('category').onchange=$('refresh').onclick=refresh;
+$('search').oninput=()=>{const text=$('search').value.trim().toLowerCase(),filter=$('filter').value;for(const card of $('grid').children){const matches=card.dataset.name.includes(text)&&(filter==='all'||(filter==='done')===(card.dataset.done==='true'));card.hidden=!matches}};
+$('filter').onchange=()=>{$('search').oninput()};
+const iconsToggle=document.getElementById('icons');
+if(iconsToggle){iconsToggle.checked=iconsAllowed();iconsToggle.onchange=()=>window.jinbaoIconsAllowed(iconsToggle.checked)}
+$('join').onclick=()=>run(async()=>{if(!confirm('参与后，其他玩家可看到你的昵称、探索数量和排名。是否同意参与？'))return;await api({action:'participation',enabled:true});busy=false;await refresh()});
+$('leave').onclick=()=>run(async()=>{if(!confirm('退出后不再公开排名，也不再同步。已上传资料保留至账号注销。确认退出？'))return;await api({action:'participation',enabled:false});busy=false;await refresh()});
+$('sync').onclick=()=>run(async()=>{await api({action:'sync'});busy=false;await refresh()});
+$('review').onclick=()=>run(async()=>{const c=await api({action:'conflict'});if(!confirm(`${c.entity}\n云端：${c.remote?'已探索':'未探索'}\n本机待处理：${c.operation==='add'?'标记已探索':'撤销记录'}\n\n按本机操作继续？`))return;await api({action:'resolve',operationId:c.operationId,revision:c.revision});$('review').hidden=true;await api({action:'sync'});busy=false;await refresh()});
+categories();refresh();
 </script></body></html>

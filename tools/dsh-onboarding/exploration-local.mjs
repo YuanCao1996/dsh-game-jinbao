@@ -9,7 +9,7 @@ const championIcon=name=>{const alias=explorationAliases[name];return alias?'/ex
 // 只需要回答一件事：我自己探索过哪些英雄/模式。排行榜、跨设备同步、服务端防作弊
 // 这些才需要服务器；本地记录放在状态目录里即可，也顺带避免了从腾讯资源服务器
 // 拉图标暴露网络地址的问题。
-import {mkdir, readFile, rename, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, readdir, rename, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 
 const CATEGORIES = {
@@ -71,6 +71,7 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
   const key = (game, season, category, name) => [game, season, category, name].join('|');
 
   async function view(game, season, category) {
+    await backfillFromLogs();
     const scoped = scope(game, season);
     const list = names(game, scoped, category);
     const store = await load();
@@ -97,6 +98,12 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
         store.matches.filter(row => row.category === category && row.entity === name)
           .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0)).slice(0, 8)
       ]).filter(([, rows]) => rows.length)),
+      // 全局时间线：所有已探索条目的对局，最近的排在前面（回忆画廊用）。
+      timeline: store.matches
+        .filter(row => row && row.category === category)
+        .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
+        .slice(0, 40)
+        .map(row => ({ ...row, icon: championIcon(row.entity) ?? null })),
     };
   }
 
@@ -166,6 +173,67 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       augments: [],
       highlights,
     };
+  }
+
+  // 旧版抽取失败时留下的回忆只有时长、没有 KDA/胜负。对局日志里其实有终局数据，
+  // 进程启动后跑一次回填，把这类空记录补全（日志不存在就跳过，不编造）。
+  let backfillDone = false;
+  async function backfillFromLogs() {
+    if (backfillDone) return;
+    backfillDone = true;
+    const store = await load();
+    if (!Array.isArray(store.matches) || !store.matches.length) return;
+    const needs = store.matches.filter(row => row && !row.kda && row.id);
+    if (!needs.length) return;
+    const logDir = join(root, '..', 'logs');
+    let files = [];
+    try { files = await readdir(logDir); } catch { return; }
+    let changed = false;
+    for (const row of needs) {
+      const fileName = String(row.id).split('#')[0];
+      if (!files.includes(fileName)) continue;
+      try {
+        const raw = await readFile(join(logDir, fileName), 'utf8');
+        const lines = raw.split('\n').filter(Boolean);
+        let me = null, duration = null, win = null, highlights = [];
+        for (const line of lines) {
+          let event;
+          try { event = JSON.parse(line); } catch { continue; }
+          if (event.kind === 'phase' && event.phase === 'PreEndOfGame' && me) break;
+          if (event.kind === 'state') {
+            const candidate = event.state?.me ?? event.me;
+            if (candidate) me = candidate;
+          }
+          if (event.kind === 'event') {
+            if (String(event.name ?? event.EventName ?? '') === 'GameEnd') {
+              const result = String(event.Result ?? "");
+              if (result === "Win") win = true; else if (result === "Lose") win = false;
+              if (Number.isFinite(Number(event.EventTime))) duration = Math.round(Number(event.EventTime));
+            }
+            // 高光事件通常出现在 GameEnd 之前，不能等 win 判定后再收集。
+            if (highlights.length < 2) {
+              const text = String(event.EventName ?? "");
+              if (/Multikill/.test(text)) {
+                const streak = Number(event.KillStreak ?? 0);
+                const label = streak >= 5 ? "五杀" : streak === 4 ? "四杀" : streak === 3 ? "三杀" : null;
+                if (label && !highlights.includes(label)) highlights.push(label);
+              }
+              if (/Ace/.test(text) && !highlights.some(item => item.startsWith("团灭"))) highlights.push("团灭 ×1");
+            }
+          }
+        }
+        if (me) {
+          const k = Number(me.k), d = Number(me.d), a = Number(me.a);
+          if ([k, d, a].every(Number.isFinite)) row.kda = [k, d, a];
+          if (Number.isFinite(Number(me.level))) row.level = Number(me.level);
+        }
+        if (win !== null) row.win = win;
+        if (duration) row.durationSeconds = duration;
+        if (highlights.length) row.highlights = highlights;
+        if (row.kda || row.win !== null) changed = true;
+      } catch { /* 单局失败不影响其它记录 */ }
+    }
+    if (changed) await save(store);
   }
 
   // 打完一局自动把「本局英雄 + 本局模式」记进探索记录：
