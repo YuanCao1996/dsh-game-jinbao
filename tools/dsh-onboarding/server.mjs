@@ -55,11 +55,10 @@ try{
  const explorationTicker=setInterval(()=>{try{
   const view=overlay?.view?.();
   if(!view||view.game!=='lol')return;
-  // 对局结束事件只在事件流里：把最近事件一起传给 recordMatch，
-  // 回忆抽取才能拿到 GameEnd.Result（胜负）与三杀/团灭这些高光。
-  const events=(view.events||[]).map(e=>({name:e.kind==='event'?(e.name??e.EventName??''):'' ,Result:e.kind==='event'?(e.Result??''):'' ,text:e.text}))
-   .filter(e=>e.name||e.text).slice(-40);
-  exploration.recordMatch(view,events).catch(()=>{});
+  // 注意：投影视图里的 events / augments 是渲染用字符串，不是数组；
+  // 从这里 map 会抛 TypeError，被外层 catch 吞掉，导致回忆一条都写不进去（实测三局全丢）。
+  // 胜负与高光改由 recordMatch 自己读本局日志得到。
+  exploration.recordMatch(view).catch(()=>{});
  }catch{}},20000);
  explorationTicker.unref?.();
 }catch{}

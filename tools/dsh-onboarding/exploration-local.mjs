@@ -175,67 +175,72 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
     };
   }
 
+  // 从一局的对局日志里读终局事实：KDA、等级、胜负、时长、高光。
+  // 投影视图里没有这些结构化字段，日志才是权威来源。日志不存在就返回 null。
+  async function readMatchLog(matchId) {
+    const fileName = String(matchId ?? "").split("#")[0];
+    if (!fileName) return null;
+    let raw;
+    try { raw = await readFile(join(root, "..", "logs", fileName), "utf8"); } catch { return null; }
+    let me = null, duration = null, win = null;
+    const highlights = [];
+    for (const line of raw.split("\n")) {
+      if (!line) continue;
+      let event;
+      try { event = JSON.parse(line); } catch { continue; }
+      if (event.kind === "phase" && event.phase === "PreEndOfGame" && me) break;
+      if (event.kind === "state") {
+        const candidate = event.state?.me ?? event.me;
+        if (candidate) me = candidate;
+      }
+      if (event.kind === "event") {
+        const name = String(event.name ?? event.EventName ?? "");
+        if (name === "GameEnd") {
+          const result = String(event.Result ?? "");
+          if (result === "Win") win = true; else if (result === "Lose") win = false;
+          if (Number.isFinite(Number(event.EventTime))) duration = Math.round(Number(event.EventTime));
+        }
+        if (highlights.length < 2 && /Multikill/.test(name)) {
+          const streak = Number(event.KillStreak ?? 0);
+          const label = streak >= 5 ? "五杀" : streak === 4 ? "四杀" : streak === 3 ? "三杀" : null;
+          if (label && !highlights.includes(label)) highlights.push(label);
+        }
+        if (!highlights.some(item => item.startsWith("团灭")) && /Ace/.test(name)) highlights.push("团灭 ×1");
+      }
+    }
+    const facts = { kda: null, level: null, win, duration, highlights };
+    if (me) {
+      const k = Number(me.k), d = Number(me.d), a = Number(me.a);
+      if ([k, d, a].every(Number.isFinite)) facts.kda = [k, d, a];
+      if (Number.isFinite(Number(me.level))) facts.level = Number(me.level);
+    }
+    return facts;
+  }
+
   // 旧版抽取失败时留下的回忆只有时长、没有 KDA/胜负。对局日志里其实有终局数据，
   // 进程启动后跑一次回填，把这类空记录补全（日志不存在就跳过，不编造）。
-  let backfillDone = false;
+  let backfillAt = 0;
   async function backfillFromLogs() {
-    if (backfillDone) return;
-    backfillDone = true;
+    // 节流：新写入的回忆也可能缺字段，不能只跑一次。
+    if (Date.now() - backfillAt < 60000) return;
+    backfillAt = Date.now();
     const store = await load();
     if (!Array.isArray(store.matches) || !store.matches.length) return;
-    const needs = store.matches.filter(row => row && !row.kda && row.id);
+    const needs = store.matches.filter(row => row && (!row.kda || row.win === null || row.win === undefined));
     if (!needs.length) return;
-    const logDir = join(root, '..', 'logs');
-    let files = [];
-    try { files = await readdir(logDir); } catch { return; }
     let changed = false;
     for (const row of needs) {
-      const fileName = String(row.id).split('#')[0];
-      if (!files.includes(fileName)) continue;
-      try {
-        const raw = await readFile(join(logDir, fileName), 'utf8');
-        const lines = raw.split('\n').filter(Boolean);
-        let me = null, duration = null, win = null, highlights = [];
-        for (const line of lines) {
-          let event;
-          try { event = JSON.parse(line); } catch { continue; }
-          if (event.kind === 'phase' && event.phase === 'PreEndOfGame' && me) break;
-          if (event.kind === 'state') {
-            const candidate = event.state?.me ?? event.me;
-            if (candidate) me = candidate;
-          }
-          if (event.kind === 'event') {
-            if (String(event.name ?? event.EventName ?? '') === 'GameEnd') {
-              const result = String(event.Result ?? "");
-              if (result === "Win") win = true; else if (result === "Lose") win = false;
-              if (Number.isFinite(Number(event.EventTime))) duration = Math.round(Number(event.EventTime));
-            }
-            // 高光事件通常出现在 GameEnd 之前，不能等 win 判定后再收集。
-            if (highlights.length < 2) {
-              const text = String(event.EventName ?? "");
-              if (/Multikill/.test(text)) {
-                const streak = Number(event.KillStreak ?? 0);
-                const label = streak >= 5 ? "五杀" : streak === 4 ? "四杀" : streak === 3 ? "三杀" : null;
-                if (label && !highlights.includes(label)) highlights.push(label);
-              }
-              if (/Ace/.test(text) && !highlights.some(item => item.startsWith("团灭"))) highlights.push("团灭 ×1");
-            }
-          }
-        }
-        if (me) {
-          const k = Number(me.k), d = Number(me.d), a = Number(me.a);
-          if ([k, d, a].every(Number.isFinite)) row.kda = [k, d, a];
-          if (Number.isFinite(Number(me.level))) row.level = Number(me.level);
-        }
-        if (win !== null) row.win = win;
-        if (duration) row.durationSeconds = duration;
-        if (highlights.length) row.highlights = highlights;
-        if (row.kda || row.win !== null) changed = true;
-      } catch { /* 单局失败不影响其它记录 */ }
+      const facts = await readMatchLog(row.id);
+      if (!facts) continue;
+      if (facts.kda) row.kda = facts.kda;
+      if (facts.level) row.level = facts.level;
+      if (facts.win !== null) row.win = facts.win;
+      if (facts.duration) row.durationSeconds = facts.duration;
+      if (facts.highlights.length) row.highlights = facts.highlights;
+      if (row.kda || row.win !== null) changed = true;
     }
     if (changed) await save(store);
   }
-
   // 打完一局自动把「本局英雄 + 本局模式」记进探索记录：
   // 只在记录确实变化时落盘，避免每次轮询都写文件。
   async function recordMatch(view, events = []) {
@@ -267,6 +272,15 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
     const ended = view?.ended === true || String(view?.phase ?? '') === 'EndOfGame' || String(view?.title ?? '').includes('对局结束');
     if (ended && champion) {
       const memory = matchMemory(view, champion, mode, events);
+      // 日志里的终局事实比视图可靠（视图没有 Result，KDA 也可能只是某一帧）。
+      const fromLog = await readMatchLog(memory.id);
+      if (fromLog) {
+        if (fromLog.kda) memory.kda = fromLog.kda;
+        if (fromLog.level) memory.level = fromLog.level;
+        if (fromLog.win !== null) memory.win = fromLog.win;
+        if (fromLog.duration) memory.durationSeconds = fromLog.duration;
+        if (fromLog.highlights.length) memory.highlights = fromLog.highlights;
+      }
       await lock(async () => {
         const store = await load();
         if (!Array.isArray(store.matches)) store.matches = [];
