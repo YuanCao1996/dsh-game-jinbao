@@ -34,6 +34,11 @@ export async function buildPreview({root,out,runtime=process.execPath}) {
   // The exploration page and its two assets were never packaged, so /exploration 404'd
   // in the standalone build even though the settings page links to it.
   'tools/dsh-onboarding/exploration.html','tools/dsh-onboarding/exploration-icon.png','tools/dsh-onboarding/exploration-poster.jpg',
+  // 探索图鉴改版后新增的运行时数据：本地探索服务用 readFileSync 读，模块遍历看不到它们。
+  'tools/dsh-onboarding/exploration-aliases.json','tools/dsh-onboarding/exploration-catalog.json','tools/dsh-onboarding/lol-roster.json',
+  ...(await readdir(resolve(root,'tools/dsh-onboarding/exploration-icons')).catch(()=>[]))
+    .filter(name=>/\.(jpg|png)$/i.test(name))
+    .map(name=>'tools/dsh-onboarding/exploration-icons/'+name),
   'tools/team-room/page.html','tools/team-room/page.css','tools/team-room/page.mjs',
   'tools/dsh-coach-server/capture-game.ps1','tools/lol-companion/capture-augments.ps1','tools/lol-companion/augment-names.json',
 // Spawned as its own process by the collector on every augment offer, so the
