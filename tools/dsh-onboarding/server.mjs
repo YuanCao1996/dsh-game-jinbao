@@ -52,7 +52,15 @@ const exploration=createLocalExploration({stateDir,catalog:explorationCatalog});
 // 打完一局自动记录探索足迹：每 20 秒看一眼当前对局，只在本局英雄/模式已确定时写入，
 // 记录本身幂等，重启后也不会重复计数。
 try{
- const explorationTicker=setInterval(()=>{try{const view=overlay?.view?.();if(view&&view.game==='lol')exploration.recordMatch(view).catch(()=>{});}catch{}},20000);
+ const explorationTicker=setInterval(()=>{try{
+  const view=overlay?.view?.();
+  if(!view||view.game!=='lol')return;
+  // 对局结束事件只在事件流里：把最近事件一起传给 recordMatch，
+  // 回忆抽取才能拿到 GameEnd.Result（胜负）与三杀/团灭这些高光。
+  const events=(view.events||[]).map(e=>({name:e.kind==='event'?(e.name??e.EventName??''):'' ,Result:e.kind==='event'?(e.Result??''):'' ,text:e.text}))
+   .filter(e=>e.name||e.text).slice(-40);
+  exploration.recordMatch(view,events).catch(()=>{});
+ }catch{}},20000);
  explorationTicker.unref?.();
 }catch{}
  async function saveConfig(next){await writeFile(filename+'.tmp',JSON.stringify(next),{mode:0o600});await rename(filename+'.tmp',filename);config=next;}

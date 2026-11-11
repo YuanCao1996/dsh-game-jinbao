@@ -122,18 +122,36 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
 
 
   // 从视图里尽量稳地抽出一局的关键信息：抽不到就留空，不编造。
-  function matchMemory(view, champion, mode) {
+  function matchMemory(view, champion, mode, events = []) {
     const str = value => String(value ?? '').trim();
     const live = view?.liveStats && typeof view.liveStats === 'object' ? view.liveStats : null;
-    // KDA：真实视图里只有 liveStats.kda / summary 这两种来源，别去猜别的字段。
-    const kdaText = str(live?.kda) || (str(view?.summary).match(/(\d+\s*\/\s*\d+\s*\/\s*\d+)/) ?? [''])[0];
-    const kdaMatch = kdaText.match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/);
-    // 时长：gameTime 是 mm:ss。
+    // 权威来源优先级：view.me.k/d/a（客户端API）> liveStats.kda（OCR）> summary。
+    const me = view?.me && typeof view.me === 'object' ? view.me : null;
+    let kda = null;
+    if (me && [me.k, me.d, me.a].every(v => Number.isFinite(Number(v)))) {
+      kda = [Number(me.k), Number(me.d), Number(me.a)];
+    } else {
+      const kdaText = str(live?.kda) || (str(view?.summary).match(/(\d+\s*\/\s*\d+\s*\/\s*\d+)/) ?? [''])[0];
+      const m = kdaText.match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/);
+      if (m) kda = [Number(m[1]), Number(m[2]), Number(m[3])];
+    }
+    const level = Number(me?.level) || Number(live?.level) || null;
+    // 胜负：GameEnd 事件里的 Result 是权威值。
+    const endEvent = events.filter(row => String(row?.name ?? row?.EventName ?? '') === 'GameEnd').at(-1);
+    const result = str(endEvent?.Result);
+    const win = result === 'Win' ? true : result === 'Lose' ? false : null;
     const clock = str(live?.clock) || str(view?.gameTime);
     const clockMatch = clock.match(/^(\d{1,3}):(\d{2})$/);
     const durationSeconds = clockMatch ? Number(clockMatch[1]) * 60 + Number(clockMatch[2]) : null;
     const startedAt = Number(view?.matchStartedAt) || null;
     const endedAt = Date.now();
+    // 高光从事件文本抽：三杀/四杀/五杀/团灭；海克斯只记录本机确认过的（view.augments 是渲染字符串，不采）。
+    const eventTexts = (Array.isArray(events) ? events : []).map(row => str(row?.text));
+    const highlights = [];
+    const multi = eventTexts.find(line => /五杀|四杀|三杀/.test(line));
+    if (multi) highlights.push((multi.match(/五杀|四杀|三杀/) ?? [''])[0]);
+    const aces = eventTexts.filter(line => line.includes('团灭')).length;
+    if (aces) highlights.push('团灭 ×' + aces);
     return {
       id: str(view?.match) || champion + '@' + endedAt,
       category: '英雄',
@@ -142,17 +160,17 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       startedAt,
       endedAt,
       durationSeconds,
-      level: Number(live?.level) || null,
-      kda: kdaMatch ? [Number(kdaMatch[1]), Number(kdaMatch[2]), Number(kdaMatch[3])] : null,
-      win: null,
+      level,
+      kda,
+      win,
       augments: [],
-      highlights: [],
+      highlights,
     };
   }
 
   // 打完一局自动把「本局英雄 + 本局模式」记进探索记录：
   // 只在记录确实变化时落盘，避免每次轮询都写文件。
-  async function recordMatch(view) {
+  async function recordMatch(view, events = []) {
     const game = view?.game;
     if (game !== 'lol') return {recorded: [], changed: false};
     const champion = String(view?.me?.champion ?? view?.selfChampion ?? '').trim();
@@ -180,7 +198,7 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
     // 对局结束时补一条回忆：只在本机保存，用于图鉴里点开英雄看「一起打过什么」。
     const ended = view?.ended === true || String(view?.phase ?? '') === 'EndOfGame' || String(view?.title ?? '').includes('对局结束');
     if (ended && champion) {
-      const memory = matchMemory(view, champion, mode);
+      const memory = matchMemory(view, champion, mode, events);
       await lock(async () => {
         const store = await load();
         if (!Array.isArray(store.matches)) store.matches = [];
