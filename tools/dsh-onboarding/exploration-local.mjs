@@ -194,6 +194,7 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
             (row.kda ? 1 : 0) + (row.level ? 1 : 0) + (row.durationSeconds ? 1 : 0)
             > (other.kda ? 1 : 0) + (other.level ? 1 : 0) + (other.durationSeconds ? 1 : 0);
           if (richer(memory, existing)) Object.assign(existing, memory);
+          await save(store);
           return;
         }
         store.matches.push(memory);
