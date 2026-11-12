@@ -220,7 +220,10 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       try { event = JSON.parse(line); } catch { continue; }
       if (event.kind === 'phase' && event.phase === 'PreEndOfGame' && me) break;
       if (event.kind === 'state') {
-        const candidate = event.state?.me ?? event.me;
+        // 老日志把英雄与 KDA 放在 state 顶层，新日志放在 state.me：两种都要认，
+        // 否则老对局会被判成「读不到终局数据」而丢掉 KDA 与已选海克斯。
+        const fallback = Number.isFinite(Number(event.state?.k)) ? event.state : null;
+        const candidate = event.state?.me ?? event.me ?? fallback;
         if (candidate) me = candidate;
         const st = event.state ?? event;
         const tk = Number(st?.teamKills), ek = Number(st?.enemyKills);
