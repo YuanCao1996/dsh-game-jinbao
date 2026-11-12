@@ -149,3 +149,22 @@ test('a merged line carrying two augment names claims no owner', () => {
     assert.equal(event.confidence, 'low', 'a merged line may not own the augment');
   }
 });
+
+// Real match 2026-11-12（狂厄蔷薇那局）：四次三选一全部没进回忆。
+// 卡牌监视器一次都没判定成功，而聊天公告里自己的那行被客户端写成「你已质变了 X」，
+// 没有英雄名 → 归属判定拿不到 champion → who:'unknown'，于是「本局已选」永远为空。
+// 这条用例锁住：主语是「你」时，归属就是自己。
+test('客户端用「你」代替自己的英雄名时，仍然归属到自己', () => {
+  const events = observe([{ box: poly(20, 700, 320, 22), text: '你 已质变了 急速之追求' }]);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'augment_mutate');
+  assert.equal(events[0].champion, '虚空女皇');
+  assert.equal(events[0].who, 'self');
+  assert.equal(events[0].confidence, 'high');
+});
+
+test('「你们」这类他人措辞不会被当成自己', () => {
+  const events = observe([{ box: poly(20, 700, 380, 22), text: '你们 已质变了 急速之追求' }]);
+  assert.equal(events.length, 1);
+  assert.notEqual(events[0].who, 'self');
+});

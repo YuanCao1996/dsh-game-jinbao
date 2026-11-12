@@ -50,9 +50,13 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
         const raw=String(message.text??'');
         const verbAt=raw.search(AUGMENT_VERB_RE);
         const beforeVerb=verbAt>=0?raw.slice(0,verbAt):raw;
-        const explicit=championsInText(beforeVerb).at(-1);
-        const champion=explicit??message.champion??null;
+        // 客户端在公告里会用「你」代替自己的英雄名（实测 2026-11-12 狂厄蔷薇那局：
+        // 「你 已质变了 X」拿不到 champion，归属变成 unknown，于是本局已选永远为空）。
+        // 只认主语以「你」开头，「你们」这类他人措辞不算。
         const ownName=aliases.get(normalized(state.me?.championAlias))??aliases.get(normalized(state.me?.champion))??state.me?.champion;
+        const selfSubject=/^你(?!们)/.test(normalized(beforeVerb));
+        const explicit=championsInText(beforeVerb).at(-1);
+        const champion=explicit??message.champion??(selfSubject&&ownName?ownName:null);
         const time=message.time??null;
         const names=message.kind==='purchase'?[message.item??null]:message.augments??[message.augment];
         // The parser already proved the verb was there; re-testing the joined line used to
