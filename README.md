@@ -140,6 +140,7 @@ node tools/cloud-desktop/main.mjs --state "$HOME/.jinbao-cloud-preview" --collec
 
 - 遇到 bug 或建议：提 [Issue](https://github.com/YuanCao1996/dsh-game-jinbao/issues)，带上设置页导出的诊断包（脱敏）
 - 想看开发细节：[DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- 想看设计与踩坑（英文技术报告）：[TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md)
 - 安全策略：[SECURITY.md](SECURITY.md)
 
 如果它让你少送了一波、或者某个瞬间觉得「这玩意儿真懂」，**点个 Star 就是最好的反馈** ⭐
@@ -158,5 +159,6 @@ node tools/cloud-desktop/main.mjs --state "$HOME/.jinbao-cloud-preview" --collec
 - Augment-aware build planning, augment pick ranking, voice coaching with four mentor voices
 - Local-first: match data never leaves your machine
 - Download: [`jinbao-desktop-windows.zip`](https://api.jinbaoai.top/downloads/jinbao/v0.2.17/jinbao-desktop-windows.zip) · MIT licensed
+- **Technical report**: [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md) — architecture, why augment OCR needs confirmation instead of guessing, and the three failure modes that shaped the design
 
 <sub>Built on the DSH agent runtime. Documentation is in Chinese for now — issues in English are welcome.</sub>
