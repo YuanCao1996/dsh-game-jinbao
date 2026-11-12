@@ -4,6 +4,9 @@
 
 > How we turn a League of Legends client's own telemetry into one actionable sentence, and
 > what breaks when you try.
+>
+> **Looking for diagrams instead of prose?** See [ARCHITECTURE.md](ARCHITECTURE.md) — system context,
+> one advice turn as a sequence diagram, the augment observation state machine, and update integrity.
 
 ---
 
