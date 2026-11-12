@@ -72,8 +72,11 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
       phase='playing';played=true;publish();const started=now();await play(audio,controller.signal);emit('speech_segment_done',{elapsedMs:now()-started});
       await pause(speechPause(text),controller.signal);
      }
-     const aborted=controller.signal.aborted||epoch!==generation||stale(item);
-     audit({event:aborted?'interrupted':'completed',id:String(item.id??''),spoken:item.text});
+     // 只有「真的被取消」才算中断。曾经把 stale(item) 也算进中断：一条播报念完时
+     // 刚好超过 20 秒有效期，就会被记成 interrupted —— 实测一局 11 条「中断」里
+     // 大部分其实完整念完了，日志因此误导排查方向。过期只用于「还没开口就放弃」。
+     const aborted=controller.signal.aborted||epoch!==generation;
+     audit({event:aborted?'interrupted':'completed',id:String(item.id??''),spoken:item.text,...(aborted?{reason:epoch!==generation?'scope_changed':'cancelled'}:{})});
      emit(aborted?'speech_discarded':'speech_completed');
     }catch(error){
      if(controller.signal.aborted){emit('speech_cancelled');}
