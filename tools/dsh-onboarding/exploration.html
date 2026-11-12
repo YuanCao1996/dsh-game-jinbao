@@ -163,6 +163,8 @@ button:disabled{opacity:.45;cursor:wait}
 .statline{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:12px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
 .statline span{position:relative;padding-left:10px}
 .statline span::before{content:"";position:absolute;left:0;top:50%;width:4px;height:4px;margin-top:-2px;border-radius:50%;background:rgba(122,102,72,.4)}
+.gearlist{display:flex;flex-direction:column;gap:3px;margin-top:8px;font-size:12px;color:var(--ink-faint);line-height:1.6}
+.gearlist span{display:block}
 .roast{margin-top:10px;padding:10px 13px;border-radius:12px;background:linear-gradient(100deg,rgba(169,86,60,.09),rgba(169,86,60,.03));border-left:2px solid rgba(169,86,60,.45);font-size:13.5px;line-height:1.65;color:#8a4a34}
 .pbbadge{display:inline-block;margin-top:8px;font-size:11.5px;font-weight:640;padding:2px 8px;border-radius:999px;color:#8a6a2f;background:var(--ochre-soft);border:1px solid rgba(169,118,47,.34)}
 .trail-empty{
@@ -336,6 +338,15 @@ const kdaText=row=>Array.isArray(row.kda)?row.kda.join(' / '):'—';
 const resultLabel=row=>row.win===true?'胜':row.win===false?'负':'—';
 const resultKey=row=>row.win===true?'true':row.win===false?'false':'unknown';
 // 金宝的一句话：只用本机记录里的字段拼，不编造。
+// 装备与召唤师技能：只有抽屉里展示（时间线卡片保持紧凑）。
+function gearLine(row){
+  const parts=[];
+  if(Array.isArray(row.items)&&row.items.length)parts.push('<span>装备 '+esc(row.items.join(' · '))+'</span>');
+  if(Array.isArray(row.spells)&&row.spells.length)parts.push('<span>召唤师技能 '+esc(row.spells.join(' / '))+'</span>');
+  if(Array.isArray(row.roles)&&row.roles.length)parts.push('<span>定位 '+esc(row.roles.join('/'))+'</span>');
+  return parts.length?'<div class="gearlist">'+parts.join('')+'</div>':'';
+}
+
 // 一局的派生统计：只渲染真实存在的字段，缺就整段不显示，不补空格子。
 function statLine(row){
   const bits=[];
@@ -453,6 +464,7 @@ function openMemory(name,done,data,game,season,category){
           +((row.augments&&row.augments.length)?'<div class="chips">'+row.augments.map(a=>'<span class="chip">'+esc(a)+'</span>').join('')+'</div>':'')
           +((row.highlights&&row.highlights.length)?'<div class="chips">'+row.highlights.map(h=>'<span class="chip" data-kind="highlight">'+esc(h)+'</span>').join('')+'</div>':'')
           +statLine(row)
+          +gearLine(row)
           +roastLine(row)
           +'</div>'
         )).join('')

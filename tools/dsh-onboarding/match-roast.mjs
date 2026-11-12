@@ -8,6 +8,8 @@
 //
 // 同一个 matchId 永远得到同一句，避免刷新一次换一句话显得不认真。
 
+import {contextComments} from './match-context.mjs';
+
 const HASH = value => {
   let h = 2166136261;
   const text = String(value ?? '');
@@ -177,6 +179,10 @@ export function roastMatch(memory, options = {}) {
     if (options.personalBest.longestMultikill) parts.push(`${label({ multikillMax: options.personalBest.longestMultikill })}纪录`);
     if (parts.length) text += ' ' + parts.join(' · ') + '。';
   }
+  // 上下文评语：英雄定位、海克斯、出装与强化是否对上。
+  const context = options.context === false ? [] : contextComments(memory, s, options.profile);
+  if (context.length) text += ' ' + context[0];
+  if (context.length > 1) text += ' ' + context[1];
   const tail = options.tail === false ? '' : ' ' + pick(TAILS, seed + ':tail');
   return (text + tail).trim();
 }

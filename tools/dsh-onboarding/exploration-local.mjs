@@ -4,6 +4,8 @@ import {fileURLToPath as localFileUrl} from 'node:url';
 const explorationAliases=(()=>{try{return JSON.parse(readLocalFile(localFileUrl(new URL('./exploration-aliases.json',import.meta.url)),'utf8'));}catch{return {};}})();
 // 页面用本地地址：首次访问由本地服务下载并落盘，之后完全离线。
 const championIcon=name=>{const alias=explorationAliases[name];return alias?'/exploration-icon/'+alias+'.jpg':null;};
+// 英雄定位（roles）与开团/硬控标记：锐评要说「你是前排」得有依据。
+const championRoster=(()=>{try{return JSON.parse(readLocalFile(localFileUrl(new URL('./lol-roster.json',import.meta.url)),'utf8'));}catch{return {};}})();
 // 本地版探索记录：不联网、不上传、没有排行榜。
 //
 // 只需要回答一件事：我自己探索过哪些英雄/模式。排行榜、跨设备同步、服务端防作弊
@@ -284,7 +286,10 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       if ([k, d, a].every(Number.isFinite)) facts.kda = [k, d, a];
       if (Number.isFinite(Number(me.level))) facts.level = Number(me.level);
       if (Number.isFinite(Number(me.cs))) facts.cs = Number(me.cs);
-      if (Array.isArray(me.items)) facts.items = me.items.filter(Boolean).slice(0, 6);
+      if (Array.isArray(me.items)) facts.items = me.items.filter(Boolean).slice(0, 7);
+      if (Array.isArray(me.spells)) facts.spells = me.spells.map(String).filter(Boolean).slice(0, 2);
+      if (me.championAlias) facts.championAlias = String(me.championAlias);
+      if (me.championTitle) facts.championTitle = String(me.championTitle);
       facts.riotId = String(me.riotId ?? '') || null;
     }
     return facts;
@@ -299,7 +304,12 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
     if (facts.durationSeconds) memory.durationSeconds = facts.durationSeconds;
     if (Array.isArray(facts.highlights) && facts.highlights.length) memory.highlights = facts.highlights;
     if (Array.isArray(facts.augments) && facts.augments.length) memory.augments = facts.augments;
-    if (Array.isArray(facts.items) && facts.items.length) memory.items = facts.items;
+    if (Array.isArray(facts.items) && facts.items.length) {
+      // 只保留成装名（消耗品如魄罗佳肴不进回忆）。
+      memory.items = facts.items.filter(item => item && item.completed === true).map(item => String(item.name ?? '')).filter(Boolean).slice(0, 6);
+    }
+    if (Array.isArray(facts.spells) && facts.spells.length) memory.spells = facts.spells;
+    if (facts.championAlias) memory.championAlias = facts.championAlias;
     for (const key of ['cs', 'turrets', 'inhibs', 'aceFor', 'aceAgainst', 'multikillMax', 'multikillCount', 'teamKills', 'enemyKills']) {
       if (Number.isFinite(Number(facts[key]))) memory[key] = Number(facts[key]);
     }
@@ -321,6 +331,15 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
     if (Number.isFinite(Number(memory.cs)) && Number.isFinite(minutes) && minutes > 0) {
       memory.csPerMinute = Number((Number(memory.cs) / minutes).toFixed(1));
     }
+    // 英雄定位：锐评里「你是前排/开团点」需要依据。
+    const profile = championRoster[memory.entity] ?? null;
+    if (profile) {
+      memory.roles = Array.isArray(profile.roles) ? profile.roles : [];
+      memory.engage = profile.engage === true;
+      memory.hardCC = profile.cc === true;
+    }
+    memory.completedItems = Array.isArray(memory.items) ? memory.items.length : 0;
+
     // 个人最佳：只跟同英雄的历史比，不跨英雄、不跟别人比。
     const same = others.filter(row => row && row.entity === memory.entity && Array.isArray(row.kda));
     const bestKills = Math.max(0, ...same.map(row => Number(row.kda[0]) || 0));
@@ -334,7 +353,7 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       longestMultikill: hasHistory && Number(memory.multikillMax) > bestMultikill && bestMultikill > 0 ? Number(memory.multikillMax) : null,
       firstTime: hasHistory ? null : true,
     };
-    memory.roast = roastMatch(memory, { personalBest: memory.personalBest });
+    memory.roast = roastMatch(memory, { personalBest: memory.personalBest, profile });
     return memory;
   }
 
