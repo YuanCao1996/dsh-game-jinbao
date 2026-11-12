@@ -160,6 +160,11 @@ button:disabled{opacity:.45;cursor:wait}
   font-size:13.5px;color:#7d5c28;line-height:1.7
 }
 .quill b{font-weight:640}
+.statline{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:12px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.statline span{position:relative;padding-left:10px}
+.statline span::before{content:"";position:absolute;left:0;top:50%;width:4px;height:4px;margin-top:-2px;border-radius:50%;background:rgba(122,102,72,.4)}
+.roast{margin-top:10px;padding:10px 13px;border-radius:12px;background:linear-gradient(100deg,rgba(169,86,60,.09),rgba(169,86,60,.03));border-left:2px solid rgba(169,86,60,.45);font-size:13.5px;line-height:1.65;color:#8a4a34}
+.pbbadge{display:inline-block;margin-top:8px;font-size:11.5px;font-weight:640;padding:2px 8px;border-radius:999px;color:#8a6a2f;background:var(--ochre-soft);border:1px solid rgba(169,118,47,.34)}
 .trail-empty{
   margin-top:18px;padding:26px;border-radius:var(--radius);
   border:1px dashed var(--line-strong);text-align:center;color:var(--ink-faint);font-size:13.5px
@@ -331,6 +336,34 @@ const kdaText=row=>Array.isArray(row.kda)?row.kda.join(' / '):'—';
 const resultLabel=row=>row.win===true?'胜':row.win===false?'负':'—';
 const resultKey=row=>row.win===true?'true':row.win===false?'false':'unknown';
 // 金宝的一句话：只用本机记录里的字段拼，不编造。
+// 一局的派生统计：只渲染真实存在的字段，缺就整段不显示，不补空格子。
+function statLine(row){
+  const bits=[];
+  if(Number.isFinite(Number(row.involvement)))bits.push('参与率 '+Math.round(Number(row.involvement))+'%');
+  // 补刀很少时（大乱斗常见）写「每分钟」会误导，只报绝对值。
+  if(Number.isFinite(Number(row.cs))&&Number(row.cs)>=40)bits.push('补刀 '+row.cs+'（'+row.csPerMinute+'/分）');
+  else if(Number(row.cs)>=10)bits.push('补刀 '+row.cs);
+  if(Number(row.turrets))bits.push('推塔 '+row.turrets);
+  if(Number(row.multikillMax)>=3)bits.push((row.multikillMax>=5?'五杀':row.multikillMax===4?'四杀':'三杀')+' 最高');
+  if(Number(row.aceFor))bits.push('团灭对面 '+row.aceFor);
+  if(row.firstBlood===true)bits.push('一血');
+  return bits.length?'<div class="statline">'+bits.map(b=>'<span>'+esc(b)+'</span>').join('')+'</div>':'';
+}
+// 锐评：金宝对本局的一句吐槽，带一个具体数字。
+function roastLine(row){
+  const text=String(row.roast||'').trim();
+  return text?'<div class="roast">'+esc(text)+'</div>':'';
+}
+// 破纪录角标
+function bestBadge(row){
+  const pb=row.personalBest||{};
+  const marks=[];
+  if(pb.bestKills)marks.push('击杀新高 '+pb.bestKills);
+  if(pb.bestInvolvement)marks.push('参与率新高 '+Math.round(pb.bestInvolvement)+'%');
+  if(pb.longestMultikill)marks.push('多杀新高');
+  if(pb.firstTime)marks.push('第一次');
+  return marks.length?'<span class="pbbadge">'+esc(marks[0])+'</span>':'';
+}
 function quillLine(row){
   const bits=[];
   const k=Array.isArray(row.kda)?row.kda.join('/'):'';
@@ -375,12 +408,14 @@ function renderTrail(data,game,season,category){
           +'<div class="who"><b>'+esc(row.entity)+'</b><span>'+esc(fmtDay(row.endedAt))+' '+esc(fmtTime(row.endedAt))+(row.level?' · Lv'+esc(row.level):'')+'</span></div>'
           +'<span class="badge" data-win="'+resultKey(row)+'">'+esc(resultLabel(row))+' · '+mins(row.durationSeconds)+' 分钟</span>'
         +'</div>'
+        +bestBadge(row)
         +'<div class="recall-mid">'
           +'<span class="kda"><em>KDA</em>'+esc(kdaText(row))+'</span>'
           +(row.mode?'<span class="meta">'+esc(row.mode)+'</span>':'')
         +'</div>'
         +(chips.length?'<div class="chips">'+chips.join('')+'</div>':'')
-        +quillLine(row)
+        +statLine(row)
+        +roastLine(row)
       +'</button></li>';
   }
   trail.innerHTML=html;
@@ -417,7 +452,8 @@ function openMemory(name,done,data,game,season,category){
           +'<div class="kda-sm"><em style="font-style:normal;color:var(--ink-faint);font-weight:400;font-size:12px;margin-right:6px">KDA</em>'+esc(kdaText(row))+'</div>'
           +((row.augments&&row.augments.length)?'<div class="chips">'+row.augments.map(a=>'<span class="chip">'+esc(a)+'</span>').join('')+'</div>':'')
           +((row.highlights&&row.highlights.length)?'<div class="chips">'+row.highlights.map(h=>'<span class="chip" data-kind="highlight">'+esc(h)+'</span>').join('')+'</div>':'')
-          +quillLine(row)
+          +statLine(row)
+          +roastLine(row)
           +'</div>'
         )).join('')
       :'<div class="trail-empty" style="margin-top:6px">从下一局开始，这里会记录和它一起打的每局：KDA、这局拿了哪些海克斯、有没有三杀团灭。</div>')

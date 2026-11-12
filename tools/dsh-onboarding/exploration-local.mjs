@@ -11,6 +11,7 @@ const championIcon=name=>{const alias=explorationAliases[name];return alias?'/ex
 // 拉图标暴露网络地址的问题。
 import {mkdir, readFile, readdir, rename, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
+import {roastMatch} from './match-roast.mjs';
 
 const CATEGORIES = {
   lol_pc: ['英雄', '模式'],
@@ -172,49 +173,169 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       win,
       augments: [],
       highlights,
+      // 视图里才有队友/对手阵容；日志里没有这份名单。
+      allies: Array.isArray(view?.allies) ? view.allies.map(p => String(p?.champion ?? p ?? '')).filter(Boolean).slice(0, 5) : [],
+      enemies: Array.isArray(view?.enemies) ? view.enemies.map(p => String(p?.champion ?? p ?? '')).filter(Boolean).slice(0, 5) : [],
+      items: Array.isArray(view?.me?.items) ? view.me.items.filter(Boolean).slice(0, 6) : [],
     };
   }
 
-  // 从一局的对局日志里读终局事实：KDA、等级、胜负、时长、高光。
-  // 投影视图里没有这些结构化字段，日志才是权威来源。日志不存在就返回 null。
+  // 从一局的对局日志里读终局事实。日志是权威来源：视图里没有 Result、没有补刀、
+  // 没有推塔与多杀明细，也没有已确认的海克斯名。
   async function readMatchLog(matchId) {
-    const fileName = String(matchId ?? "").split("#")[0];
+    const fileName = String(matchId ?? '').split('#')[0];
     if (!fileName) return null;
     let raw;
-    try { raw = await readFile(join(root, "..", "logs", fileName), "utf8"); } catch { return null; }
-    let me = null, duration = null, win = null;
+    try { raw = await readFile(join(root, '..', 'logs', fileName), 'utf8'); } catch { return null; }
+
+    let me = null, win = null, duration = null;
+    let teamKills = null, enemyKills = null;
+    let turrets = 0, inhibs = 0, firstBlood = false;
+    let aceFor = 0, aceAgainst = 0;
+    let multikillMax = 0, multikillCount = 0;
+    const augments = [];
     const highlights = [];
-    for (const line of raw.split("\n")) {
+    let myTeam = null;              // 'CHAOS' / 'ORDER'，从击杀归属反推
+    const myName = () => String(me?.riotId ?? '').split('#')[0];
+    const myChampion = () => String(me?.champion ?? '').trim();
+    // 击杀/推塔事件里能带出「我在哪一边」：目标名里含 TOrder / TChaos。
+    const teamFromVictim = (target) => {
+      const text = String(target ?? '');
+      if (text.includes('TOrder')) return 'CHAOS';
+      if (text.includes('TChaos')) return 'ORDER';
+      return null;
+    };
+    const involved = (event, names) => {
+      const mine = myName();
+      if (!mine) return false;
+      if (String(event.killer ?? event.KillerName ?? '') === mine) return true;
+      return Array.isArray(event[names ?? 'Assisters']) && event[names ?? 'Assisters'].includes(mine);
+    };
+
+    for (const line of raw.split('\n')) {
       if (!line) continue;
       let event;
       try { event = JSON.parse(line); } catch { continue; }
-      if (event.kind === "phase" && event.phase === "PreEndOfGame" && me) break;
-      if (event.kind === "state") {
+      if (event.kind === 'phase' && event.phase === 'PreEndOfGame' && me) break;
+      if (event.kind === 'state') {
         const candidate = event.state?.me ?? event.me;
         if (candidate) me = candidate;
+        const st = event.state ?? event;
+        const tk = Number(st?.teamKills), ek = Number(st?.enemyKills);
+        if (Number.isFinite(tk)) teamKills = tk;
+        if (Number.isFinite(ek)) enemyKills = ek;
       }
-      if (event.kind === "event") {
-        const name = String(event.name ?? event.EventName ?? "");
-        if (name === "GameEnd") {
-          const result = String(event.Result ?? "");
-          if (result === "Win") win = true; else if (result === "Lose") win = false;
-          if (Number.isFinite(Number(event.EventTime))) duration = Math.round(Number(event.EventTime));
-        }
-        if (highlights.length < 2 && /Multikill/.test(name)) {
-          const streak = Number(event.KillStreak ?? 0);
-          const label = streak >= 5 ? "五杀" : streak === 4 ? "四杀" : streak === 3 ? "三杀" : null;
+      if (event.kind === 'augment_picked') {
+        const name = String(event.augment ?? event.name ?? '').trim();
+        const mine = event.who === undefined || event.who === 'self';
+        if (name && mine && !augments.includes(name)) augments.push(name);
+      }
+      // 视觉复核给出的归属：只有指向自己英雄的才算本局已选（别人的强化不算）。
+      if (event.kind === 'augment_mutate') {
+        const name = String(event.augment ?? '').trim();
+        const owner = String(event.champion ?? '').trim();
+        if (name && owner && owner === myChampion() && !augments.includes(name)) augments.push(name);
+      }
+      if (event.kind !== 'event') continue;
+      const name = String(event.name ?? event.EventName ?? '');
+      const mine = !!myName() && String(event.killer ?? event.KillerName ?? '') === myName();
+      if (name === 'GameEnd') {
+        const result = String(event.Result ?? '');
+        if (result === 'Win') win = true; else if (result === 'Lose') win = false;
+        if (Number.isFinite(Number(event.EventTime))) duration = Math.round(Number(event.EventTime));
+      }
+      if (name === 'FirstBlood') {
+        if (String(event.Recipient ?? '') === myName()) firstBlood = true;
+      }
+      if (name === 'TurretKilled' && involved(event)) {
+        turrets += 1;
+        myTeam = myTeam ?? teamFromVictim(event.turret ?? event.TurretKilled);
+      }
+      if (name === 'InhibKilled' && involved(event)) {
+        inhibs += 1;
+        myTeam = myTeam ?? teamFromVictim(event.InhibKilled ?? event.turret);
+      }
+      if (name === 'Ace') {
+        const acingTeam = String(event.AcingTeam ?? '');
+        // 没法判断阵营时退回到「击杀者是不是我」。
+        const ours = myTeam ? acingTeam === myTeam : String(event.Acer ?? '') === myName();
+        if (ours) aceFor += 1; else aceAgainst += 1;
+      }
+      if (/Multikill/.test(name)) {
+        const streak = Number(event.KillStreak ?? 0);
+        const killer = String(event.KillerName ?? event.killer ?? '');
+        if (killer && killer === myName()) {
+          multikillCount += 1;
+          if (streak > multikillMax) multikillMax = streak;
+          const label = streak >= 5 ? '五杀' : streak === 4 ? '四杀' : streak === 3 ? '三杀' : null;
           if (label && !highlights.includes(label)) highlights.push(label);
         }
-        if (!highlights.some(item => item.startsWith("团灭")) && /Ace/.test(name)) highlights.push("团灭 ×1");
       }
     }
-    const facts = { kda: null, level: null, win, duration, highlights };
+
+    const facts = {
+      kda: null, level: null, win, durationSeconds: duration || null,
+      highlights, augments, turrets, inhibs, firstBlood,
+      aceFor, aceAgainst, multikillMax, multikillCount,
+      teamKills, enemyKills,
+    };
     if (me) {
       const k = Number(me.k), d = Number(me.d), a = Number(me.a);
       if ([k, d, a].every(Number.isFinite)) facts.kda = [k, d, a];
       if (Number.isFinite(Number(me.level))) facts.level = Number(me.level);
+      if (Number.isFinite(Number(me.cs))) facts.cs = Number(me.cs);
+      if (Array.isArray(me.items)) facts.items = me.items.filter(Boolean).slice(0, 6);
+      facts.riotId = String(me.riotId ?? '') || null;
     }
     return facts;
+  }
+
+  // 日志事实合并进回忆：日志优先，视图里有而日志没有的（队友/对手）保留。
+  function mergeLogFacts(memory, facts) {
+    if (!facts) return memory;
+    if (facts.kda) memory.kda = facts.kda;
+    if (facts.level) memory.level = facts.level;
+    if (facts.win !== null) memory.win = facts.win;
+    if (facts.durationSeconds) memory.durationSeconds = facts.durationSeconds;
+    if (Array.isArray(facts.highlights) && facts.highlights.length) memory.highlights = facts.highlights;
+    if (Array.isArray(facts.augments) && facts.augments.length) memory.augments = facts.augments;
+    if (Array.isArray(facts.items) && facts.items.length) memory.items = facts.items;
+    for (const key of ['cs', 'turrets', 'inhibs', 'aceFor', 'aceAgainst', 'multikillMax', 'multikillCount', 'teamKills', 'enemyKills']) {
+      if (Number.isFinite(Number(facts[key]))) memory[key] = Number(facts[key]);
+    }
+    if (facts.firstBlood === true) memory.firstBlood = true;
+    if (facts.riotId) memory.riotId = facts.riotId;
+    return memory;
+  }
+
+  // 给一条回忆补上派生统计与锐评。
+  function decorate(memory, others = []) {
+    const kda = Array.isArray(memory.kda) ? memory.kda.map(Number) : null;
+    const minutes = Number(memory.durationSeconds) > 0 ? Number(memory.durationSeconds) / 60 : null;
+    if (kda && Number.isFinite(minutes) && minutes > 0) {
+      memory.kdaPerMinute = Number(((kda[0] + kda[2]) / minutes).toFixed(2));
+    }
+    if (kda && Number.isFinite(Number(memory.teamKills)) && Number(memory.teamKills) > 0) {
+      memory.involvement = Number((((kda[0] + kda[2]) / Number(memory.teamKills)) * 100).toFixed(1));
+    }
+    if (Number.isFinite(Number(memory.cs)) && Number.isFinite(minutes) && minutes > 0) {
+      memory.csPerMinute = Number((Number(memory.cs) / minutes).toFixed(1));
+    }
+    // 个人最佳：只跟同英雄的历史比，不跨英雄、不跟别人比。
+    const same = others.filter(row => row && row.entity === memory.entity && Array.isArray(row.kda));
+    const bestKills = Math.max(0, ...same.map(row => Number(row.kda[0]) || 0));
+    const bestInvolvement = Math.max(0, ...same.map(row => Number(row.involvement) || 0));
+    const bestMultikill = Math.max(0, ...same.map(row => Number(row.multikillMax) || 0));
+    // 只有「已经打过这个英雄」时才算破纪录，否则第一次打就成了纪录，说服力为零。
+    const hasHistory = same.length >= 1;
+    memory.personalBest = {
+      bestKills: hasHistory && kda && Number(kda[0]) > bestKills ? Number(kda[0]) : null,
+      bestInvolvement: hasHistory && memory.involvement != null && memory.involvement > bestInvolvement ? memory.involvement : null,
+      longestMultikill: hasHistory && Number(memory.multikillMax) > bestMultikill && bestMultikill > 0 ? Number(memory.multikillMax) : null,
+      firstTime: hasHistory ? null : true,
+    };
+    memory.roast = roastMatch(memory, { personalBest: memory.personalBest });
+    return memory;
   }
 
   // 旧版抽取失败时留下的回忆只有时长、没有 KDA/胜负。对局日志里其实有终局数据，
@@ -226,18 +347,21 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
     backfillAt = Date.now();
     const store = await load();
     if (!Array.isArray(store.matches) || !store.matches.length) return;
-    const needs = store.matches.filter(row => row && (!row.kda || row.win === null || row.win === undefined));
+    const needs = store.matches.filter(row => row && (
+      !row.kda || row.win === null || row.win === undefined ||
+      !Array.isArray(row.augments) || row.augments.length === 0 ||
+      !Number.isFinite(Number(row.cs)) || !row.roast
+    ));
     if (!needs.length) return;
     let changed = false;
     for (const row of needs) {
       const facts = await readMatchLog(row.id);
       if (!facts) continue;
-      if (facts.kda) row.kda = facts.kda;
-      if (facts.level) row.level = facts.level;
-      if (facts.win !== null) row.win = facts.win;
-      if (facts.duration) row.durationSeconds = facts.duration;
-      if (facts.highlights.length) row.highlights = facts.highlights;
-      if (row.kda || row.win !== null) changed = true;
+      const before = JSON.stringify([row.augments, row.cs, row.turrets, row.multikillMax]);
+      mergeLogFacts(row, facts);
+      decorate(row, store.matches.filter(other => other !== row));
+      const after = JSON.stringify([row.augments, row.cs, row.turrets, row.multikillMax]);
+      if (before !== after || row.kda) changed = true;
     }
     if (changed) await save(store);
   }
@@ -274,13 +398,7 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
       const memory = matchMemory(view, champion, mode, events);
       // 日志里的终局事实比视图可靠（视图没有 Result，KDA 也可能只是某一帧）。
       const fromLog = await readMatchLog(memory.id);
-      if (fromLog) {
-        if (fromLog.kda) memory.kda = fromLog.kda;
-        if (fromLog.level) memory.level = fromLog.level;
-        if (fromLog.win !== null) memory.win = fromLog.win;
-        if (fromLog.duration) memory.durationSeconds = fromLog.duration;
-        if (fromLog.highlights.length) memory.highlights = fromLog.highlights;
-      }
+      if (fromLog) mergeLogFacts(memory, fromLog);
       await lock(async () => {
         const store = await load();
         if (!Array.isArray(store.matches)) store.matches = [];
@@ -293,10 +411,15 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
           const richer = (row, other) =>
             (row.kda ? 1 : 0) + (row.level ? 1 : 0) + (row.durationSeconds ? 1 : 0)
             > (other.kda ? 1 : 0) + (other.level ? 1 : 0) + (other.durationSeconds ? 1 : 0);
-          if (richer(memory, existing)) Object.assign(existing, memory);
+          if (richer(memory, existing)) {
+            Object.assign(existing, memory);
+            decorate(existing, store.matches.filter(row => row !== existing));
+          }
           await save(store);
           return;
         }
+        // 统计与锐评在落盘前算好，之后看回忆不用再重算。
+        decorate(memory, store.matches);
         store.matches.push(memory);
         // 只保留最近 500 局，避免文件无限增长。
         if (store.matches.length > 500) store.matches = store.matches.slice(-500);
