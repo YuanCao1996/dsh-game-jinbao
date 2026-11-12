@@ -180,11 +180,16 @@ export function roastMatch(memory, options = {}) {
     if (parts.length) text += ' ' + parts.join(' · ') + '。';
   }
   // 上下文评语：英雄定位、海克斯、出装与强化是否对上。
+  // 只取一条上下文：定位/装备都塞进来会变成四段，读起来像汇报。
   const context = options.context === false ? [] : contextComments(memory, s, options.profile);
   if (context.length) text += ' ' + context[0];
-  if (context.length > 1) text += ' ' + context[1];
   const tail = options.tail === false ? '' : ' ' + pick(TAILS, seed + ':tail');
-  return (text + tail).trim();
+  const full = (text + tail).trim();
+  // 兜底：再长就截断到最后一个句号，保证一行能读完。
+  if (full.length <= 150) return full;
+  const cut = full.slice(0, 150);
+  const stop = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('！'), cut.lastIndexOf('？'));
+  return stop >= 60 ? cut.slice(0, stop + 1) : cut + '…';
 }
 
 export const _internal = { stats, classify, pct };

@@ -127,6 +127,12 @@ export function buildLolCoachingPlan(events = [], current = null) {
     me: hero(me), allies: list(current?.allies ?? roster.allies).map(hero),
     enemies: list(current?.enemies ?? roster.enemies).map(hero),
     ownedAugments: current?.ownedAugments ?? s.teamfight?.pickedAugments ?? [],
+    // 本局双方名单（称号）：人名只能从这里取，避免编造不存在的英雄。
+    lineup: {
+      self: String(me?.champion ?? ''),
+      allies: list(current?.allies).map(p => String(p?.champion ?? p ?? '')).filter(Boolean),
+      enemies: list(current?.enemies).map(p => String(p?.champion ?? p ?? '')).filter(Boolean),
+    },
     // 多杀硬字段：游戏事件里的 KillStreak 是权威值，提示词据此播报，禁止模型自己数或改口。
     multikill: (() => {
       const hit = [...events].reverse().find(e => e.kind === 'event' && String(e.name ?? e.EventName ?? '') === 'Multikill');
@@ -174,6 +180,8 @@ export function buildLolCoachingPlan(events = [], current = null) {
     mayhemBrief,
     '优先执行本轮阶段任务，不沿用历史阶段。输出最多两句、总计不超过60字、单段不换行；紧急局势仅一句。先结论再依据，每句对应本局英雄、强化、装备或事件。不复述面板，不输出泛泛口号，不显示玩家名。',
     '事实与资料分开：缺少决定结论的英雄技能、强化效果、装备或胜率资料时，使用现有DSH资料查询/联网工具，限定本局模式与版本；查不到就明确缺口，不编造数据。大招、金钱、装备和候选以最新事实为准。历史建议不是事实；不重复最近已播报且没有变化的建议。',
+    '英雄名只能逐字使用 facts.lineup 里给出的称号：禁止使用本名、简称或别称（安妮/火女、薇恩、男枪、诺手、蒙多、斯维因等），禁止出现名单之外的英雄。统一说法：我方队友用「跟X一起」，敌方用「敌方X」「避开X」。',
+    '同一个英雄只能算一次：不要把同一个英雄用称号和本名各写一遍当作两个威胁（真机事故：「敌方安妮、乐芙兰、黑暗之女三法伤」——安妮就是黑暗之女，乐芙兰那局不存在）。提到几个威胁之前，先在 facts.lineup.enemies 里数一遍。',
     '多杀数量只认 facts.multikill.streak（2=双杀，3=三杀，4=四杀，5=五杀及以上），不得自行数击杀或改写措辞；该字段为 null 时不要提多杀。',
     // 有些强化直接点名装备：钢化你心要求心之钢、命运之武器指第一件传说装、易损要暴击装。
     // 这类强化拿到后，出装顺序里必须出现它要求的那件，不能只当成属性加成。
@@ -200,8 +208,8 @@ function dependencies(current, stage) {
   // on the phase, not on every gold or component change.
   if(['ace','inhib','objective','turret','coordination'].includes(stage))
     return {champion:me.champion,phase:current.phase,
-      allies:list(current.allies).filter(p=>p.dead!==true).map(p=>p.champion).sort().join(','),
-      enemies:list(current.enemies).filter(p=>p.dead!==true).map(p=>p.champion).sort().join(',')};
+      allies:list(current?.allies).filter(p=>p.dead!==true).map(p=>p.champion).sort().join(','),
+      enemies:list(current?.enemies).filter(p=>p.dead!==true).map(p=>p.champion).sort().join(',')};
   // An opening build order is a plan for the whole game: buying the first component or an
   // enemy finishing an item does not make it wrong. Only the champion (and, outside this
   // function, the match) defines which plan it is; the phase itself moves on immediately.
@@ -211,7 +219,7 @@ function dependencies(current, stage) {
   const common = {champion:me.champion,phase:current.phase,levelBand:Number(me.level)>=6?'ultimate':'early',items:canonical(list(me.items).filter(isCompletedItem)),owned:canonical(current.ownedAugments),dead:me.dead === true};
   if (stage === 'augment') return {...common,offers:canonical(current.offers)};
   if (stage === 'selection') return {champion:me.champion,phase:current.phase,bench:canonical(current.bench),allies:canonical(current.allies)};
-  return {...common,enemy: fingerprint(list(current.enemies).map(p=>[p.champion,canonical(list(p.items).filter(isCompletedItem))])),
+  return {...common,enemy: fingerprint(list(current?.enemies).map(p=>[p.champion,canonical(list(p.items).filter(isCompletedItem))])),
     enemyAugments:fingerprint(list(me.championAugments).filter(p=>p.side==='enemy')),canShop:me.canShop};
 }
 

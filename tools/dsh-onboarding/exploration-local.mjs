@@ -313,7 +313,8 @@ export function createLocalExploration({stateDir, catalog = {}, now = () => Date
     for (const key of ['cs', 'turrets', 'inhibs', 'aceFor', 'aceAgainst', 'multikillMax', 'multikillCount', 'teamKills', 'enemyKills']) {
       if (Number.isFinite(Number(facts[key]))) memory[key] = Number(facts[key]);
     }
-    if (facts.firstBlood === true) memory.firstBlood = true;
+    // 显式写布尔：缺字段会让页面与成就统计都读不到「没拿一血」这个事实。
+    memory.firstBlood = facts.firstBlood === true;
     if (facts.riotId) memory.riotId = facts.riotId;
     return memory;
   }

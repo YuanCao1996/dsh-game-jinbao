@@ -46,6 +46,7 @@ import { registerExperienceTools } from "./experience-tools.js";
 import { dispatchGameChat, buildGameChatMessage } from './chat-bridge.js';
 import { gameModePrompt } from './game-mode-prompt.js';
 import { buildLolCoachingPlan, coachingStillCurrent, createAdviceValidity, adviceIsValid } from './lol-coaching-plan.js';
+import { lineupOf, adviceNameIssues, describeIssues } from './advice-names.js';
 import {registerScreenTool} from './screen-tool.js';
 import {cacheSearchProvider,registerGameFetch,relevantGameSource} from './game-web.js';
 import {createAgentStatus} from './agent-status.js';
@@ -1517,7 +1518,20 @@ function apply(ctx, config) {
         body.game=a.id;body.match_id=matchId;
         console.log(`[coach-server] logstream dialog game=${a.id} aggregated=${events.length} kinds=${events.map((e) => e.kind).join("+")} match=${matchId}`);
         updateLiveState({ agentStatus: "running", game: a.id, agentStep: liveState.agentStep + 1 }, cfg);
-        liveMonitor.get(a.id, sourceFile).submitInteraction({ ...primary, _aggregated: events }, sourceFile, body).then((text) => {
+        liveMonitor.get(a.id, sourceFile).submitInteraction({ ...primary, _aggregated: events }, sourceFile, body).then((rawText) => {
+          // 人名校验：说得不好可以，编英雄、或把同一英雄写成两个人，不能进播报。
+          let text = rawText;
+          let rejected = null;
+          const lineup = body._adviceLineup;
+          if (lineup && rawText) {
+            const issues = adviceNameIssues(rawText, lineup);
+            if (issues.unknown.length || issues.aliased.length) {
+              rejected = { reason: 'champion-name', detail: describeIssues(issues), unknown: issues.unknown, aliased: issues.aliased, original: rawText };
+              text = '';
+              console.warn('[coach-server] 播报被拦下(人名): ' + describeIssues(issues));
+              diagLog('✗ 播报被拦下(人名): ' + describeIssues(issues), cfg);
+            }
+          }
           const entry = {
             at: new Date().toISOString(),
             source: sourceFile,
@@ -1528,7 +1542,8 @@ function apply(ctx, config) {
             context: primary.context ?? null,
             count: events.length,
             validity: body._adviceValidity ?? null,
-            broadcast: text
+            broadcast: text,
+            ...(rejected ? { rejected } : {})
           };
           appendBroadcast(cfg.broadcastFile, entry);
           console.log(`[coach-server] logstream ★播报(${primary.kind}×${events.length}): ${text || "(silent)"}`);
@@ -1959,6 +1974,7 @@ export function createMonitor(ctx, cfg, resolveGame) {
       const plan = buildLolCoachingPlan(coachEvents, context.current);
       body.prompt = plan.prompt;
       job.body._adviceValidity = createAdviceValidity(plan.stage, context.current);
+  job.body._adviceLineup = lineupOf(context.current);
     }
     const msg = job.body?.chat ? buildGameChatMessage(job.body.question, context, job.body.game)
       : buildCoachMessage({ ...body, mode:context.current?.mode ?? body.mode, prompt: String(body.prompt ?? '') + '\n【共享对局与历史数据 JSON】\n' + boundJsonStringify(context).text }, resolveGame(job.body?.game));

@@ -27,12 +27,20 @@ export function speakable(value){
 }
 // Do not cut an equipment/augment name or spend another model request summarizing.
 // 朗读前先过 speakable：No.20 会被念成「N O 20」，而胶囊/短讯里这种写法很常见。
-export function briefSpeech(value,maxChars=80){
- const text=speechSegments(speakable(value),80).join('');let result='';
- for(const sentence of text.match(/[^。！？!?]+[。！？!?]?/g)??[]){
-  const clean=sentence.trim();if(!clean||clean.length>maxChars)continue;
-  if(result.length+clean.length>maxChars)break;result+=clean;
-  if((result.match(/[。！？!?]/g)??[]).length>=2)break;
- }
- return result;
+export function briefSpeech(value,maxChars=60){
+ // 三条规则（都有真实事故支撑）：
+ // 1. 只念屏幕上的「开头」，听到的和看到的才对得上（旧实现会跳过超长首句去念后面那句，
+ //    实测 113→65、524→58）。
+ // 2. 首句过长时在标点处截断加省略号，不再整句丢弃。
+ // 3. 完全没有任何句读的超长文本（例如 200 个同字）视为噪声，不念 —— 避免把一坨文字塞给 TTS。
+ const limit=Math.max(12,maxChars);
+ const text=speechSegments(speakable(value),80).join('').trim();
+ if(!text)return '';
+ const first=(text.match(/^[^。！？!?]*[。！？!?]?/)??[''])[0].trim()||text;
+ if(first.length<=limit)return first;
+ if(!/[。！？!?]/.test(text))return '';
+ const head=first.slice(0,limit-1);
+ const cut=Math.max(head.lastIndexOf('，'),head.lastIndexOf('、'),head.lastIndexOf('；'),head.lastIndexOf(','));
+ const keep=cut>=Math.max(8,Math.floor(limit*0.35))?head.slice(0,cut):head;
+ return keep.replace(/[，,、；;\s]+$/,'')+'…';
 }
