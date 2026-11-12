@@ -11,7 +11,7 @@
 [![License](https://img.shields.io/badge/license-MIT-1f6feb?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square)](#-快速开始)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square)](https://nodejs.org)
-[![Release](https://img.shields.io/badge/release-v0.2.17-c9863f?style=flat-square)](https://api.jinbaoai.top/downloads/jinbao/latest.json)
+[![Release](https://img.shields.io/badge/release-v0.2.17-c9863f?style=flat-square)](https://api.jinbaoai.top/downloads/jinbao/v0.2.17/jinbao-desktop-windows.zip)
 [![Stars](https://img.shields.io/github/stars/YuanCao1996/dsh-game-jinbao?style=flat-square&color=e3b341)](https://github.com/YuanCao1996/dsh-game-jinbao/stargazers)
 
 [下载](#-快速开始) · [它长什么样](#-它长什么样) · [怎么工作](#-它怎么工作) · [常见问题](#-常见问题)
