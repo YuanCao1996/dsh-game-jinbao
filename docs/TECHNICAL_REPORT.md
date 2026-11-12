@@ -7,6 +7,9 @@
 >
 > **Looking for diagrams instead of prose?** See [ARCHITECTURE.md](ARCHITECTURE.md) — system context,
 > one advice turn as a sequence diagram, the augment observation state machine, and update integrity.
+>
+> **Prefer a typeset PDF?** [jinbao-technical-report-v0.2.17.pdf](jinbao-technical-report-v0.2.17.pdf) —
+> the same report as a 13-page paper with figures and tables.
 
 ---
 
