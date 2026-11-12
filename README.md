@@ -142,7 +142,7 @@ node tools/cloud-desktop/main.mjs --state "$HOME/.jinbao-cloud-preview" --collec
 - 想看开发细节：[DEVELOPMENT.md](docs/DEVELOPMENT.md)
 - 想看设计与踩坑（英文技术报告）：[TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md)
 - 想看系统全景（8 张 Mermaid 图 + 22 张表）：[ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- 想要一份能发的论文式 PDF（13 页，10 图 7 表）：[jinbao-technical-report-v0.2.17.pdf](docs/jinbao-technical-report-v0.2.17.pdf)
+- 想要一份能发的论文式 PDF（10 页双栏、10 图 7 表）：[jinbao-paper-v0.2.17.pdf](docs/jinbao-paper-v0.2.17.pdf)
 - 安全策略：[SECURITY.md](SECURITY.md)
 
 如果它让你少送了一波、或者某个瞬间觉得「这玩意儿真懂」，**点个 Star 就是最好的反馈** ⭐
@@ -163,6 +163,6 @@ node tools/cloud-desktop/main.mjs --state "$HOME/.jinbao-cloud-preview" --collec
 - Download: [`jinbao-desktop-windows.zip`](https://api.jinbaoai.top/downloads/jinbao/v0.2.17/jinbao-desktop-windows.zip) · MIT licensed
 - **Technical report**: [docs/TECHNICAL_REPORT.md](docs/TECHNICAL_REPORT.md) — why augment OCR needs confirmation instead of guessing, and the three failure modes that shaped the design
 - **Architecture map**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 8 diagrams (system context, advice turn, augment state machine, update integrity) + 22 tables
-- **PDF paper**: [docs/jinbao-technical-report-v0.2.17.pdf](docs/jinbao-technical-report-v0.2.17.pdf) — 13 pages, 10 figures, 7 tables (arXiv-style layout)
+- **PDF paper**: [docs/jinbao-paper-v0.2.17.pdf](docs/jinbao-paper-v0.2.17.pdf) — 10 pages, two-column conference layout, 10 figures, 7 tables
 
 <sub>Built on the DSH agent runtime. Documentation is in Chinese for now — issues in English are welcome.</sub>
