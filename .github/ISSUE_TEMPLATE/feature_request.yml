@@ -1,0 +1,44 @@
+name: ✨ 建议 / 想要的能力
+description: 你希望金宝在你的对局里多做点什么
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        好的建议通常长这样：**在什么场景下、它现在怎么做、你希望它怎么做**。
+        不追求功能多，追求「真的能少送一波」。
+  - type: dropdown
+    id: area
+    attributes:
+      label: 属于哪块
+      options:
+        - 战况建议的时机与内容
+        - 出装 / 强化联动
+        - 语音与字幕
+        - 悬浮窗形态与交互
+        - 探索图鉴
+        - 其他游戏接入
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: scene
+    attributes:
+      label: 场景
+      description: 什么情况下会用到
+      placeholder: "每次打完一波团，我想知道这波我具体哪里站错了"
+    validations:
+      required: true
+  - type: textarea
+    id: now
+    attributes:
+      label: 现在它怎么做
+      description: 如果现在是空白/不说话，也写清楚
+  - type: textarea
+    id: want
+    attributes:
+      label: 你希望它怎么做
+      description: 一句话版本就够，比如「给一句可执行的动作，而不是让我注意站位」
+    validations:
+      required: true

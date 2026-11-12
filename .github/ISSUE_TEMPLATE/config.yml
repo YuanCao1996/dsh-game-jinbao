@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 先看文档
+    url: https://github.com/YuanCao1996/dsh-game-jinbao/blob/main/docs/QUICKSTART.md
+    about: 安装、更新、换模型、语音设置都在这里
+  - name: 🔒 安全问题
+    url: https://github.com/YuanCao1996/dsh-game-jinbao/blob/main/SECURITY.md
+    about: 请不要用公开 Issue 报告安全漏洞

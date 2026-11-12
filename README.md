@@ -1,142 +1,162 @@
-# 金宝游戏教练
+<div align="center">
 
-读取游戏日志，在桌面悬浮窗中提供对局策略建议。当前适配 **英雄联盟（重点为海克斯大乱斗）**和**王者荣耀日志**，并提供通用游戏窗口与日志接入。聊天、工具调用、会话与上下文管理复用 DSH 原生 Agent。
+<img src="tools/dsh-onboarding/welcome/advice.gif" alt="金宝在英雄联盟对局中给出实时建议" width="720">
 
-[下载 Windows 版](https://github.com/YuanCao1996/dsh-jinbao-desktop/releases/latest/download/jinbao-desktop-windows.zip) · [金宝官网 / 手机 App](https://www.jinbaoai.top/#download) · [版本与更新记录](https://github.com/YuanCao1996/dsh-jinbao-desktop/releases)
+# 金宝 · 游戏教练
 
-## 独立桌面版预览（v0.2.6）
+**坐在你旁边一起打的那位老玩家 —— 不是又一个数据面板。**
 
-**GitHub 预发布下载：**[jinbao-desktop-windows.zip](https://github.com/YuanCao1996/dsh-jinbao-desktop/releases/download/v0.2.6-standalone-preview.1/jinbao-desktop-windows.zip)。
+读取游戏日志，在桌面悬浮窗里说人话：这一波该打谁、这件装备为什么先出、刚才那波输在哪。
 
-> 如果该链接提示不存在，说明 0.2.6 预览包尚未上传，请先使用 [上一个预览版](https://github.com/YuanCao1996/dsh-jinbao-desktop/releases/download/v0.2.5-standalone-preview.1/jinbao-desktop-windows.zip)。
+[![License](https://img.shields.io/badge/license-MIT-1f6feb?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078d4?style=flat-square)](#-快速开始)
+[![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square)](https://nodejs.org)
+[![Release](https://img.shields.io/badge/release-v0.2.17-c9863f?style=flat-square)](https://api.jinbaoai.top/downloads/jinbao/latest.json)
+[![Stars](https://img.shields.io/github/stars/YuanCao1996/dsh-game-jinbao?style=flat-square&color=e3b341)](https://github.com/YuanCao1996/dsh-game-jinbao/stargazers)
 
-本版新增：选人阶段在战况页显示已选英雄的最佳拍档（海克斯大乱斗）；本人双杀到五杀即时夸奖、队友四杀五杀也会夸；四位导师语气在官方服务与自有 Key 两条路径上统一。修复海克斯"本局已选"误判与聊天文字漏读。详见 [v0.2.6 预览说明](docs/RELEASE_STANDALONE_0_2_6_PREVIEW.md)。
+[下载](#-快速开始) · [它长什么样](#-它长什么样) · [怎么工作](#-它怎么工作) · [常见问题](#-常见问题)
 
-完整解压后双击 `开始使用.cmd`，自动打开悬浮窗与设置页，等待进入游戏。本预发布包默认使用金宝官方云端服务，不要求另装 DSH Desktop，也不包含 ADB。此版本默认不显示队伍群聊；需要体验群聊时请使用下方的独立测试包。
+<sub>中文 | <a href="#english">English</a></sub>
 
-### 开黑队伍测试
+</div>
 
-群聊服务已开放测试。[下载开启队伍入口的 Windows 测试包](https://api.jinbaoai.top/downloads/jinbao/team-preview-20261102/jinbao-team-preview.zip)，完整解压后双击 `开始使用.cmd`，在设置页使用邮箱验证码登录，再进入“开黑队伍”。旧邮箱登录凭据需要重新验证一次。群主创建队伍并分享 6 位邀请码，每个队伍最多 5 人；普通聊天与向金宝提问共用队伍聊天页面，模型调用使用群主授权的房间额度。
+---
 
-此包为独立测试版，不会通过正式更新通道自动安装。服务端已验证创建、邀请、消息和一次真实云模型问答；真实多设备与手机 App 尚待验收。手机 App 入口以官网统一发布的版本为准。
+## 它解决什么问题
 
-- 默认使用金宝官方云端 DSH，**无需另装 DSH Desktop**。自动尝试已开放的免登录体验名额；名额不足或需要固定账号时使用邮箱登录。额度由服务器管理。
-- 自带 API Key 可在同一设置页切换。此模式复用已安装 DSH Desktop 的原生模块，**无需同时运行 DSH 窗口**。没有安装时可从设置页下载官方安装程序。
-- 同一设备只需首次配对，重启和更新自动连接；暂停同步保留配对，设置中可主动解除。支持手机查看与主动聊天，电脑邮箱和手机微信无需一致。
-- LoL 自动采集；其他游戏可选择一个游戏窗口，或在设置中接入本机 `.log` / `.jsonl` 日志。由 DSH 按需读图、检索日志和搜索攻略，未知游戏及模式保持待确认。
-- 使用独立的签名更新通道，不会误装旧版 DSH 插件包。设置页可检查更新、查看日志和安装进度；对局中不安装。
-- 聊天中可说“记住，我更喜欢前排”，由 DSH 工具保存明确偏好；询问已保存偏好或要求忘记即可查询、删除。设置页也可查看和删除。偏好按游戏保存在本机，跨对局保留；不会从日志或自动建议中擅自学习。
+大部分「游戏助手」给你的是一堆数字：胜率、排行、出装表。但你真正卡住的时候想知道的是——
 
-预览状态单独保存在当前用户的 `.jinbao-cloud-preview` 目录，换包保留配置；第一次使用可重新邮箱登录。请先退出旧金宝窗口，避免并行采集。详细说明见 [独立版架构与验收](docs/STANDALONE_DESKTOP.md)。真实对局效果仍待验收，通用接入不代表每款游戏已有专用适配。
+- **刚才那波为什么输？** 是对面刺客绕后，还是我站位太靠前？
+- **这 1200 金币现在买什么？** 对面两个法伤，我该补斗篷还是先做核心装？
+- **这个海克斯选哪个？** 它跟我已经拿到的三个强化到底协不协同？
 
-## 能做什么
+金宝读你本机的游戏日志（击杀、装备、强化、阶段），在**悬浮窗里用一两句话回答这些**，并且只在真的有变化时开口。
 
-| 功能 | 使用方式 |
-|---|---|
-| 对局建议 | 根据当前英雄、阵容、装备、海克斯和关键事件提供建议，在战况页查看。 |
-| 海克斯辅助 | 三选一面板出现时识别候选，按当前英雄的资料排名排序；查看推荐组合。识别不确定时可通过选项确认。 |
-| 出装建议 | 结合本局状态、敌方装备和已选海克斯提供出装参考。 |
-| 英雄胜率 | 查看敌我及选人阶段可见备选英雄的胜率、强度和团队估算，便于比较。 |
-| 对局聊天 | 针对当前对局提问，与自动教练共用本局 Agent 会话；可按需查询日志、搜索攻略及调用已配置工具。 |
-| 多种显示方式 | 大框浏览完整页面，窄条使用字幕或滚动显示，也可切换静默小球。 |
-| 手机查看 | 用配对码将电脑对局同步到金宝 App，并从手机向电脑 Agent 提问。 |
-| 更新与设置 | 网页查看账号、可用额度、版本和更新状态，配置模型及维护安装。 |
+<table>
+<tr>
+<td width="50%"><img src="tools/dsh-onboarding/welcome/augments.gif" alt="海克斯三选一推荐"><br><sub><b>海克斯三选一</b> · 按英雄适配排名，结合已选强化说协同</sub></td>
+<td width="50%"><img src="tools/dsh-onboarding/welcome/players.gif" alt="双方阵容与胜率"><br><sub><b>双方阵容</b> · 样本胜率与最大威胁，不是官方战绩</sub></td>
+</tr>
+</table>
 
-> 数据、识别和模型能力会影响结果；缺少资料时会显示“暂无数据”，胜率与团队估算不代表本局获胜概率。通用游戏支持仍在实验阶段，当前下载版不承诺支持所有游戏。
+## 它长什么样
 
-## 旧版 v0.1.x 第一次使用
+它不是一个网页后台，而是贴着游戏窗口的一条悬浮窗。四种形态，随时收起：
 
-需要 Windows 电脑、网络连接，以及 DSH Desktop。普通用户使用发布包即可，无需安装 Node.js 或执行开发命令。
+<table>
+<tr>
+<td width="33%"><img src="tools/dsh-onboarding/welcome/overlay-modes.png" alt="悬浮窗形态"><br><sub><b>四种形态</b>：大框 / 窄条 / 字幕 / 小球</sub></td>
+<td width="33%"><img src="tools/dsh-onboarding/welcome/collapsed.png" alt="收起态"><br><sub><b>一键收起</b>，不挡视野，点击展开</sub></td>
+<td width="33%"><img src="tools/dsh-onboarding/welcome/settings.png" alt="设置页"><br><sub><b>设置页</b>：语音、角色、模型、诊断</sub></td>
+</tr>
+</table>
 
-1. [下载金宝 Windows ZIP](https://github.com/YuanCao1996/dsh-jinbao-desktop/releases/latest/download/jinbao-desktop-windows.zip)，**完整解压**到一个固定目录，不要在压缩包内直接运行。
-2. 安装 [DSH Desktop](https://deepseek.com/harness/)，再双击金宝目录中的 `开始使用.cmd`。首次配置如提示退出 DSH，请先保存工作并正常退出，再等待金宝继续。
-3. 启动后出现悬浮窗，并自动打开设置网页。默认选择**金宝官方服务**，按网页提示使用邮箱验证码登录，查看账号状态和可用额度。也可在设置里改用自己的模型 API Key。
-4. 启动游戏。LoL 在本机运行时自动检测和采集；悬浮窗等待对局数据，无需手动选择进入游戏。
-5. 以后双击桌面“金宝”快捷方式，或原目录中的 `开始使用.cmd`。请保留解压目录。
+> **探索图鉴**：每打完一局，会在这台电脑上记一条回忆 —— 用了哪个英雄、KDA、胜负、这局拿了什么海克斯、有没有三杀团灭。图鉴里按时间线排成一条「回忆画廊」，越打越长。
 
-> **从 v0.1.46 起：**缺少 DSH 时，启动器自动下载并校验官方安装器，支持进度、取消和重试；完成官方安装界面后继续配置。旧版 ZIP 仍需手动安装 DSH。DSH 自身认证按宿主提示处理。
+## ✨ 主要特性
 
+| | 能力 | 说明 |
+|:--|:--|:--|
+| 🎯 | **实时战况建议** | 阵亡、破塔、团灭、拿龙、强化变化时才触发；一句一个动作，不复述面板 |
+| 🛒 | **出装结合已选强化** | 「钢化你心」要求持有心之钢、「命运之武器」作用于第一件传说装 —— 强化点名的装备会排进六件顺序 |
+| 🎲 | **海克斯三选一** | 按英雄适配排名给首选与备选；判不清时弹确认面板，**绝不猜一个记进本局** |
+| 🗣️ | **语音播报 + 四条导师语气** | 金宝 / 柳如风 / 王霸天 / 铁汁，沿用 App 同款音色；也可只用字幕 |
+| 🧠 | **可换模型** | 默认官方云端；也能填自己的 API Key（本机加密保存，不发给金宝服务器） |
+| 📖 | **会记住你的偏好** | 说「记住，我更喜欢前排」，跨对局保留；可查询、可删除 |
+| 🕹️ | **不止英雄联盟** | 王者荣耀日志、以及任意游戏窗口观察；身份不确定时保持「待核实」 |
+| 🔒 | **日志只在本机** | 对局数据不上传、不参与排行榜；诊断导出不含聊天正文、玩家名、凭据、截图 |
 
-**两种模型使用方式：**官方服务使用金宝账号的可用权益；自有 Key 使用你配置的模型服务。设置网页显示的金宝剩余额度不代表自有 Key 的厂商余额。攻略数据检索权限与模型 Key 独立，配置 Key 不会自动获得所有检索数据。
+## 🚀 快速开始
 
-王者荣耀采集另需 Android 手机：从[金宝官网](https://www.jinbaoai.top/#download)下载统一 App，按[使用指南](docs/QUICKSTART.md)连接并授权 USB 调试、开启游戏采集。只玩电脑 LoL 无需连接手机，默认不启动 ADB。
+**方式一：下载即用（推荐）**
 
-### DSH Desktop 安装与配置
+1. 下载并完整解压：[`jinbao-desktop-windows.zip`](https://api.jinbaoai.top/downloads/jinbao/v0.2.17/jinbao-desktop-windows.zip)（约 48 MB）
+2. 双击 `开始使用.cmd`（或 `jinbao.exe`）
+3. 悬浮窗与设置页自动打开 → 进游戏，剩下的交给它
 
-DSH Desktop 是金宝的运行宿主，负责运行扩展、Agent、会话和工具。金宝的模型服务在金宝设置网页配置。
+不需要安装 Node，也不需要装 DSH Desktop。默认走官方云端服务，会自动尝试免登录体验名额，额度不足时用邮箱登录。
 
-1. 打开 [DSH 官方下载页](https://deepseek.com/harness/)，下载适合 Windows 的安装程序，按安装向导完成安装。建议保留默认安装位置与开始菜单快捷方式，便于金宝自动找到程序。
-2. 如安装后自动打开 DSH，按其界面提示完成必要的首次初始化。若 DSH 自身要求认证，请按宿主要求处理；金宝邮箱登录不能替代 DSH 自身认证。
-3. 首次配置金宝前，保存 DSH 中的工作并正常退出 DSH。完整解压金宝，双击 `开始使用.cmd`，由金宝安装扩展并重新启动宿主。
-4. 金宝会自动配置教练扩展、日志目录及“金宝游戏模型”路由。**不需要手动编辑 DSH 的 YAML，也不需要在 DSH 中另外创建金宝会话或重复填写模型 Key。**已有配置文件在修改前会备份。
-5. 在自动打开的金宝设置网页配置模型服务：
-   - **官方服务（默认）：**用邮箱验证码登录，确认账号可用、模型权益与额度充足。
-   - **自有 Key：**“模型服务 → 调用方式 → 使用自己的 API Key”，填写模型厂商提供的 **OpenAI 兼容 API 地址、模型 ID、API Key**，点击“保存设置”。Key 保存在本机。
-6. 检查网页中的教练服务、登录与模型状态，再进入游戏。悬浮窗显示等待游戏只代表界面已启动；能收到本局建议或聊天回答，才代表模型调用链路可用。
-
-**安装后找不到 DSH：**先从开始菜单打开一次 DSH，返回金宝重试；仍失败时在金宝设置网页“维护与诊断”检查状态。已有 DSH 和金宝的电脑通常只需启动金宝，无需每次重复安装或配置。
-
-**配置保存位置：**默认在用户目录的 `.dsh` 下；金宝状态位于 `.dsh/jinbao`，宿主扩展配置位于 `.dsh/profiles/desktop/cordis.patch.yml`。设置了 `DSH_HOME` 时以该目录为准。普通用户无需手动修改这些文件。
-
-
-## 悬浮窗怎么用
-
-以下为 **2026-10-21 桌面程序实际渲染截图**，使用界面验收的演示对局数据，不代表实战识别效果或实时推荐。
-装备页已移除，出装建议改为在战况页播报；事件时间线与聊天也已并入战况页。
-
-| 战况：建议、事件与聊天 | 海克斯：候选排名与推荐组合 |
-|:---:|:---:|
-| ![战况页实际程序截图](docs/screenshots/advice.png) | ![海克斯页实际程序截图](docs/screenshots/augments.png) |
-| **胜率：英雄胜率与强度** | |
-| ![胜率页实际程序截图](docs/screenshots/players.png) | |
-
-| 页面 | 显示内容与用途 |
-|---|---|
-| **战况** | 当前对局状态、已进行时长与动态策略建议；开局加载给出六件完整出装顺序，每次阵亡提醒下一次该补什么；关键事件时间线与聊天入口也在这一页。 |
-| **海克斯** | 三选一面板出现时读取三张卡并按英雄适配排名排序；判不准时弹确认；「本局已选」随选择立即更新；英雄 Top10 与推荐组合常驻显示。 |
-| **胜率** | 英雄胜率、T0 / T1 等强度，按英雄胜率降序排列；展示双方团队估算。隐藏玩家名与场次，未知数据置后。 |
-
-- **移动与缩放：**拖动标题栏移动，拖动右下角手柄调整大小；尺寸会保存。
-- **阅读：**内容区滚动浏览；按住 `Ctrl` 滚轮调整正文大小。字体和背景透明度在“设置 → 外观”调整。
-- **切换显示：**在“设置 → 显示与播报”选择大框、字幕、滚动或静默小球。字幕与滚动适合边玩边看，大框用于查看完整信息和聊天。
-- **收起与退出：**收起后吸附右侧，点击小球展开；`×` 先弹出确认，确认后退出金宝及本次采集。`Ctrl+Alt+↑ / ↓` 展开或收起，`Ctrl+Alt+← / →` 切换页面。
-- **打开设置：**悬浮窗设置菜单进入账号与模型设置；`Ctrl+Alt+J` 切换完整交互，聊天自动进入交互模式。
-
-## 用手机查看电脑对局
-
-电脑和手机无需使用同一个登录账号，也无需 USB 连接。
-
-
-配对码有效期为 5 分钟，确认后失效。电脑与金宝需要保持在线；连接保存后可自动恢复，网页可暂停同步。手机 App 从[官网](https://www.jinbaoai.top/#download)下载。更多说明见[手机配对指南](docs/QUICKSTART.md#手机查看电脑对局)。
-
-## 更新与常见问题
-
-从 0.1.10 起支持自动检查更新；启动时及运行中每 6 小时检查，并在后台下载和验证。在**设置网页**查看当前版本、检查更新、下载进度和安装提示。新版本就绪后按提示安装；先保存工作并正常退出 DSH，金宝再完成切换。选英雄或对局期间不能安装更新。
-
-更新保留登录和用户设置。0.1.9 及更早版本需先手动下载新版；DSH Desktop 与手机 App 使用各自的更新方式。
-
-| 遇到的问题 | 先检查这里 |
-|---|---|
-| 没有建议或聊天失败 | 设置网页的登录、模型和教练服务状态；在“维护与诊断”查看错误。 |
-| 胜率一直待查询 / 暂无数据 | 检查检索服务与网络；尚无对应英雄或模式数据时无法显示排名。 |
-| 海克斯未识别 | 保持游戏与选择面板可见，检查 Windows 中文文字识别组件；也可在聊天中输入候选。 |
-| 悬浮窗被游戏遮住 | 尝试无边框或窗口模式。 |
-| 登录后仍无法调用官方模型 | 在设置网页检查模型权益和剩余额度；也可配置自己的 API Key。 |
-| 启动或更新失败 | 进入设置网页“维护与诊断”；网页打不开时参考包内 `tools/desktop-release/menu.cmd`。 |
-
-[完整使用与排障](docs/QUICKSTART.md) · [SHA-256 校验文件](https://github.com/YuanCao1996/dsh-jinbao-desktop/releases/latest/download/SHA256SUMS.txt)
-
-## 开发与项目边界
-
-Windows、Node 24 LTS（构建最低 24.22.1）：
+**方式二：从源码跑**
 
 ```powershell
+git clone https://github.com/YuanCao1996/dsh-game-jinbao.git
+cd dsh-game-jinbao
 npm ci --ignore-scripts --legacy-peer-deps
-npm test
-$env:JINBAO_BUILD_ADB_DIR = '你的 Android platform-tools 目录'
-npm run build -- workspace/client-releases/local
+node tools/cloud-desktop/main.mjs --state "$HOME/.jinbao-cloud-preview" --collect --coach
 ```
 
-结构与开发说明见[开发文档](docs/DEVELOPMENT.md)。云端检索服务与完整数据库不包含在本仓库中。
+也可以作为 DSH 插件运行，详见 [QUICKSTART](docs/QUICKSTART.md) 与 [独立桌面版说明](docs/STANDALONE_DESKTOP.md)。
 
-许可见 [LICENSE](LICENSE)，第三方运行时许可随包保留。安全问题请参阅 [SECURITY.md](SECURITY.md)；使用与运营边界见[合规说明](docs/COMPLIANCE.md)。
+> 更新走独立签名通道：设置页可检查更新，**对局中不会安装**；校验失败继续用旧版本。
+
+## 🔧 它怎么工作
+
+```text
+游戏客户端
+   │  日志 / LCU 事件
+   ▼
+采集层  lol-companion ──► 对局事实（击杀、装备、强化、阶段、时间）
+   │
+   ▼
+教练层  coach-server ──► 选择播报时机 → 组装事实与规则 → 调模型 → 约束输出
+   │
+   ▼
+呈现层  overlay（WPF）──► 战况 / 字幕 / 语音 + 探索图鉴
+```
+
+三条设计原则，写在代码里的：
+
+1. **只从已记录的事实推导** —— 不知道就说「未确认」，不编造
+2. **有节流** —— 同一件事不重复说第二遍，安静比啰嗦值钱
+3. **不新增无谓调用** —— 拟人化不靠多调一次模型
+
+## ❓ 常见问题
+
+<details>
+<summary><b>会不会影响游戏帧数 / 被反作弊判定？</b></summary>
+
+不注入游戏进程、不读写游戏内存、不改客户端文件。它只读客户端自己产生的日志与 LCU 接口，和 Overwolf 一类工具走的是同一层公开数据。
+</details>
+
+<details>
+<summary><b>我的数据会被上传吗？</b></summary>
+
+对局日志、探索记录、偏好都存在 `%USERPROFILE%\.jinbao-cloud-preview\`，不上传、不参与排行榜。导出诊断前会脱敏：不含聊天正文、玩家名、凭据、截图。
+</details>
+
+<details>
+<summary><b>只有海克斯大乱斗能用吗？</b></summary>
+
+英雄联盟的重点适配是海克斯大乱斗，普通模式也能用；王者荣耀读本机日志；其他游戏可以选一个窗口让它观察，但**未知游戏不套用 LoL 规则**，身份不确定时保持待核实。
+</details>
+
+<details>
+<summary><b>它和那些数据网站的区别？</b></summary>
+
+数据网站回答「这个英雄胜率多少」，金宝回答「**你这局现在该怎么办**」。它不做概率预测，也不把样本胜率说成本局胜率。
+</details>
+
+## 🙋 参与 / 反馈
+
+- 遇到 bug 或建议：提 [Issue](https://github.com/YuanCao1996/dsh-game-jinbao/issues)，带上设置页导出的诊断包（脱敏）
+- 想看开发细节：[DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- 安全策略：[SECURITY.md](SECURITY.md)
+
+如果它让你少送了一波、或者某个瞬间觉得「这玩意儿真懂」，**点个 Star 就是最好的反馈** ⭐
+
+<div align="center"><sub>MIT License · 免费使用 · 对局数据留在你自己电脑上</sub></div>
+
+---
+
+<a id="english"></a>
+
+## English
+
+**Jinbao** is a desktop game coach for Windows. It reads your local game logs and answers the questions you actually have mid-match — *who to focus this fight, which item to buy right now, whether this augment fits the three you already own* — as one or two sentences in a floating overlay, and stays quiet when nothing changed.
+
+- **League of Legends** (Arena / Hextech ARAM focus), **Honor of Kings** logs, plus generic window observation
+- Augment-aware build planning, augment pick ranking, voice coaching with four mentor voices
+- Local-first: match data never leaves your machine
+- Download: [`jinbao-desktop-windows.zip`](https://api.jinbaoai.top/downloads/jinbao/v0.2.17/jinbao-desktop-windows.zip) · MIT licensed
+
+<sub>Built on the DSH agent runtime. Documentation is in Chinese for now — issues in English are welcome.</sub>
