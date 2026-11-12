@@ -84,8 +84,16 @@ const startCardWatch=offer=>{
   const roundKey=offer.roll==null?null:String(offer.roll);
   if(roundKey!==null&&decidedRolls.has(roundKey))return;
   if(!Number.isInteger(result.picked)){
+   const options=Array.isArray(offer.options)?offer.options:[];
    // 判定不出来时把两帧路径留下：既是视觉兜底的输入，也是阈值标定的原始数据。
-   if(result.baselineImage&&result.lastImage)log.append({kind:'augment_vision_ambiguous',options:(Array.isArray(offer.options)?offer.options:[]).slice(0,3),roll:offer.roll??null,reason:result.reason??'',frames:result.frames??0,peak:result.peak??null,baselineImage:result.baselineImage,lastImage:result.lastImage});
+   if(result.baselineImage&&result.lastImage)log.append({kind:'augment_vision_ambiguous',options:options.slice(0,3),roll:offer.roll??null,baselineImage:result.baselineImage,lastImage:result.lastImage,gameTime:lastLiveState?.gameTime??gameTime??null});
+   // 真机事故（2026-11-12 狂厄蔷薇那局）：卡牌监视器整局没判定成功，
+   // 「没判定出来」只在有两帧图时才留痕，其余情况静默返回；轮次随后被判 closed，
+   // 但没有任何确认弹窗 —— 玩家 4 次三选一全丢，事后查不到原因。
+   // 现在：无论有没有图都记一条 undecided（带 reason/帧数/耗时），并把这一轮关掉，
+   // 让战况页弹确认，把选择权交回玩家。
+   log.append({kind:'augment_pick_undecided',roll:offer.roll??null,reason:String(result.reason??'unknown'),options:options.slice(0,3),frames:Number.isFinite(Number(result.frames))?Number(result.frames):null,ms:Number.isFinite(Number(result.ms))?Number(result.ms):null,hasBaseline:!!result.baselineImage,hasLast:!!result.lastImage,gameTime:lastLiveState?.gameTime??gameTime??null});
+   log.append({kind:'augment_offer_closed',roll:offer.roll??null,reason:'undecided',options:options.slice(0,3),gameTime:lastLiveState?.gameTime??gameTime??null});
    return;
   }
   const options=Array.isArray(offer.options)?offer.options:[];
