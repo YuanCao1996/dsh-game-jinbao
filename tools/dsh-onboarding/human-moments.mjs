@@ -17,7 +17,8 @@
 const VOICES = {
   jinbao: {
     opening: ['开局了，先把线站住。', '来了，这局慢慢打。', '开局，先别急。'],
-    death: ['又是我先倒……', '这波换得不亏。', '没事，等我回来。'],
+    firstDeath: ['先送一个，别慌。', '一血没了，稳住。', '开场交出去一次，不亏。'],
+    death: ['又是我先倒……', '这波换得不亏。', '没事，等我回来。', '这波他们交了技能，值。', '走位急了点，改。', '换掉一个，不亏。'],
     endWin: ['这把赢了，稳。', '赢了，收工。', '拿下，打得不错。'],
     endNeutral: ['这把结束了。', '打完了，辛苦。'],
     endLoss: ['这把输了，但刚才那波是真的漂亮。', '输了，下一把赢回来。', '没拿下，我们复盘一下。'],
@@ -25,7 +26,8 @@ const VOICES = {
   },
   liurufeng: {
     opening: ['开局。按计划走。', '开始，先看线权。', '这一局，稳着来。'],
-    death: ['这次交换不划算。', '记住这次的位置。', '节奏还在，别急。'],
+    firstDeath: ['第一次阵亡，代价可控。', '开局让一次，不影响节奏。'],
+    death: ['这次交换不划算。', '记住这次的位置。', '节奏还在，别急。', '他们抓住了这个点位，换条线。', '下次先看视野再进。'],
     endWin: ['赢了，执行到位。', '拿下，继续这样打。'],
     endNeutral: ['这一局结束了。', '打完了，我们复盘一下。'],
     endLoss: ['输了。问题在中期那两波。', '没赢下来，我们找原因。'],
@@ -33,7 +35,8 @@ const VOICES = {
   },
   wangbatian: {
     opening: ['上！这局我说了算。', '开局就压，别怂。', '来了！跟我冲。'],
-    death: ['倒一个不算什么！', '起来再打回去！', '别停，继续压。'],
+    firstDeath: ['先被我送了？无所谓，接着打！', '一血给他们，马上拿回来！'],
+    death: ['倒一个不算什么！', '起来再打回去！', '别停，继续压。', '死一次换个机会，值！', '再来，我不信他们一直准。'],
     endWin: ['赢了！这就对了！', '漂亮，压倒对面！'],
     endNeutral: ['这局打完了！', '结束了，下一把继续。'],
     endLoss: ['输了？下次我带你打回来。', '这局不算，再来！'],
@@ -41,7 +44,8 @@ const VOICES = {
   },
   tiezhi: {
     opening: ['开局，先别送。', '开始了，稳住。', '来了来了，慢慢玩。'],
-    death: ['又倒了，习惯了。', '这波有点亏。', '行吧，复活继续。'],
+    firstDeath: ['第一个死了，正常。', '开局送一个，别急。'],
+    death: ['又倒了，习惯了。', '这波有点亏。', '行吧，复活继续。', '死就死了，回来再打。', '这波不该进，记住了。'],
     endWin: ['赢了，可以。', '拿下，还行。'],
     endNeutral: ['打完了，行了。', '这局结束，休息一下。'],
     endLoss: ['输了，别难受。', '这把算了，下一把。'],
@@ -122,7 +126,10 @@ export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', c
     if (firstTimeDead && memory.deaths < DEATH_MAX_PER_MATCH && now - Number(memory.lastDeathAt || 0) >= DEATH_MIN_GAP_MS && now - lastAt >= MIN_GAP_MS) {
       memory.deaths = Number(memory.deaths || 0) + 1;
       memory.lastDeathAt = now;
-      return emit('death', pickOf(voice.death, memory.deaths - 1));
+      // 首次阵亡用单独一套台词，避免每次送一血都说「又是我先倒」。
+      const firstOfMatch = memory.deaths === 1;
+      const pool = firstOfMatch && voice.firstDeath?.length ? voice.firstDeath : voice.death;
+      return emit('death', pickOf(pool, memory.deaths - 1));
     }
   } else if (state.me?.dead !== true) {
     memory.lastDeadSeen = false;

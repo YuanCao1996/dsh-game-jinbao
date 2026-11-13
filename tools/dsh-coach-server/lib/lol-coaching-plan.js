@@ -167,6 +167,19 @@ export function buildLolCoachingPlan(events = [], current = null) {
     // Auto-picked augments (countdown default) are real picks but not user choices; the
     // advice must account for them and label the provenance.
     autoPickedAugments: list(current?.revealedAugments),
+    // 最近的成装变化：装备是滚动信息，超过几分钟就不再是「当前局势」。
+    // 这里只带 5 分钟内、最多 3 条，并给 minutesAgo 让模型自己判断时效。
+    recentEquipment: (() => {
+      const nowMs = Date.now();
+      return list(current?.completedEquipmentEvents)
+        .filter(entry => Number.isFinite(Number(entry?.at)) && nowMs - Number(entry.at) <= 5 * 60 * 1000)
+        .slice(-2)
+        .map(entry => ({
+          hero: String(entry?.hero ?? ''),
+          items: list(entry?.items).slice(0, 2),
+          minutesAgo: Math.max(0, Math.round((nowMs - Number(entry.at)) / 60000)),
+        }));
+    })(),
     // 本局已发出的六件计划：出装回合必须沿用，不能每次重新规划换一套路线。
     priorOpeningPlan: (() => {
       const prior = list(current?.broadcasts).filter(b => b?.validity?.stage === 'opening').at(-1);
@@ -220,6 +233,7 @@ export function buildLolCoachingPlan(events = [], current = null) {
     allies: (facts.allies ?? []).slice(0, 4).map(person => ({ champion: person.champion, level: person.level })),
     enemies: (facts.enemies ?? []).slice(0, 5).map(person => ({ ...person, items: Array.isArray(person.items) ? person.items.slice(-2) : person.items })),
     priorOpeningPlan: facts.priorOpeningPlan ? { text: String(facts.priorOpeningPlan.text ?? '').slice(0, 160) } : null,
+  recentEquipment: (facts.recentEquipment ?? []).slice(-3),
   };
   let factsJson = JSON.stringify(compact);
   const buildPrompt = () => [
@@ -234,18 +248,26 @@ export function buildLolCoachingPlan(events = [], current = null) {
     '已选强化点名装备时（钢化你心→心之钢、命运之武器→第一件传说、易损→暴击装），出装顺序与下一件成装必须优先安排该装备，并说明是为了让这个强化生效。',
     '阵亡回合必须点名一件具体装备并给理由（如「先买负极大斗篷」），不许说「补个防装」这类方向话。',
     '已阵亡时当前血量是 0：不写「你还剩X%血」，不说「先回城补血」；提血量写「倒下时是X%」，动作只写「复活后…」。',
-    '多杀数量只认 facts.multikill.streak（2双杀/3三杀/4四杀/5五杀及以上），为 null 时不要提多杀。',
+    'facts.recentEquipment 是最近的成装变化：仅 minutesAgo ≤ 3 可当现状并点出是谁的，更早的不要当成威胁。',
+  '多杀数量只认 facts.multikill.streak（2双杀/3三杀/4四杀/5五杀及以上），为 null 时不要提多杀。',
     '海克斯三选一时候选与排名已由界面卡片展示，不复述「No.N · 名称」，只给结论（选哪张或建议刷新）加半句理由。',
   ].filter(Boolean);
   let prompt = buildPrompt().join(String.fromCharCode(10));
   // 仍超预算时先压事实里的长文本，最后才丢大乱斗攻略（它比事实更不可省）。
-  if (prompt.length > 1900) {
+  if (prompt.length > 1950) {
     compact.triggeringObservations = (compact.triggeringObservations ?? []).map(row => ({ kind: row.kind, reason: row.reason, text: String(row.text ?? '').slice(0, 50) }));
     compact.recentAdvice = (compact.recentAdvice ?? []).map(text => String(text).slice(0, 24));
     factsJson = JSON.stringify(compact);
     prompt = buildPrompt().join(String.fromCharCode(10));
   }
-  if (prompt.length > 1900) {
+  // 大乱斗攻略是打法依据，比历史观察更该保留：先整段丢掉观察与历史建议，再考虑丢攻略。
+  if (prompt.length > 1950) {
+    compact.triggeringObservations = [];
+    compact.recentAdvice = [];
+    factsJson = JSON.stringify(compact);
+    prompt = buildPrompt().join(String.fromCharCode(10));
+  }
+  if (prompt.length > 1950) {
     mayhemBrief = '';
     prompt = buildPrompt().join(String.fromCharCode(10));
   }

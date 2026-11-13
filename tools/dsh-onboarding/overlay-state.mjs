@@ -492,10 +492,19 @@ export const withEventFallback=(activity,state)=>{ const base=activity??{support
   && /归属未确认|：无 ·|：未知 ·|归属不明/.test(String(event.text??''));
  const events=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)&&FEED_KINDS.has(String(event.kind??''))&&!unattributed(event)).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
   id:'event-'+(event.at??index)+'-'+(event.key??''),task:'events',topic:'本局事件',
-  clock:event.time??'',label:String(event.text??'').slice(0,60),phase:'done'}));
+  clock:event.time??'',kind:String(event.kind??''),label:String(event.text??'').slice(0,60),phase:'done'}));
  // 单行显示：有正在进行的回合就显示步骤，空闲时显示最新事件。
  // 两者不混排——混排时"最新"可能是比当前步骤更旧的事件，看起来像卡住。
- if(working.length||events.length)rows=working.length?working:events;
+ // 关键对局事件优先占位，疑似识别与装备更新只做补充。
+ // 之前只要有一个进行中的步骤，整段事件就被丢掉，玩家因此在动态里看不到推塔、团灭。
+ const KEY_FEED=new Set(['Ace','TurretKilled','InhibKilled','InhibRespawningSoon','InhibRespawned','DragonKill','BaronKill','HeraldKill','Multikill','Death']);
+ const keyEvents=events.filter(row=>KEY_FEED.has(String(row.kind??'')));
+ const otherEvents=events.filter(row=>!KEY_FEED.has(String(row.kind??''))).slice(-2);
+ if(working.length){
+   rows=[...working.slice(-2),...keyEvents.slice(-4),...otherEvents];
+ }else if(events.length){
+   rows=[...keyEvents.slice(-6),...otherEvents];
+ }
  if(!rows.length)return base;
  // 最新的排最上面；顶部常驻一行对局状态（时间/英雄/等级/KDA/金币），随状态刷新跳动。
  const me=state.me??{};
@@ -1376,7 +1385,18 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
         await flush();
         if(!stillCurrent())throw Object.assign(Error('对局已切换，请在当前对局重新提问'),{status:409});
         if (!agentChat) throw Object.assign(Error('DSH Agent 聊天接口尚未就绪，请重新打开金宝'), { status: 503 });
-        const answer = await agentChat({ game, match: match || 'waiting', question: q.text, topic:topic??'chat',priority:'manual' });
+        // 玩家手动发的消息不该「发一次就失败」：上游超时/不可用时自动重试一次。
+        const withChatRetry = async (run) => {
+          try { return await run(); }
+          catch (error) {
+            const status = Number(error?.status);
+            const transient = status === 503 || status === 504 || /timeout|unavailable|upstream/i.test(String(error?.code ?? ''));
+            if (!transient || !stillCurrent()) throw error;
+            await new Promise(resolve => setTimeout(resolve, 800));
+            return run();
+          }
+        };
+        const answer = await withChatRetry(() => agentChat({ game, match: match || 'waiting', question: q.text, topic:topic??'chat',priority:'manual' }));
         if(!stillCurrent())throw Object.assign(Error('对局已切换，请在当前对局重新提问'),{status:409});
         if(typeof answer!=='string'||!answer.trim())throw Object.assign(Error('Empty Agent answer'),{status:502});
         const reply=answer.trim();

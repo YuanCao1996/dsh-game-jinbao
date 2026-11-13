@@ -87,21 +87,36 @@ export function choiceReaction({ role = 'jinbao', kind = 'item', agreed = false,
   return agreed && name ? `${text}` : text;
 }
 
-// 他到底听没听：最新一条建议里有没有出现这个名字。
-function agreedWith(name, broadcasts) {
-  const key = String(name ?? '').trim();
-  if (!key) return null;
+// 他到底听没听：从最近一条建议里解析出「明确推荐的装备/海克斯」，再和实际选择比。
+// 关键区别：以前只要建议里没出现买的东西就算「不听」，导致每次选海克斯都喷一句
+// 「哼，不听我的？」。没有明确推荐时应当保持安静。
+function recommendedName(broadcasts, kind) {
   const recent = (Array.isArray(broadcasts) ? broadcasts : [])
     .filter(b => b && !b.revoked && Number.isFinite(Number(b.at)))
     .sort((a, b) => Number(b.at) - Number(a.at))
-    .slice(0, 4);
+    .slice(0, 5);
   for (const b of recent) {
     const text = String(b.text ?? '');
-    if (!RECOMMEND_HINT.test(text)) continue;      // 不是出装/强化建议的播报，不参与判断
-    if (text.includes(key)) return true;
-    return false;                                   // 最近一条相关建议没提它 → 算没听
+    if (kind === 'augment') {
+      const named = /推荐选\s*([^\s，。；、（）()]{2,12})/.exec(text)
+        ?? /(?:首选|优先选|建议选)\s*([^\s，。；、（）()]{2,12})/.exec(text);
+      if (named) return named[1];
+      continue;
+    }
+    const next = /(?:下一件|优先做|优先买|先买|先做|合成)\s*[：:]?\s*([^\s，。；、（）()]{2,12})/.exec(text);
+    if (next) return next[1];
+    const order = /^[^→]{0,12}?([^\s，。；、→]{2,12})\s*→/.exec(text);
+    if (order) return order[1];
   }
-  return null;                                      // 没有可比的建议 → 不反馈
+  return '';
+}
+
+// 名字可能一个说成装、一个说部件（反曲之弓 vs 破败王者之刃），用包含关系放宽。
+function sameChoice(a, b) {
+  const left = String(a ?? '').trim();
+  const right = String(b ?? '').trim();
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
 }
 
 export function recordChoice(state, { kind, name, at = Date.now() }) {
@@ -120,8 +135,9 @@ export function settleChoiceReactions(state, now = Date.now(), { role = 'jinbao'
   const spread = state.choiceStreak ?? (state.choiceStreak = { agree: 0, disagree: 0 });
   for (const item of pending.splice(0)) {
     if (!item || now - Number(item.at) > maxAgeMs) continue;      // 过期的不再补话，避免马后炮
-    const agreed = agreedWith(item.name, state.broadcasts);
-    if (agreed === null) continue;                                 // 没有建议可比，保持安静
+    const target = recommendedName(state.broadcasts, item.kind);
+    if (!target) continue;                                          // 没有明确推荐 → 不评价
+    const agreed = sameChoice(item.name, target);
     if (agreed) { spread.agree += 1; spread.disagree = 0; }
     else { spread.disagree += 1; spread.agree = 0; }
     const text = choiceReaction({ role, kind: item.kind, agreed, repeat: Math.max(0, spread.disagree - 1), pick: spread[agreed ? 'agree' : 'disagree'], name: item.name });
