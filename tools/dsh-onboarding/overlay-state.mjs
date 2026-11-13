@@ -22,6 +22,7 @@ import {adviceIsValid,createAdviceValidity} from '../dsh-coach-server/lib/lol-co
 import {eventWindow} from '../dsh-coach-server/lib/event-window.mjs';
 import {createCompanion} from '../dsh-coach-server/lib/companion.mjs';
 import {whoKilled,recordMultikill,settlePraise,PRAISE_ROLES,killInfoFromEvents} from './multikill-praise.mjs';
+import {recordChoice,settleChoiceReactions,resetChoiceReactions} from './choice-reactions.mjs';
 import {champSelectPartnerText} from '../lol-companion/partner-index.mjs';
 import {createKnowledgeSearch} from './knowledge-search.mjs';
 import {isCompletedItem} from '../lol-companion/item-policy.mjs';
@@ -197,6 +198,23 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
       state.uncertainPick={roll:lastPick.roll??null,name:lastPick.name,at:Date.now()};
       state.lastPick=null;
     }
+  }
+  // 玩家做了选择 → 记下来，交给 settleChoiceReactions 按人设即时反馈。
+  if (event.kind === 'purchase' && event.champion && event.champion === state.me?.champion) {
+    if (isCompletedItem({ id: event.itemId, name: event.item })) recordChoice(state, { kind: 'item', name: event.item, at });
+  }
+  if (event.kind === 'chat_events' && Array.isArray(event.events)) {
+    for (const message of event.events) {
+      if (message?.kind === 'purchase' && message.champion && message.champion === state.me?.champion && isCompletedItem({ id: message.itemId, name: message.item })) {
+        recordChoice(state, { kind: 'item', name: message.item, at });
+      }
+    }
+  }
+  if (event.kind === 'augment_picked' && event.who === 'self' && (event.augment ?? event.name)) {
+    recordChoice(state, { kind: 'augment', name: String(event.augment ?? event.name), at });
+  }
+  if (event.kind === 'augment_mutate' && event.who === 'self' && event.champion && event.champion === state.me?.champion && event.augment) {
+    recordChoice(state, { kind: 'augment', name: String(event.augment), at });
   }
   if (event.kind === 'augment_offer_closed'){
     // 面板关掉说明这一轮结束了，视觉看到的这张就是最终选择。
@@ -1273,6 +1291,8 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       // 多杀点评优先交给云端生成一句话；这里先等 7 秒宽限（云端建单+轮询+出句
       // 实测 3~6 秒），超时没等到才用本地兜底，保证玩家听不到两句重复的播报。
       settlePraise(state, Date.now(), { role: await currentPraiseRole(), cloudGraceMs: praiseCloudGraceMs });
+      // 买装备 / 选海克斯之后的即时反馈：同一个角色，同一套语音通道。
+      settleChoiceReactions(state, Date.now(), { role: await currentPraiseRole() });
       await flush();
       if(!knowledge.loading)equipmentCoach.tick();
     } catch {} finally { scanning = false; }
