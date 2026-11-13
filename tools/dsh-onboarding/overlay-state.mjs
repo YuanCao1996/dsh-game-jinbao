@@ -218,6 +218,16 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   if (event.kind === 'augment_mutate' && event.who === 'self' && event.champion && event.champion === state.me?.champion && event.augment) {
     recordChoice(state, { kind: 'augment', name: String(event.augment), at });
   }
+  // 主播模式：观众弹幕进时间线，带 origin=viewer 以便和玩家自己的提问区分开。
+  if (event.kind === 'viewer_message' && event.text) {
+    state.chat.push({
+      role: 'user', origin: 'viewer', text: String(event.text).slice(0, 200),
+      nick: String(event.user ?? '观众').slice(0, 24), platform: String(event.platform ?? 'bilibili'),
+      superChat: event.superChat === true, at: Number.isFinite(at) ? at : Date.now(),
+    });
+    if (state.chat.length > 200) state.chat = state.chat.slice(-200);
+    return state;
+  }
   if (event.kind === 'augment_offer_closed'){
     // 面板关掉说明这一轮结束了，视觉看到的这张就是最终选择。
     settlePendingPick(state,'close');
@@ -826,7 +836,7 @@ const playerRows = players.map(p => {
     selfIdentityAt: state.selfIdentityAt,
     selfChampionAlias: typeof me.championAlias==='string' ? me.championAlias : '',
     // 窄条/收起态只显示一行：把内联信息的速览也排进播报队列（id 稳定，不会重复念）。
-    playback:[...validBroadcasts.map(r=>({id:r.praiseChain?'praise:'+r.praiseChain:String(r.at)+':'+r.text,at:r.at,text:r.text,priority:r.priority??0,...(r.praise?{topic:'praise'}:{}),...(r.praiseChain?{praiseChain:r.praiseChain}:{}),expiresAt:r.expiresAt??r.validity?.expiresAt??null})),
+    playback:[...validBroadcasts.map(r=>({id:r.praiseChain?'praise:'+r.praiseChain:String(r.at)+':'+r.text,at:r.at,text:r.text,priority:r.priority??0,...(r.noSpeech?{noSpeech:true}:{}),...(r.praise?{topic:'praise'}:{}),...(r.praiseChain?{praiseChain:r.praiseChain}:{}),expiresAt:r.expiresAt??r.validity?.expiresAt??null})),
      ...(state.notices??[]).filter(n=>n.brief&&Date.now()-n.at<300000).map(n=>({id:'notice:'+n.key,at:n.at,text:n.brief,priority:2,expiresAt:n.at+180000}))].sort((a,b)=>a.at-b.at),
     // 已安静、但还没上屏的连杀链：云端教练据此生成一句话点评。
     // 超过宽限仍未填充时由 settlePraise 用本地兜底补上。

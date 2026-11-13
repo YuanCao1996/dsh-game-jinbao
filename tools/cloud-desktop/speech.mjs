@@ -124,6 +124,8 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
    prune();
    for(const item of (v.playback??[]).slice(-40)){
     if(!item||typeof item.id!=='string'||seen.has(item.id))continue;
+    // 主播模式：观众回复只上屏、不朗读（默认不给观众的话配音）。
+    if(item.noSpeech===true){seen.set(item.id,now());continue;}
     seen.set(item.id,now());if(seen.size>256)seen.delete(seen.keys().next().value);
     if(!Number.isFinite(item.at)||now()-item.at>30000||item.at>now()+500)continue;
     enqueue({...item,topic:item.topic==='praise'?'praise':'advice',scope:key,expiresAt:Math.min(item.expiresAt??now()+45000,item.at+90000)});

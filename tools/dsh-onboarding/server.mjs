@@ -1,5 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {createLocalExploration} from './exploration-local.mjs';
+import { createBilibiliDanmaku, createViewerFilter } from '../lol-companion/danmaku-bridge.mjs';
+import { viewerReply } from '../lol-companion/viewer-reply.mjs';
 import http from 'node:http';
 import { experienceRoute, experienceListPayload, correctRequest, publicLibraryRoute, publicQueryParams, publicUpsertBody, mdEditRoute, mdEditBody } from "./experience-routes.mjs";
 import { createPublicLibrary } from "../dsh-coach-server/lib/public-library.mjs";
@@ -62,6 +64,72 @@ try{
  }catch{}},20000);
  explorationTicker.unref?.();
 }catch{}
+  // ── 主播模式（B站弹幕）──────────────────────────────
+  // 默认关闭；开关/房间号/触发方式存 stream.json，与 settings.json 分开，避免影响现有设置。
+  const streamFile = join(stateDir, 'stream.json');
+  let streamState = { enabled: false, roomId: '', trigger: 'at', showNick: true, reply: true, status: 'idle', lastError: '' };
+  try { streamState = { ...streamState, ...JSON.parse(await readFile(streamFile, 'utf8')) }; } catch {}
+  let streamBridge = null;
+  const viewerFilter = createViewerFilter({ trigger: streamState.trigger || 'at' });
+  const saveStream = async next => {
+    streamState = { ...streamState, ...next };
+    viewerFilter.configure?.({ trigger: streamState.trigger || 'at' });
+    await writeFile(streamFile + '.tmp', JSON.stringify(streamState), { mode: 0o600 });
+    await rename(streamFile + '.tmp', streamFile);
+  };
+  const stopStream = async () => {
+    try { streamBridge?.stop(); } catch {}
+    streamBridge = null;
+    streamState.status = 'idle';
+  };
+  const streamFacts = () => {
+    // 观众应答只读当前视图，不额外调模型。
+    try {
+      const view = overlay?.view?.();
+      if (!view) return {};
+      const live = view.liveStats ?? {};
+      const kda = String(live.kda ?? '').match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/);
+      return {
+        champion: String(live.champion ?? view.selfChampion ?? ''),
+        kda: kda ? [Number(kda[1]), Number(kda[2]), Number(kda[3])] : null,
+        gold: Number(live.gold) || null,
+        items: Array.isArray(view.ownedItems) ? view.ownedItems : [],
+        augments: Array.isArray(view.ownedAugments) ? view.ownedAugments : [],
+      };
+    } catch { return {}; }
+  };
+  const startStream = async () => {
+    if (!streamState.enabled || !streamState.roomId) { await stopStream(); return; }
+    await stopStream();
+    const bridge = createBilibiliDanmaku({
+      roomId: String(streamState.roomId),
+      onStatus: status => { streamState.status = status.state; if (status.state === 'error') streamState.lastError = 'connection_failed'; },
+      onMessage: async message => {
+        const verdict = viewerFilter.check(message);
+        if (!verdict.accept) return;
+        const at = Date.now();
+        const row = {
+          game: 'lol', t: at, kind: 'viewer_message', platform: message.platform,
+          user: streamState.showNick === false ? '观众' : message.user,
+          text: message.text, superChat: message.superChat === true, price: message.price ?? 0,
+        };
+        try { await appendFile(join(stateDir, 'logs', 'viewer.jsonl'), JSON.stringify(row) + '\n', { mode: 0o600 }); } catch {}
+        if (streamState.reply === false) return;
+        const answer = viewerReply(message.text, streamFacts(), at);
+        if (!answer) return;
+        const reply = {
+          game: 'lol', t: Date.now(), kind: 'viewer_reply', broadcast: answer,
+          viewerReply: true, noSpeech: true, user: row.user, question: message.text,
+        };
+        try { await appendFile(join(stateDir, 'logs', 'coach_broadcasts.jsonl'), JSON.stringify(reply) + '\n', { mode: 0o600 }); } catch {}
+      },
+    });
+    streamBridge = bridge;
+    try { await bridge.start(); }
+    catch (error) { streamState.status = 'error'; streamState.lastError = String(error?.message ?? error).slice(0, 120); }
+  };
+  try { if (streamState.enabled && streamState.roomId) void startStream(); } catch {}
+
  async function saveConfig(next){await writeFile(filename+'.tmp',JSON.stringify(next),{mode:0o600});await rename(filename+'.tmp',filename);config=next;}
  async function acceptCloud(result){
   if(typeof result.sessionToken!=='string'||!/^j[cdw]_[a-f0-9]{64}$/.test(result.sessionToken))throw error(502);
@@ -368,6 +436,27 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
      const safe=/^(请先登录已验证的账号|登录账号已变化|服务器地址不可用|响应过大|服务响应异常|探索图鉴服务尚未开放，请稍后再试|账号身份无法确认|探索服务暂不可用|其他设备的数据已变化，需要检查差异|已退出探索榜|该图鉴暂未开放|探索记录无效|当前图鉴中没有该条目|本机探索记录过大|本机探索记录异常|账号身份已变化|待同步记录过多，请先同步|参与状态无效|请先参与探索榜|同步结果无法核验|当前没有可检查的冲突|冲突信息无效|数据再次变化，请重新检查差异)$/.test(problem.message)?problem.message:'探索服务暂不可用，请稍后重试';
      send(res,status,{error:safe});return;
     }
+   }
+   if(req.url==='/api/stream'&&req.method==='GET'){
+    send(res,200,{enabled:streamState.enabled,roomId:streamState.roomId,trigger:streamState.trigger,showNick:streamState.showNick,reply:streamState.reply,status:streamState.status,lastError:streamState.lastError});
+    return;
+   }
+   if(req.url==='/api/stream'&&req.method==='POST'){
+    const value=await body(req,2048);
+    const next={};
+    if(value.enabled!==undefined)next.enabled=value.enabled===true;
+    if(value.roomId!==undefined){
+     const room=String(value.roomId).trim();
+     if(room&&!/^[0-9]{1,12}$/.test(room))throw error(400);
+     next.roomId=room;
+    }
+    if(value.trigger!==undefined){if(!['at','keyword','all'].includes(value.trigger))throw error(400);next.trigger=value.trigger;}
+    if(value.showNick!==undefined)next.showNick=value.showNick===true;
+    if(value.reply!==undefined)next.reply=value.reply===true;
+    await locked(async()=>{await saveStream(next);});
+    try{await startStream();}catch{}
+    send(res,200,{ok:true,status:streamState.status});
+    return;
    }
    if(req.url==='/api/speech'&&req.method==='GET'){send(res,200,speech?{...speech.status(),keyConfigured:!!await resolve('speech')}:{supported:false});return;}
    if(req.url==='/api/speech'&&req.method==='POST'&&speech){await locked(async()=>{const value=await body(req,2048),key=value.apiKey;delete value.apiKey;if(key!==undefined&&(typeof key!=='string'||key.length>512||/[\r\n]/.test(key)))throw error(400);const result=await speech.configure(value);if(key!==undefined){if(key.trim())await credentials.set(refs.speech,key.trim());else await credentials.unset(refs.speech);}send(res,200,{...result,keyConfigured:!!await resolve('speech')});});return;}
