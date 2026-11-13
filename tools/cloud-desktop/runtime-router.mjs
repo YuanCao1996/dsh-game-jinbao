@@ -3,6 +3,21 @@ import {randomUUID} from 'node:crypto';
 export function createRuntimeRouter({getMode,factories,isCurrent=()=>true,maxQueue=4,onEvent=()=>{}}){
  let active=null,instance=null,opening=null,mode='',generation=0,closed=false,draining=false,retiring=false,retirement=Promise.resolve();const queue=[],retiringInstances=new Set();
  const failure=(message,code)=>Object.assign(Error(message),{status:409,...(code?{code}:{})});
+ // 把 HTTP 状态翻译成可读原因：过去失败一律记成 code=other，玩家只看到「分析失败」，
+ // 分不清是服务端故障、限流还是登录失效（2026-11-12 那三条 503 就是这样丢掉的）。
+ const reasonOf=error=>{
+  if(!error)return 'unknown';
+  if(error.code==='agent_preempted')return 'agent_preempted';
+  const status=Number(error.status);
+  if(status===503)return 'service_unavailable';
+  if(status===504)return 'upstream_timeout';
+  if(status===502)return 'upstream_error';
+  if(status===429)return 'rate_limited';
+  if(status===401||status===403)return 'login_required';
+  if(status===409)return 'match_changed';
+  if(error.name==='TimeoutError'||/timeout/i.test(String(error.message||'')))return 'upstream_timeout';
+  return error.code||'other';
+ };
  const manual=request=>request.priority==='manual'||request.topic==='chat';
  const emit=(task,event,extra={})=>{try{onEvent({game:task.request.game,match:task.request.match,topic:task.request.topic,requestId:task.request.activityId,event,...extra});}catch{}};
  function retire(previous,reason){
@@ -40,7 +55,7 @@ export function createRuntimeRouter({getMode,factories,isCurrent=()=>true,maxQue
     if(epoch!==generation||closed||!instance)throw failure('调用方式已切换');
     const result=await instance.ask(task.request);
     if(epoch!==generation||!isCurrent(task.request.game,task.request.match))throw failure('调用方式或对局已切换');emit(task,'task_completed');task.resolve(result);
-   }catch(error){emit(task,epoch!==generation||task.interrupted?'task_cancelled':!isCurrent(task.request.game,task.request.match)?'task_stale':'task_failed',{code:task.interrupted?'agent_preempted':error.code,httpStatus:error.status,retryAfterMs:Number.isFinite(error.retryAfterMs)?error.retryAfterMs:undefined});task.reject(task.interrupted?failure('已优先处理手动请求','agent_preempted'):error);}finally{active=null;}
+   }catch(error){emit(task,epoch!==generation||task.interrupted?'task_cancelled':!isCurrent(task.request.game,task.request.match)?'task_stale':'task_failed',{code:task.interrupted?'agent_preempted':reasonOf(error),httpStatus:error.status,retryAfterMs:Number.isFinite(error.retryAfterMs)?error.retryAfterMs:undefined});task.reject(task.interrupted?failure('已优先处理手动请求','agent_preempted'):error);}finally{active=null;}
   }}finally{draining=false;}
  }
  return{busy:()=>!!active||draining,async reconfigure(){await reset();},

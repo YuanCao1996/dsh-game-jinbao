@@ -53,8 +53,20 @@ cacheDiagnostics=diagnostics;for(const {event,action} of cacheEvents)diagnostics
 const officialSpeech=cloudSpeech({getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value}),byokSpeech=ownSpeech({getKey:async()=>(await credentials.resolve('JINBAO_USER_SPEECH_API_KEY'))?.value});
 const speech=await createSpeech({stateDir,view:()=>setup?.view()??{},synthesize:(text,role,signal,source)=>(source==='byok'?byokSpeech:officialSpeech)(text,role,signal),trace:event=>diagnostics.record('speech',{game:setup?.view().game,match:setup?.view().match,...event})});
 const pacing=createAutomaticPacing({busy:()=>rawAgent.busy()||!speech.canAutoRequest(),onSkip:request=>diagnostics.record('coach',{game:request.game,match:request.match,action:'skip',reason:'output_backpressure'})});
+// 失败原因的玩家可见说法：只有让玩家看懂是「服务端故障」还是「登录失效」，
+// 才知道该重发一次还是该去设置页重新登录。
+const FAIL_REASON={
+ service_unavailable:'服务暂时不可用，稍后再发一次',
+ upstream_timeout:'云端响应超时，稍后再发一次',
+ upstream_error:'云端返回异常，稍后再发一次',
+ rate_limited:'请求太频繁，等几秒再发',
+ login_required:'登录状态失效，请在设置页重新登录',
+ match_changed:'对局已切换',
+ agent_preempted:'已优先处理你的提问',
+ other:'原因未知，可导出诊断记录反馈',
+};
 const onProgress=event=>{diagnostics.accept(event);activity.accept(event); // 任务失败时把错误码也带给动态面板，便于区分超时/限流/模型错误。
- if(event.event==='task_failed')activity.accept({...event,label:'分析失败('+(event.code||event.error||'未知')+')'});
+ if(event.event==='task_failed')activity.accept({...event,label:'分析失败('+(FAIL_REASON[event.code]||event.code||event.error||'未知')+')'});
 if(['generic_observation','public_text','budget_check','model_reserved','model_permission'].includes(event.event))return;return createAgentStatus(stateDir,event.game,event.match)(['completed','task_completed','task_cancelled','task_stale'].includes(event.event)?'complete':event.event==='task_failed'?'error':event.event==='tool_start'?'tool':'start',event.name);};
 const rawAgent=createRuntimeRouter({getMode:()=>setup?.config().mode??'cloud',isCurrent,onEvent:onProgress,factories:{
  cloud:()=>createCloudAgent({getActivityEnabled:activity.isEnabled,apiPrefix:'/desktop/agent-preview',deviceId:stateDir,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),onProgress,memoryTools:userMemory.execute,observationPlan:args=>observation.plan(args)}),

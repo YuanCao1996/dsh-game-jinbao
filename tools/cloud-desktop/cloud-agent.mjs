@@ -86,12 +86,16 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
     catch(error){if(error.status||signal.aborted||attempt)throw error;}
    }
    if(!/^[a-f0-9-]{32,36}$/.test(created.task_id??''))throw fail(502,'Invalid task');task=created.task_id;
+   // 手动提问的玩家在屏幕前等结果：503/504 这类上游故障多试一次就够，
+   // 否则一次提问要等三轮 20 秒（实测 2026-11-12 23:32 那条提问等了 61 秒才失败）。
+   // 后台自动任务机会成本低，仍保留两次。
+   const transientRetries=request.priority==='manual'||request.topic==='chat'?1:2;
    let cursor=0,revision=context.current_match_state.revision,nextContextAt=0,pollFailures=0;const handled=new Set();
    while(true){
     signal.throwIfAborted();if(!current())throw fail(409,'Match changed');
     let update;
     try{update=await call('/tasks/'+task+'?after='+cursor,token,undefined,signal);if(pollFailures)progress({event:'connection_restored'});pollFailures=0;}
-    catch(error){if(error.status===429){progress({event:'rate_limited'});await sleep(error.retryAfterMs,undefined,{signal});continue;}if(!signal.aborted&&(!error.status||[502,503,504].includes(error.status))&&pollFailures++<2){progress({event:'connection_retry'});await sleep(250*pollFailures,undefined,{signal});continue;}throw error;}
+    catch(error){if(error.status===429){progress({event:'rate_limited'});await sleep(error.retryAfterMs,undefined,{signal});continue;}if(!signal.aborted&&(!error.status||[502,503,504].includes(error.status))&&pollFailures++<transientRetries){progress({event:'connection_retry'});await sleep(250*pollFailures,undefined,{signal});continue;}throw error;}
     if(!Number.isSafeInteger(update.cursor)||update.cursor<cursor)throw fail(502,'Invalid cursor');cursor=update.cursor;
     const terminalUpdate=['completed','failed','cancelled'].includes(update.status);
     for(const event of (Array.isArray(update.activity)?update.activity:[]).slice(-8)){
