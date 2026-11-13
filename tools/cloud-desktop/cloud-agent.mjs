@@ -137,7 +137,18 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
      }
     }
     if(update.status==='completed'){terminal=true;if(typeof update.reply!=='string'||!update.reply.trim())throw fail(502,'Empty reply');return update.reply;}
-    if(['failed','cancelled'].includes(update.status)){terminal=true;const error=fail(update.error==='model_quota_denied'?429:503,'Cloud Agent task failed');if(/^[a-z_0-9]{1,80}$/.test(update.error??''))error.code=update.error;throw error;}
+    if(['failed','cancelled'].includes(update.status)){
+     terminal=true;
+     // 服务端 failed 的任务一律被映射成 503，真实原因在 update.error/update.reason 里。
+     // 过去只有形如 model_quota_denied 的小写串才会被带走，其余（空、中文、混合大小写）
+     // 全被吞掉 —— 2026-11-12 那条聊天失败因此只留下 httpStatus:503，查不到真正原因。
+     const rawReason=String(update.error??update.reason??update.detail??'').trim();
+     const quota=/quota|rate_limit|RATE_LIMIT|DAILY_QUOTA/i.test(rawReason);
+     const error=fail(quota?429:503,'Cloud Agent task failed'+(rawReason?': '+rawReason.slice(0,120):''));
+     error.code=/^[A-Za-z0-9_.-]{1,80}$/.test(rawReason)?rawReason:(rawReason?'task_failed_detail':'task_failed');
+     if(rawReason)error.detail=rawReason.slice(0,160);
+     throw error;
+    }
     const latest=transportContext(await getContext(request.game,request.match),request);
     if(latest.current_match_state.revision>revision&&Date.now()>=nextContextAt){
      try{await call('/context',token,{session_id:session,context:latest},signal);revision=latest.current_match_state.revision;nextContextAt=Date.now()+2000;}
