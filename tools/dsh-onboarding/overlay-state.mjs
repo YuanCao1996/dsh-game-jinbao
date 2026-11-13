@@ -153,7 +153,9 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     state.ended=event.cancelled===true;state.phase=event.cancelled?'Lobby':'Loading';
     if(event.cancelled){state.me={};state.allies=[];state.enemies=[];state.bench=[];}
   }
-  if (event.kind === 'phase') { state.phase = text(event.phase); if(event.phase==='EndOfGame')state.ended=true; }
+  // PreEndOfGame 同样代表对局已结束：有些局不发 GameEnd 事件，只走加载页，
+  // 只认 EndOfGame 会让这类对局既没有结束语、也不写进回忆。
+  if (event.kind === 'phase') { state.phase = text(event.phase); if (event.phase === 'EndOfGame' || event.phase === 'PreEndOfGame') state.ended = true; }
   if (event.kind === 'game_start') {
     state.gameSeconds = Number.isFinite(event.gameTime) ? event.gameTime : state.gameSeconds;
     state.me = {...state.me,...event.me};
@@ -1283,6 +1285,16 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
  // One opening line per match, one result per finished match.
  const startedEvent = pending.map(entry => entry.event).find(e => e?.kind === 'game_start' || e?.kind === 'match_start');
  const endedEvent = pending.map(entry => entry.event).find(e => e?.kind === 'event' && e.name === 'GameEnd');
+ // 结束语必须在结算那一刻就发：实测四局都没有「结束语」，
+ // 因为结束标记可能只是一个 phase 事件（PreEndOfGame/EndOfGame），
+ // 或者下一局的 game_start 在同一个批次里就把 state 重置了。
+ const phaseEndedEvent = pending.map(entry => entry.event).find(e => e?.kind === 'phase' && String(e.phase) === 'EndOfGame');
+ if (state?.match && (endedEvent || phaseEndedEvent)) {
+   try {
+     settleHumanMoments(state, Date.now(), { role: await currentPraiseRole(), clock: state.gameSeconds, ended: true, win: state.matchWin ?? (endedEvent?.Result === 'Win' ? true : endedEvent?.Result === 'Lose' ? false : null) });
+     await flush();
+   } catch {}
+ }
  if (state?.match && startedEvent) state.companionLine = companion.touch({ game: state.game, match: state.match }) ?? null;
  if (state?.match && endedEvent) companion.recordResult({ win: endedEvent.Result === 'Win', match: state.match });
       await memory.flush();
@@ -1382,3 +1394,4 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     async close() { closed = true; search.close(); equipmentCoach.close(); clearInterval(timer); await writes.catch(() => {}); await memory.flush(); },
   };
 }
+

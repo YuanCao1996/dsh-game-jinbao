@@ -19,6 +19,7 @@ const VOICES = {
     opening: ['开局了，先把线站住。', '来了，这局慢慢打。', '开局，先别急。'],
     death: ['又是我先倒……', '这波换得不亏。', '没事，等我回来。'],
     endWin: ['这把赢了，稳。', '赢了，收工。', '拿下，打得不错。'],
+    endNeutral: ['这把结束了。', '打完了，辛苦。'],
     endLoss: ['这把输了，但刚才那波是真的漂亮。', '输了，下一把赢回来。', '没拿下，我们复盘一下。'],
     idle: ['我一直在看，有事喊我。', '我盯着呢，别慌。'],
   },
@@ -26,6 +27,7 @@ const VOICES = {
     opening: ['开局。按计划走。', '开始，先看线权。', '这一局，稳着来。'],
     death: ['这次交换不划算。', '记住这次的位置。', '节奏还在，别急。'],
     endWin: ['赢了，执行到位。', '拿下，继续这样打。'],
+    endNeutral: ['这一局结束了。', '打完了，我们复盘一下。'],
     endLoss: ['输了。问题在中期那两波。', '没赢下来，我们找原因。'],
     idle: ['我在观察局势，需要就问我。'],
   },
@@ -33,6 +35,7 @@ const VOICES = {
     opening: ['上！这局我说了算。', '开局就压，别怂。', '来了！跟我冲。'],
     death: ['倒一个不算什么！', '起来再打回去！', '别停，继续压。'],
     endWin: ['赢了！这就对了！', '漂亮，压倒对面！'],
+    endNeutral: ['这局打完了！', '结束了，下一把继续。'],
     endLoss: ['输了？下次我带你打回来。', '这局不算，再来！'],
     idle: ['我在这儿盯着，谁不服就问我。'],
   },
@@ -40,6 +43,7 @@ const VOICES = {
     opening: ['开局，先别送。', '开始了，稳住。', '来了来了，慢慢玩。'],
     death: ['又倒了，习惯了。', '这波有点亏。', '行吧，复活继续。'],
     endWin: ['赢了，可以。', '拿下，还行。'],
+    endNeutral: ['打完了，行了。', '这局结束，休息一下。'],
     endLoss: ['输了，别难受。', '这把算了，下一把。'],
     idle: ['我还在，别担心。'],
   },
@@ -99,7 +103,7 @@ export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', c
 
   // 1) 结束语优先：对局结束的那一刻，别被阵亡/沉默抢先
   if (ended && !memory.emitted.ended) {
-    const endVoice = win === true ? voice.endWin : win === false ? voice.endLoss : voice.endLoss;
+    const endVoice = win === true ? voice.endWin : win === false ? voice.endLoss : (voice.endNeutral ?? voice.endLoss);
     return emit('ended', pickOf(endVoice ?? voice.endLoss, memory.emitted.endedPick ?? 0));
   }
 
