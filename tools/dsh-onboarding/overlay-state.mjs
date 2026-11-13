@@ -781,7 +781,21 @@ const playerRows = players.map(p => {
       reply.revokedHard = false;
     }
   }
-  const validBroadcasts = state.broadcasts.filter(r => !r.revoked);
+  // 同一句话 45 秒内只上屏一次：
+  // 实测一局里「三个都没进榜，建议刷新换一批」重复 7 次、「推荐选 歌利亚巨人」重复 6 次，
+  // 界面在刷屏，观众也会觉得啰嗦。这里做单点去重（显示、截图、语音都走这条）。
+  const validBroadcasts = (() => {
+    const seen = new Map();
+    const out = [];
+    for (const row of state.broadcasts.filter(r => !r.revoked)) {
+      const key = String(row.text ?? '').slice(0, 80);
+      const previous = seen.get(key);
+      if (previous != null && Number(row.at) - previous < 45_000) continue;
+      seen.set(key, Number(row.at));
+      out.push(row);
+    }
+    return out;
+  })();
   const staleBroadcast = validBroadcasts.length ? null
     : [...state.broadcasts].reverse().find(r => !r.revokedHard && r?.text && (Date.now() - (Number(r.at)||0)) < 300000);
   const staleText = staleBroadcast ? staleBroadcast.text + '（稍早建议，局势已变化）' : '';
