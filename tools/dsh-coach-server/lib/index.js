@@ -45,7 +45,7 @@ import { registerGameMemoryTools } from './game-memory-tools.js';
 import { registerExperienceTools } from "./experience-tools.js";
 import { dispatchGameChat, buildGameChatMessage } from './chat-bridge.js';
 import { gameModePrompt } from './game-mode-prompt.js';
-import { buildLolCoachingPlan, coachingStillCurrent, createAdviceValidity, adviceIsValid } from './lol-coaching-plan.js';
+import { buildLolCoachingPlan, coachingStillCurrent, createAdviceValidity, adviceIsValid, deadHealthIssue } from './lol-coaching-plan.js';
 import { lineupOf, adviceNameIssues, describeIssues } from './advice-names.js';
 import {registerScreenTool} from './screen-tool.js';
 import {cacheSearchProvider,registerGameFetch,relevantGameSource} from './game-web.js';
@@ -1532,6 +1532,16 @@ function apply(ctx, config) {
               diagLog('✗ 播报被拦下(人名): ' + describeIssues(issues), cfg);
             }
           }
+          // 阵亡回合的常识校验：此时血量是 0，不能声称「还剩 X%」，也不能让玩家回城补血。
+          if (!rejected && body._adviceDead && rawText) {
+            const bad = deadHealthIssue(rawText);
+            if (bad) {
+              rejected = { reason: 'dead-health', detail: '阵亡回合却声称还有血量或让玩家回城：' + bad.issue, original: rawText };
+              text = '';
+              console.warn('[coach-server] 播报被拦下(阵亡血量): ' + bad.issue);
+              diagLog('✗ 播报被拦下(阵亡血量): ' + bad.issue, cfg);
+            }
+          }
           const entry = {
             at: new Date().toISOString(),
             source: sourceFile,
@@ -1975,6 +1985,7 @@ export function createMonitor(ctx, cfg, resolveGame) {
       body.prompt = plan.prompt;
       job.body._adviceValidity = createAdviceValidity(plan.stage, context.current);
   job.body._adviceLineup = lineupOf(context.current);
+  job.body._adviceDead = context.current?.me?.dead === true;
     }
     const msg = job.body?.chat ? buildGameChatMessage(job.body.question, context, job.body.game)
       : buildCoachMessage({ ...body, mode:context.current?.mode ?? body.mode, prompt: String(body.prompt ?? '') + '\n【共享对局与历史数据 JSON】\n' + boundJsonStringify(context).text }, resolveGame(job.body?.game));

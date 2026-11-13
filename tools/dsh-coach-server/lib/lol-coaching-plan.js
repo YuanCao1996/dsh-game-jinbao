@@ -124,7 +124,17 @@ export function buildLolCoachingPlan(events = [], current = null) {
   else if (latest('game_start') || events.some(e => e.coachTrigger === 'opening')) stage = Number(me.level) >= 6 ? 'ultimate' : 'opening';
   const facts = {
     stage, phase, gameSeconds: current?.gameSeconds ?? s.time ?? null,
-    me: hero(me), allies: list(current?.allies ?? roster.allies).map(hero),
+    // 真机事故（2026-11-12 23:11:34）：已经阵亡等复活，播报却说「你只剩1%血，先回城补血」。
+    // 原因是死亡回合把「倒下前最后一帧的血量」当成当前血量传给了模型。
+    // 阵亡时血量就是 0：这里直接置空，并明确标注已阵亡，让模型只能说「倒下时」。
+    me: (() => {
+      const base = hero(me) ?? {};
+      if (current?.me?.dead === true) {
+        return { ...base, dead: true, hpPct: null, healthNote: '已阵亡，当前血量 0；不得声称还有血量' };
+      }
+      return base;
+    })(),
+    allies: list(current?.allies ?? roster.allies).map(hero),
     enemies: list(current?.enemies ?? roster.enemies).map(hero),
     ownedAugments: current?.ownedAugments ?? s.teamfight?.pickedAugments ?? [],
     // 本局双方名单（称号）：人名只能从这里取，避免编造不存在的英雄。
@@ -180,6 +190,7 @@ export function buildLolCoachingPlan(events = [], current = null) {
     mayhemBrief,
     '优先执行本轮阶段任务，不沿用历史阶段。输出最多两句、总计不超过60字、单段不换行；紧急局势仅一句。先结论再依据，每句对应本局英雄、强化、装备或事件。不复述面板，不输出泛泛口号，不显示玩家名。',
     '事实与资料分开：缺少决定结论的英雄技能、强化效果、装备或胜率资料时，使用现有DSH资料查询/联网工具，限定本局模式与版本；查不到就明确缺口，不编造数据。大招、金钱、装备和候选以最新事实为准。历史建议不是事实；不重复最近已播报且没有变化的建议。',
+    '已阵亡时（facts.me.dead=true）当前血量是 0：绝对不要写「你还剩X%血」「血量不足」这类现在时描述，也不要说「先回城补血」——死亡状态回不了城。要提血量就写「倒下时是X%」，动作只能写「复活后…」。',
     '英雄名只能逐字使用 facts.lineup 里给出的称号：禁止使用本名、简称或别称（安妮/火女、薇恩、男枪、诺手、蒙多、斯维因等），禁止出现名单之外的英雄。统一说法：我方队友用「跟X一起」，敌方用「敌方X」「避开X」。',
     '同一个英雄只能算一次：不要把同一个英雄用称号和本名各写一遍当作两个威胁（真机事故：「敌方安妮、乐芙兰、黑暗之女三法伤」——安妮就是黑暗之女，乐芙兰那局不存在）。提到几个威胁之前，先在 facts.lineup.enemies 里数一遍。',
     '多杀数量只认 facts.multikill.streak（2=双杀，3=三杀，4=四杀，5=五杀及以上），不得自行数击杀或改写措辞；该字段为 null 时不要提多杀。',
@@ -221,6 +232,23 @@ function dependencies(current, stage) {
   if (stage === 'selection') return {champion:me.champion,phase:current.phase,bench:canonical(current.bench),allies:canonical(current.allies)};
   return {...common,enemy: fingerprint(list(current?.enemies).map(p=>[p.champion,canonical(list(p.items).filter(isCompletedItem))])),
     enemyAugments:fingerprint(list(me.championAugments).filter(p=>p.side==='enemy')),canShop:me.canShop};
+}
+
+// 阵亡回合的常识校验：此时血量就是 0。
+// 真机事故（2026-11-12 23:11:34）：已经倒地等复活，播报却说「你只剩1%血，先回城补血」。
+// 允许「倒下时只剩 1%」这种过去时说法；只拦现在时声称与活人动作。
+export function deadHealthIssue(text) {
+  const source = String(text ?? '');
+  const claim = /(只剩|还有|剩下|余下|仅剩)\s*\d{1,3}\s*%/g;
+  let hit;
+  while ((hit = claim.exec(source))) {
+    const before = source.slice(Math.max(0, hit.index - 6), hit.index);
+    if (/倒下|死前|倒地|刚才|当时/.test(before)) continue;   // 过去时说法，允许
+    return { issue: hit[0], kind: 'health-claim' };
+  }
+  const action = /回城补血|先回城|回家补血/.exec(source);
+  if (action) return { issue: action[0], kind: 'dead-action' };
+  return null;
 }
 
 export function createAdviceValidity(stage, current, now = Date.now()) {
