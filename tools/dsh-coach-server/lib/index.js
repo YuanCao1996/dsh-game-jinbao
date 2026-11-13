@@ -1991,6 +1991,8 @@ export function createMonitor(ctx, cfg, resolveGame) {
       job.body._adviceValidity = createAdviceValidity(plan.stage, context.current);
   job.body._adviceLineup = lineupOf(context.current);
   job.body._adviceDead = context.current?.me?.dead === true;
+  // 提示词长度诊断：客户端与网关都限制 2000 字符，超了会被静默拒发（实测 413）。
+  if (Number.isFinite(plan.promptLength) && plan.promptLength > 1900) diagLog('提示词接近上限: ' + plan.promptLength + ' 字 stage=' + plan.stage, cfg);
     }
     const msg = job.body?.chat ? buildGameChatMessage(job.body.question, context, job.body.game)
       : buildCoachMessage({ ...body, mode:context.current?.mode ?? body.mode, prompt: String(body.prompt ?? '') + '\n【共享对局与历史数据 JSON】\n' + boundJsonStringify(context).text }, resolveGame(job.body?.game));

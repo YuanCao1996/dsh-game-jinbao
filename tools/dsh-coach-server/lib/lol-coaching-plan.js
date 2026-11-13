@@ -1,4 +1,4 @@
-// Phase policy is independent of the Agent transport. Polls only wake the Agent
+﻿// Phase policy is independent of the Agent transport. Polls only wake the Agent
 // for a milestone or a material change; dispatch rebuilds facts from live memory.
 import {isCompletedItem} from '../../lol-companion/item-policy.mjs';
 import {eventWindow} from './event-window.mjs';
@@ -187,7 +187,7 @@ export function buildLolCoachingPlan(events = [], current = null) {
   // 海克斯大乱斗：核心决策顺序常驻，详细条目按阶段组装（只在确认 KIWI 模式时附加）。
   const mayhem = String(current?.mode ?? '').toUpperCase() === 'KIWI' || current?.gameMode === 'KIWI';
   const mayhemText = mayhem ? mayhemGuideText(stage) : '';
-  const mayhemBrief = mayhemText
+  let mayhemBrief = mayhemText
     ? '【海克斯大乱斗攻略要点】' + MAYHEM_CORE + '\n' + mayhemText
     : '';  // 同一局重复规划是昨晚最明显的问题：战争之影 3 分钟出了 3 套不同六件顺序，
   // 虚空遁地兽出了 4 套（首件在心之钢/熔渣/红水晶/自然之力之间跳）。
@@ -204,28 +204,52 @@ export function buildLolCoachingPlan(events = [], current = null) {
       }
     }
   }
-  return { stage, facts, prompt: [
+  // 提示词预算：客户端与网关都限制 2000 字符，超了整条建议会被直接拒发
+  // （2026-11-13 真机：20 次自动建议全部 413，只有出装建议能过）。
+  const compact = {
+    ...facts,
+    lineup: { self: facts.lineup?.self ?? '', allies: (facts.lineup?.allies ?? []).slice(0, 4), enemies: (facts.lineup?.enemies ?? []).slice(0, 5) },
+    recentEvents: (facts.recentEvents ?? []).slice(-6).map(row => ({ t: row.t, name: row.name })),
+    triggeringObservations: (facts.triggeringObservations ?? []).slice(-3).map(row => ({ kind: row.kind, reason: row.reason, text: String(row.text ?? '').slice(0, 120) })),
+    recentAdvice: (facts.recentAdvice ?? []).slice(-2).map(row => String(row.text ?? row.broadcast ?? '').slice(0, 60)),
+    augmentRounds: (facts.augmentRounds ?? []).slice(-2).map(round => ({
+    options: Array.isArray(round.options) ? round.options.slice(0, 3) : [],
+    confirmed: Array.isArray(round.confirmed) ? round.confirmed.slice(0, 3) : [],
+  })),
+    me: facts.me ? { ...facts.me, items: Array.isArray(facts.me.items) ? facts.me.items.slice(-3) : facts.me.items } : facts.me,
+    allies: (facts.allies ?? []).slice(0, 4).map(person => ({ champion: person.champion, level: person.level })),
+    enemies: (facts.enemies ?? []).slice(0, 5).map(person => ({ ...person, items: Array.isArray(person.items) ? person.items.slice(-2) : person.items })),
+    priorOpeningPlan: facts.priorOpeningPlan ? { text: String(facts.priorOpeningPlan.text ?? '').slice(0, 160) } : null,
+  };
+  let factsJson = JSON.stringify(compact);
+  const buildPrompt = () => [
     '【本轮阶段任务】' + TASKS[stage],
     stage === 'coordination' ? coordinationBrief(current) : '',
-    '【本轮筛选事实 JSON】' + JSON.stringify(facts),
+    '【本轮筛选事实 JSON】' + factsJson,
     mayhemBrief,
-    '优先执行本轮阶段任务，不沿用历史阶段。输出最多两句、总计不超过60字、单段不换行；紧急局势仅一句。先结论再依据，每句对应本局英雄、强化、装备或事件。不复述面板，不输出泛泛口号，不显示玩家名。',
-    '事实与资料分开：缺少决定结论的英雄技能、强化效果、装备或胜率资料时，使用现有DSH资料查询/联网工具，限定本局模式与版本；查不到就明确缺口，不编造数据。大招、金钱、装备和候选以最新事实为准。历史建议不是事实；不重复最近已播报且没有变化的建议。',
-    '出装建议只列还没买的装备：facts.me.items 里已有的成装不要再出现在顺序里，也不要把它们当「下一件」。',
-    '本局已有 facts.priorOpeningPlan 时，六件路线必须沿用它：只有出现新的明确事实（敌方关键装备/强化、己方已选强化变化、连续阵亡）才调整，并在回答里写清「改了什么、为什么改」；没有新事实就不要换首件。',
-    '已阵亡时（facts.me.dead=true）当前血量是 0：绝对不要写「你还剩X%血」「血量不足」这类现在时描述，也不要说「先回城补血」——死亡状态回不了城。要提血量就写「倒下时是X%」，动作只能写「复活后…」。',
-    '英雄名只能逐字使用 facts.lineup 里给出的称号：禁止使用本名、简称或别称（安妮/火女、薇恩、男枪、诺手、蒙多、斯维因等），禁止出现名单之外的英雄。统一说法：我方队友用「跟X一起」，敌方用「敌方X」「避开X」。',
-    '同一个英雄只能算一次：不要把同一个英雄用称号和本名各写一遍当作两个威胁（真机事故：「敌方安妮、乐芙兰、黑暗之女三法伤」——安妮就是黑暗之女，乐芙兰那局不存在）。提到几个威胁之前，先在 facts.lineup.enemies 里数一遍。',
-    '多杀数量只认 facts.multikill.streak（2=双杀，3=三杀，4=四杀，5=五杀及以上），不得自行数击杀或改写措辞；该字段为 null 时不要提多杀。',
-    // 有些强化直接点名装备：钢化你心要求心之钢、命运之武器指第一件传说装、易损要暴击装。
-    // 这类强化拿到后，出装顺序里必须出现它要求的那件，不能只当成属性加成。
-    '已选强化如果点名了某件装备（例如「钢化你心」要求持有心之钢、「命运之武器」作用于第一件传说装、「易损」需要暴击装），出装顺序与下一件成装必须优先安排那件装备，并说明是为了让这个强化生效；不要把这类强化当成纯属性加成。',
-
-    // 阵亡时玩家正在商店里，最有用的是一句「现在买哪件」。
-    '阵亡回合必须点名一件具体装备（例如「先买负极大斗篷」），并给一句为什么；不要说「补个防装」「看情况出装」这类方向性说法。装备名用中文常用名。',
-    // 三选一的排名已经由界面卡片呈现（带推荐高亮），再说一遍是重复噪音。
-    '海克斯三选一时，候选与排名由界面卡片展示，回答里不要再逐条复述「No.N · 名称」；只给一句结论：选哪张，或建议刷新，必要时补半句理由。',
-  ].filter(Boolean).join('\n') };
+    '输出：最多两句、总计不超过60字、单段不换行，先结论后依据；不复述面板、不喊口号、不显示玩家名。',
+    '事实与资料分开：缺技能/强化/装备/胜率资料时用资料查询工具；查不到就说明缺口、不编造数据。历史建议不是事实。',
+    '人名只用 facts.lineup 里的称号，禁止本名/简称/别称与名单外英雄；同一英雄只算一次（安妮＝黑暗之女，不能并列成两个威胁）。',
+    '出装只列还没买的成装（facts.me.items 里已有的不列）；本局已有 facts.priorOpeningPlan 时必须沿用它，改路线要写明改了什么、为什么改。',
+    '已选强化点名装备时（钢化你心→心之钢、命运之武器→第一件传说、易损→暴击装），出装顺序与下一件成装必须优先安排该装备，并说明是为了让这个强化生效。',
+    '阵亡回合必须点名一件具体装备并给理由（如「先买负极大斗篷」），不许说「补个防装」这类方向话。',
+    '已阵亡时当前血量是 0：不写「你还剩X%血」，不说「先回城补血」；提血量写「倒下时是X%」，动作只写「复活后…」。',
+    '多杀数量只认 facts.multikill.streak（2双杀/3三杀/4四杀/5五杀及以上），为 null 时不要提多杀。',
+    '海克斯三选一时候选与排名已由界面卡片展示，不复述「No.N · 名称」，只给结论（选哪张或建议刷新）加半句理由。',
+  ].filter(Boolean);
+  let prompt = buildPrompt().join(String.fromCharCode(10));
+  // 仍超预算时先压事实里的长文本，最后才丢大乱斗攻略（它比事实更不可省）。
+  if (prompt.length > 1900) {
+    compact.triggeringObservations = (compact.triggeringObservations ?? []).map(row => ({ kind: row.kind, reason: row.reason, text: String(row.text ?? '').slice(0, 50) }));
+    compact.recentAdvice = (compact.recentAdvice ?? []).map(text => String(text).slice(0, 24));
+    factsJson = JSON.stringify(compact);
+    prompt = buildPrompt().join(String.fromCharCode(10));
+  }
+  if (prompt.length > 1900) {
+    mayhemBrief = '';
+    prompt = buildPrompt().join(String.fromCharCode(10));
+  }
+  return { stage, facts, prompt, promptLength: prompt.length };
 }
 
 const canonical = value => fingerprint(names(value).sort());
@@ -298,3 +322,5 @@ export function coachingStillCurrent(events, current) {
   if (events.some(e => e.kind === 'champ_select') && current.phase && current.phase !== 'ChampSelect') return false;
   return !current.ended;
 }
+
+
