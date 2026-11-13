@@ -23,6 +23,7 @@ import {eventWindow} from '../dsh-coach-server/lib/event-window.mjs';
 import {createCompanion} from '../dsh-coach-server/lib/companion.mjs';
 import {whoKilled,recordMultikill,settlePraise,PRAISE_ROLES,killInfoFromEvents} from './multikill-praise.mjs';
 import {recordChoice,settleChoiceReactions,resetChoiceReactions} from './choice-reactions.mjs';
+import {settleHumanMoments,resetHumanMoments} from './human-moments.mjs';
 import {champSelectPartnerText} from '../lol-companion/partner-index.mjs';
 import {createKnowledgeSearch} from './knowledge-search.mjs';
 import {isCompletedItem} from '../lol-companion/item-policy.mjs';
@@ -101,6 +102,7 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   if(!state.match){state.match=match;state.matchStartedAt=at;state.game=event.game;}
   if (((event.kind === 'game_start' || event.kind === 'match_start')&&!continueStart) || (event.kind==='state' && state.match !== match)) {
     Object.assign(state, initialOverlayState(), { match, matchStartedAt:at, game: event.game });
+    resetHumanMoments(state);
   }
   state.at = at;
   state.game = event.game;
@@ -270,7 +272,12 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   if (event.kind === 'event') {
     const seconds = Number(event.time ?? event.EventTime);
     const name = event.name ?? event.EventName;
-    if (name === 'GameEnd') state.ended = true;
+    if (name === 'GameEnd') {
+      state.ended = true;
+      // 结束语据此选措辞：赢了/输了。
+      if (event.Result === 'Win') state.matchWin = true;
+      else if (event.Result === 'Lose') state.matchWin = false;
+    }
     // Own multi-kills (and an ally's quadra/penta) are praised locally from the game
     // event time, so an escalating chain settles into one praise at its real level.
     if (name === 'Multikill') {
@@ -1293,6 +1300,8 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       settlePraise(state, Date.now(), { role: await currentPraiseRole(), cloudGraceMs: praiseCloudGraceMs });
       // 买装备 / 选海克斯之后的即时反馈：同一个角色，同一套语音通道。
       settleChoiceReactions(state, Date.now(), { role: await currentPraiseRole() });
+      // 开局问候 / 阵亡反应 / 结束语 / 长时间沉默兜底：每局固定几句人味。
+      settleHumanMoments(state, Date.now(), { role: await currentPraiseRole(), clock: state.gameSeconds, ended: state.ended === true, win: state.matchWin ?? null });
       await flush();
       if(!knowledge.loading)equipmentCoach.tick();
     } catch {} finally { scanning = false; }
