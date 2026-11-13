@@ -167,6 +167,12 @@ export function buildLolCoachingPlan(events = [], current = null) {
     // Auto-picked augments (countdown default) are real picks but not user choices; the
     // advice must account for them and label the provenance.
     autoPickedAugments: list(current?.revealedAugments),
+    // 本局已发出的六件计划：出装回合必须沿用，不能每次重新规划换一套路线。
+    priorOpeningPlan: (() => {
+      const prior = list(current?.broadcasts).filter(b => b?.validity?.stage === 'opening').at(-1);
+      if (!prior) return null;
+      return { at: Number(prior.at) || null, text: String(prior.text ?? '').slice(0, 240) };
+    })(),
   };
   if (stage === 'selection') facts.bench = list(current?.bench ?? roster.bench).map(hero);
   if (stage === 'augment') facts.currentOptions = current?.offers ?? offer?.options ?? [];
@@ -183,13 +189,30 @@ export function buildLolCoachingPlan(events = [], current = null) {
   const mayhemText = mayhem ? mayhemGuideText(stage) : '';
   const mayhemBrief = mayhemText
     ? '【海克斯大乱斗攻略要点】' + MAYHEM_CORE + '\n' + mayhemText
-    : '';  return { stage, facts, prompt: [
+    : '';  // 同一局重复规划是昨晚最明显的问题：战争之影 3 分钟出了 3 套不同六件顺序，
+  // 虚空遁地兽出了 4 套（首件在心之钢/熔渣/红水晶/自然之力之间跳）。
+  // 规则：本局已经发过 start-opening 计划、且英雄与已选强化没变 → 这一回合直接静默，
+  // 后续微调交给 purchase / death 回合。
+  if (stage === 'opening') {
+    const prior = list(current?.broadcasts).filter(b => b?.validity?.stage === 'opening').at(-1);
+    if (prior) {
+      const sameLineup = String(prior.validity?.dependencies?.champion ?? '') === String(me?.champion ?? '');
+      const sameOwned = String(prior.validity?.dependencies?.owned ?? '') === String(canonical(current?.ownedAugments) ?? '');
+      const fresh = Number(prior.at) > 0 && Date.now() - Number(prior.at) < 10 * 60 * 1000;
+      if (sameLineup && sameOwned && fresh) {
+        return { stage, facts, prompt: '', skip: 'opening-already-planned' };
+      }
+    }
+  }
+  return { stage, facts, prompt: [
     '【本轮阶段任务】' + TASKS[stage],
     stage === 'coordination' ? coordinationBrief(current) : '',
     '【本轮筛选事实 JSON】' + JSON.stringify(facts),
     mayhemBrief,
     '优先执行本轮阶段任务，不沿用历史阶段。输出最多两句、总计不超过60字、单段不换行；紧急局势仅一句。先结论再依据，每句对应本局英雄、强化、装备或事件。不复述面板，不输出泛泛口号，不显示玩家名。',
     '事实与资料分开：缺少决定结论的英雄技能、强化效果、装备或胜率资料时，使用现有DSH资料查询/联网工具，限定本局模式与版本；查不到就明确缺口，不编造数据。大招、金钱、装备和候选以最新事实为准。历史建议不是事实；不重复最近已播报且没有变化的建议。',
+    '出装建议只列还没买的装备：facts.me.items 里已有的成装不要再出现在顺序里，也不要把它们当「下一件」。',
+    '本局已有 facts.priorOpeningPlan 时，六件路线必须沿用它：只有出现新的明确事实（敌方关键装备/强化、己方已选强化变化、连续阵亡）才调整，并在回答里写清「改了什么、为什么改」；没有新事实就不要换首件。',
     '已阵亡时（facts.me.dead=true）当前血量是 0：绝对不要写「你还剩X%血」「血量不足」这类现在时描述，也不要说「先回城补血」——死亡状态回不了城。要提血量就写「倒下时是X%」，动作只能写「复活后…」。',
     '英雄名只能逐字使用 facts.lineup 里给出的称号：禁止使用本名、简称或别称（安妮/火女、薇恩、男枪、诺手、蒙多、斯维因等），禁止出现名单之外的英雄。统一说法：我方队友用「跟X一起」，敌方用「敌方X」「避开X」。',
     '同一个英雄只能算一次：不要把同一个英雄用称号和本名各写一遍当作两个威胁（真机事故：「敌方安妮、乐芙兰、黑暗之女三法伤」——安妮就是黑暗之女，乐芙兰那局不存在）。提到几个威胁之前，先在 facts.lineup.enemies 里数一遍。',

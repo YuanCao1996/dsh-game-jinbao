@@ -1982,6 +1982,11 @@ export function createMonitor(ctx, cfg, resolveGame) {
       if (!coachingStillCurrent(coachEvents, context.current)) return '';
       // Replace the queued phase instructions with current facts, not stale polls.
       const plan = buildLolCoachingPlan(coachEvents, context.current);
+      // 本局已发过六件计划且局面没变：这一回合静默，避免同一局反复换出装路线。
+      if (plan.skip) {
+        diagLog('回合跳过: ' + plan.skip + ' stage=' + plan.stage, cfg);
+        return '';
+      }
       body.prompt = plan.prompt;
       job.body._adviceValidity = createAdviceValidity(plan.stage, context.current);
   job.body._adviceLineup = lineupOf(context.current);
