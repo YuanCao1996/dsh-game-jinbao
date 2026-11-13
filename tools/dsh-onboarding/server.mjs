@@ -69,12 +69,17 @@ try{
   const streamFile = join(stateDir, 'stream.json');
   let streamState = { enabled: false, roomId: '', trigger: 'at', showNick: true, reply: true, status: 'idle', lastError: '' };
   try { streamState = { ...streamState, ...JSON.parse(await readFile(streamFile, 'utf8')) }; } catch {}
+  streamState.status = 'idle';
+  streamState.lastError = '';
   let streamBridge = null;
   const viewerFilter = createViewerFilter({ trigger: streamState.trigger || 'at' });
   const saveStream = async next => {
     streamState = { ...streamState, ...next };
     viewerFilter.configure?.({ trigger: streamState.trigger || 'at' });
-    await writeFile(streamFile + '.tmp', JSON.stringify(streamState), { mode: 0o600 });
+    // 运行状态（status/lastError）是瞬时的，不落盘：否则重启后会出现
+    // 「开关关着、状态灯却显示已就绪」这种自相矛盾的显示。
+    const { status, lastError, ...persisted } = streamState;
+    await writeFile(streamFile + '.tmp', JSON.stringify(persisted), { mode: 0o600 });
     await rename(streamFile + '.tmp', streamFile);
   };
   const stopStream = async () => {
