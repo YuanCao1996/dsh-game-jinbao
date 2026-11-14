@@ -72,8 +72,8 @@ function Update-AgentActivity {
    $phase=switch([string]$row.phase){'running'{'进行中'}'queued'{'等待'}'done'{'完成'}'failed'{'失败'}'unavailable'{'不可用'}'cancelled'{'已取消'}'draft'{'草稿'}default{''}}
    $duration=if($null -ne $row.elapsedMs){' · '+([Math]::Round([double]$row.elapsedMs/1000,1))+'秒'}else{''}
    $learn=([string]$row.topic -eq '我记点经验')
-   $line.ToolTip=([string]$row.clock)+' · '+([string]$row.topic)+' · '+([string]$row.label)+' · '+$phase+$duration
-   $line.Text=if($learn){'✔ '+([string]$row.label)}else{([string]$row.clock)+'  '+([string]$row.label)+$(if($row.task -eq 'events'){''}else{' · '+$phase+$duration})}
+   $line.ToolTip=([string]$row.clock)+'  '+([string]$row.label)+$(if($row.phase -in @('failed','unavailable','cancelled')){' · '+$phase+$duration}else{''})
+   $line.Text=if($learn){'✔ '+([string]$row.label)}else{([string]$row.clock)+'  '+([string]$row.label)+$(if($row.task -eq 'events'){''}elseif($row.phase -in @('failed','unavailable','cancelled')){' · '+$phase+$duration}else{''})}
    # row.text is deliberately not rendered: it is what made each entry several lines.
    $line.Foreground=if($row.task -eq 'events'){switch -Regex ([string]$row.kind){'augment'{'#C8A6FF'}'inventory|purchase'{'#E7BE79'}'Ace|kill|Kill|Death|death'{'#F5AD91'}default{'#7FD1A0'}}}elseif($learn){'#7FD1A0'}else{switch([string]$row.phase){'running'{'#E7BE79'}'failed'{'#F5AD91'}'draft'{'#AEBECE'}default{'#94A3B8'}}}
   }
