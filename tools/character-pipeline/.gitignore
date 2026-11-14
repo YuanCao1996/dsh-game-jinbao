@@ -5,3 +5,5 @@ bin/ffmpeg.exe
 bin/ffprobe.exe
 tests/out/
 .work/
+# 首帧图是生成中间产物，换个立绘就作废，不进 git
+firstframe/

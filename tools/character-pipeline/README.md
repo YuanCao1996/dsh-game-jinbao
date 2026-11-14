@@ -59,6 +59,26 @@ assets/pet/static.png    ← 全局立绘（只画一张时放这里，最省事
 3. 生成规格：16:9 或 1:1、纯绿幕、人物位置固定、动作全程在画幅内
 4. 导出帧序列（或用我们的管线读 mp4，需要本机有 ffmpeg）
 
+**照着 [VIDEO-PROMPTS.md](VIDEO-PROMPTS.md) 做**，里面是逐状态可直接粘贴的提示词、负面词、参数表。
+三个配套脚本把这条路上最容易翻车的地方都挡掉了：
+
+| 脚本 | 挡什么问题 |
+|---|---|
+| `make-greenplate.py` | 透明立绘直接喂图生视频 → 工具自己编背景，抠像必烂。先垫成纯绿首帧（默认落到 `tools/character-pipeline/firstframe/`，不进 git） |
+| `check-clip.py` | 背景不纯 / 角色出画 / 时长超 3s / 首尾帧差太多 → 进管线前先体检 |
+| `pipeline.py` | 抠像、裁切、归一化、出 PNG 序列 + APNG |
+
+一条龙（`idle` 为例）：
+
+```powershell
+$py = 'C:\Users\Administrator\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe'
+& $py tools\character-pipeline\make-greenplate.py --ratio both        # 出首帧图
+# ↓ 拿首帧图去生成 2 秒绿幕动作片，存成 D:\art\idle.mp4
+& $py tools\character-pipeline\check-clip.py --input D:\art\idle.mp4 --fix-hint
+& $py tools\character-pipeline\pipeline.py --input D:\art\idle.mp4 --name idle --out tools\desktop-release\assets\pet --fps 12 --size 192
+```
+
+
 ## 视频输入（mp4）怎么用
 
 管线支持直接喂 mp4，但**需要本机有 ffmpeg**（读视频、按 fps 抽帧）。
