@@ -11,10 +11,10 @@ $stateDir = Join-Path $env:TEMP ('pet-cfg-' + [Guid]::NewGuid().ToString('N').Su
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
 $petFile = Join-Path $stateDir 'pet.json'
 
-# 1) 没有配置文件时默认开启、44
+# 1) 没有配置文件时默认开启、56（默认值调大过，44 那会儿脸看不清）
 $settings = Get-PetSettings -StateDir $stateDir
 Check '默认开启' ($settings.enabled -eq $true)
-Check '默认大小 44' ($settings.size -eq 44)
+Check '默认大小 56' ($settings.size -eq 56)
 
 # 2) 显式关闭
 [IO.File]::WriteAllText($petFile, '{"enabled":false,"size":56}', [Text.UTF8Encoding]::new($false))
@@ -24,14 +24,14 @@ Check '大小可配' ($settings.size -eq 56)
 
 # 3) 越界的大小被夹到 28~96
 [IO.File]::WriteAllText($petFile, '{"enabled":true,"size":500}', [Text.UTF8Encoding]::new($false))
-Check '过大回落默认' ((Get-PetSettings -StateDir $stateDir).size -eq 44)
+Check '过大回落默认' ((Get-PetSettings -StateDir $stateDir).size -eq 56)
 [IO.File]::WriteAllText($petFile, '{"enabled":true,"size":5}', [Text.UTF8Encoding]::new($false))
-Check '过小回落默认' ((Get-PetSettings -StateDir $stateDir).size -eq 44)
+Check '过小回落默认' ((Get-PetSettings -StateDir $stateDir).size -eq 56)
 
 # 4) 坏文件不抛异常
 [IO.File]::WriteAllText($petFile, 'not json', [Text.UTF8Encoding]::new($false))
 $settings = Get-PetSettings -StateDir $stateDir
-Check '坏配置回默认' ($settings.enabled -eq $true -and $settings.size -eq 44)
+Check '坏配置回默认' ($settings.enabled -eq $true -and $settings.size -eq 56)
 
 # 5) 有形象素材时：初始化成功、默认隐藏（展开态不显示），配置开启后可见
 $root = Join-Path $env:TEMP ('pet-assets-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -65,10 +65,20 @@ Check '尾巴一起显示' ($tail.Visibility -eq 'Visible')
 Update-NarrowPet -Snapshot ([pscustomobject]@{ phase = 'InProgress' }) -Force
 Check '关闭后隐藏' ($image.Visibility -eq 'Collapsed')
 
+# 6) 调大尺寸必须触发重新排版（否则形象被条子裁掉一半，只改控件大小等于白改）
+$script:metricsCalls = 0
+function Set-NarrowMetrics { $script:metricsCalls++ }
+[IO.File]::WriteAllText($petFile, '{"enabled":true,"size":88}', [Text.UTF8Encoding]::new($false))
+$script:displayMode = 'narrow'
+$script:narrowPetConfigAt = [DateTime]::MinValue
+Update-NarrowPet -Snapshot ([pscustomobject]@{ phase = 'InProgress' }) -Force
+Check '调大尺寸触发重新排版' ($script:metricsCalls -ge 1)
+Check '尺寸确实生效' ($script:narrowPetSize -eq 88)
+
 Remove-Item -Recurse -Force $stateDir, $root -ErrorAction SilentlyContinue
 
 if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1
 }
-Write-Output 'overlay-pet: 收起形态形象 10/10 通过'
+Write-Output 'overlay-pet: 收起形态形象 12/12 通过'

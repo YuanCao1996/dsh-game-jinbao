@@ -1,4 +1,4 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '../confirmation-countdown.ps1')
 $controls=@{ConfirmationTitle=[pscustomobject]@{Text=''};ConfirmationPanel=[pscustomobject]@{Visibility='Visible'}}
 $quickConfirm=[pscustomobject]@{IsOpen=$true};$script:confirmationJob=$null

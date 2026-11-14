@@ -53,10 +53,10 @@
     <label><input id="petEnabled" type="checkbox" style="width:auto;margin-right:6px">显示人物形象</label>
     <label>大小
       <select id="petSize">
-        <option value="36">小（36）</option>
-        <option value="44" selected>中（44）</option>
-        <option value="56">大（56）</option>
-        <option value="72">很大（72）</option>
+        <option value="44">小（44）</option>
+        <option value="56" selected>中（56，默认）</option>
+        <option value="72">大（72）</option>
+        <option value="88">很大（88）</option>
       </select>
     </label>
     <span id="petStatus" class="pill">—</span>
@@ -226,7 +226,7 @@ async function loadPetSettings(){
   }catch{}
 }
 async function savePetSettings(){
-  const payload={enabled:el('petEnabled').checked===true,size:Number(el('petSize').value)||44};
+  const payload={enabled:el('petEnabled').checked===true,size:Number(el('petSize').value)||56};
   try{await api('pet',payload);await loadPetSettings();}catch(error){alert('保存失败：'+(error&&error.message||'未知'));}
 }
 async function loadHighlightSettings(){

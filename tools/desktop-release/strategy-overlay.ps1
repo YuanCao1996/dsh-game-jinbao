@@ -162,7 +162,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
    <Grid x:Name="NarrowPanel" Visibility="Collapsed" Background="#01000000">
     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0,0,0">
-<Image x:Name="NarrowPetImage" Width="44" Height="44" VerticalAlignment="Center" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="HighQuality" Visibility="Collapsed"/>
+<Image x:Name="NarrowPetImage" Width="56" Height="56" VerticalAlignment="Center" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="HighQuality" Visibility="Collapsed"/>
 <Path x:Name="NarrowPetTail" Fill="#F21B2129" Stroke="#2C3540" StrokeThickness="1" Data="M 0,0 L 7,4 L 0,8 Z" VerticalAlignment="Center" Margin="1,0,-1,0" Visibility="Collapsed"/>
 </StackPanel>
     <Border x:Name="NarrowBubble" Grid.Column="1" CornerRadius="10" Background="#F21B2129" BorderBrush="#2C3540" BorderThickness="1" Padding="8,2" Margin="0,1,4,1"><Grid><Canvas x:Name="NarrowCanvas" ClipToBounds="True" Margin="0,2,4,0"><TextBlock x:Name="OutgoingSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="PreviousSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="NarrowText" Style="{StaticResource SubtitleText}" FontSize="14"/></Canvas></Grid></Border>

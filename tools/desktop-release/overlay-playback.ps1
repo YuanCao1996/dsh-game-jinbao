@@ -34,7 +34,10 @@ function Set-NarrowMetrics {
  if($script:displayMode -eq 'narrow' -and (!$script:collapsed -or $script:subtitleMode)){
   $window.MinWidth=[Math]::Min(260,$area.Width-20);$window.MinHeight=40
   $window.Width=[Math]::Min([Math]::Max($window.MinWidth,$script:narrowWidth),$area.Width-20)
-  $window.Height=if($script:subtitleMode){2*$script:subtitleRowHeight+24}else{$script:subtitleRowHeight+24}
+  $rowHeight=if($script:subtitleMode){2*$script:subtitleRowHeight+24}else{$script:subtitleRowHeight+24}
+  # 形象比一行字高：不把窗口撑开的话，调到 56/72 会被条子裁掉一半
+  if($script:narrowPetVisible){$rowHeight=[Math]::Max($rowHeight,[double]$script:narrowPetSize+22)}
+  $window.Height=$rowHeight
   $controls.MainBorder.Padding=if($script:subtitleMode){'8,6'}else{'12,8'}
   if($script:subtitleMode){$controls.MainBorder.Background=[Windows.Media.Brushes]::Transparent;$controls.MainBorder.BorderThickness=0}
   else{Set-BackgroundOpacity;$controls.MainBorder.BorderThickness=1}

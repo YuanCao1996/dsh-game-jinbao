@@ -5,14 +5,14 @@
   "size": 128,
   "baseline": 0.94,
   "durationMs": 2000,
-  "loopDelta": 2.13,
-  "focus": "head",
+  "loopDelta": 3.4,
+  "focus": "full",
   "crop": {
     "union": [
-      511,
-      19,
-      788,
-      296
+      585,
+      32,
+      720,
+      167
     ],
     "perFrameJitter": true
   },
@@ -29,7 +29,7 @@
     ]
   },
   "bytes": {
-    "frames": 655954,
-    "apng": 654902
+    "frames": 592518,
+    "apng": 587879
   }
 }

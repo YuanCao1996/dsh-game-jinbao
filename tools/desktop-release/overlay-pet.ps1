@@ -250,12 +250,13 @@ function Stop-PetLayer {
 # 网页设置页可开关与调大小（配置写在 <StateDir>/pet.json）。
 
 $script:narrowPetVisible = $false
-$script:narrowPetSize = 44
+$script:narrowPetSize = 56
 $script:narrowPetConfigAt = [DateTime]::MinValue
 
 function Get-PetSettings {
   param([string]$StateDir)
-  $settings = @{ enabled = $true; size = 44 }
+  # 默认 56：44 那会儿脸只有十几像素，眨眼/口型根本看不出来（用户反馈"人物太小看不到效果"）
+  $settings = @{ enabled = $true; size = 56 }
   if (-not $StateDir) { return $settings }
   $file = Join-Path $StateDir 'pet.json'
   try {
@@ -354,6 +355,8 @@ function Update-NarrowPet {
     if ($size -ne $script:narrowPetSize) {
       $script:narrowPetSize = $size
       try { $script:narrowPetControl.Width = $size; $script:narrowPetControl.Height = $size } catch { }
+      # 条子高度要跟着形象走，否则调大以后会被窗口裁掉（只改了控件大小等于白改）
+      try { if ($script:displayMode -eq 'narrow') { Set-NarrowMetrics } } catch { }
     }
     if ($enabled -ne $script:narrowPetVisible) {
       $script:narrowPetVisible = $enabled

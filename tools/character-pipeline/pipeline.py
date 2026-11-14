@@ -227,7 +227,8 @@ def build(input_path: Path, out_root: Path, name: str, fps: float, size: int, ba
           key: tuple[int, int, int], tolerance: float, softness: float, despill: bool,
           max_frames: int | None, start: float | None = None, duration: float | None = None,
           masks: list[tuple[int, int, int, int]] | None = None, union_crop: bool = True,
-          focus: str = 'full', head_ratio: float = 0.34, head_margin: float = 0.12) -> dict:
+          focus: str = 'full', head_ratio: float = 0.34, head_margin: float = 0.12,
+          crop_box: tuple[int, int, int, int] | None = None) -> dict:
     """两遍处理：第一遍抠像并累计并集裁切框，第二遍按同一个框裁切缩放出片。
 
     为什么要两遍：源片有 1280x720，一次全解码进内存要几百 MB；
@@ -272,13 +273,17 @@ def build(input_path: Path, out_root: Path, name: str, fps: float, size: int, ba
     # 并集框会随时间累计抖动，用空帧框（若有）再收一次，避免个别帧把画面撑得过大
     fixed_box = union if union_crop else None
     head_box = None
-    if focus == 'head':
+    if crop_box:
+        # 显式框优先：气泡里只有一个 44~72px 的小圆位，靠自动估算的"头部框"往往还带着
+        # 半个上身，脸只占十几像素。宁可手动给一个紧贴头肩的框。
+        fixed_box = crop_box
+    elif focus == 'head':
         if union:
             head_box = head_box_from_keyed(keyed_dir, len(frames), union, head_ratio, head_margin)
         else:
             raise SystemExit('--focus head 需要至少一帧有内容')
         fixed_box = head_box
-    used_baseline = baseline if focus != 'head' else 1.0
+    used_baseline = baseline if (focus != 'head' or crop_box) else 1.0
 
     processed: list[Image.Image] = []
     for index in range(len(frames)):
@@ -348,6 +353,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--focus', default='full', choices=['full', 'head'],
                         help='head=只出头部特写（气泡里 44px 用，脸才看得见）')
     parser.add_argument('--head-ratio', type=float, default=0.34, help='头部特写占角色高度比例，默认 0.34')
+    parser.add_argument('--crop-box', default='', metavar='X1,Y1,X2,Y2',
+                        help='显式裁切框（原片坐标）。气泡头像最靠它：自动估的头部框常带半个上身')
     args = parser.parse_args(argv)
 
     key = tuple(int(part) for part in args.key.split(','))
@@ -361,11 +368,18 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f'--mask 需要形如 1057,624,1265,707，收到 {raw}')
         masks.append((parts[0], parts[1], parts[2], parts[3]))
 
+    crop_box = None
+    if args.crop_box:
+        parts = [int(part) for part in args.crop_box.replace(' ', '').split(',')]
+        if len(parts) != 4:
+            raise SystemExit(f'--crop-box 需要形如 585,30,735,180，收到 {args.crop_box}')
+        crop_box = (parts[0], parts[1], parts[2], parts[3])
+
     meta = build(
         Path(args.input), Path(args.out), args.name, args.fps, args.size, args.baseline,
         key, args.tolerance, args.softness, not args.no_despill, args.max_frames,
         start=args.start, duration=args.duration, masks=masks, union_crop=not args.no_union_crop,
-        focus=args.focus, head_ratio=args.head_ratio,
+        focus=args.focus, head_ratio=args.head_ratio, crop_box=crop_box,
     )
     print(json.dumps(meta, ensure_ascii=False, indent=2))
     return 0
