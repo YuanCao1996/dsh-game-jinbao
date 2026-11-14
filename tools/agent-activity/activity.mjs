@@ -3,8 +3,8 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 
-const tools={get_current_match_state:'读取当前对局',get_lineup_context:'读取双方阵容',get_recent_match_events:'读取关键事件',query_match_events:'检索本局日志',query_current_match_events:'检索本局日志',search_local_knowledge:'检索游戏资料',site_query:'检索游戏资料',search_game_guides:'搜索游戏攻略',web_search:'搜索游戏攻略',web_fetch:'读取攻略正文',inspect_latest_screen:'观察游戏画面',get_user_memory:'读取游戏偏好',manage_user_memory:'管理明确偏好',set_observation_plan:'调整画面观察'};
-const topics={chat:'聊天',equipment:'出装分析',advice:'自动教练',learn:'经验学习',praise:'多杀点评'};
+const tools={get_current_match_state:'看看这局',get_lineup_context:'对下阵容',get_recent_match_events:'翻翻刚才',query_match_events:'翻本局记录',query_current_match_events:'翻本局记录',search_local_knowledge:'查查资料',site_query:'查查资料',search_game_guides:'网上找找',web_search:'网上找找',web_fetch:'读一下原文',inspect_latest_screen:'看一眼画面',get_user_memory:'想想你的习惯',manage_user_memory:'记下你的偏好',set_observation_plan:'调下观察'};
+const topics={chat:'陪你聊',equipment:'看装备',advice:'主动提醒',learn:'记点经验',praise:'夸你两句'};
 const clock=value=>Number.isFinite(value)?String(Math.floor(value/60)).padStart(2,'0')+':'+String(Math.floor(value%60)).padStart(2,'0'):'等待对局';
 const safeId=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,80}$/.test(value);
 export function sanitizeActivityText(value,sensitive=[]){
@@ -58,7 +58,7 @@ export async function createAgentActivity({stateDir,getView=()=>null,now=Date.no
  }
  const allowed=request=>{const view=getView();return !view||((view.game||'lol')===request.game&&(view.match||'waiting')===request.match);};
  const api={
-  // 经验学习等一次性事件：直接写一行，不参与任务生命周期。
+  // 记点经验等一次性事件：直接写一行，不参与任务生命周期。
   note({task='learn',label='',clock='',topic='learn'}={}){
    if(closed)return false;
    const text=sanitizeActivityText(label);
@@ -90,18 +90,18 @@ export async function createAgentActivity({stateDir,getView=()=>null,now=Date.no
    }
    const type=event.event,id=task.id;
    if(type==='task_queued')row(id,task,'等待执行','queued');
-   else if(type==='task_waiting_handoff')row(id,task,'等待上一任务退出，随后处理','queued');
-   else if(type==='task_started')row(id,task,'正在分析本局','running');
-   else if(type==='cancellation_wait')row(id,task,'正在停止旧任务，优先处理手动请求','queued');
+   else if(type==='task_waiting_handoff')row(id,task,'前一句还在说，稍等','queued');
+   else if(type==='task_started')row(id,task,'我在看这局','running');
+   else if(type==='cancellation_wait')row(id,task,'先接你这个问题','queued');
    else if(type==='tool_start'){
     const index=Number.isSafeInteger(event.index)?event.index:++task.tools;task.lastTool=index;
-    row(id+':tool:'+index,task,tools[event.name]??'执行游戏工具','running');
+    row(id+':tool:'+index,task,tools[event.name]??'翻一下资料','running');
    }else if(type==='tool_end'){
     const index=Number.isSafeInteger(event.index)?event.index:task.lastTool;
-    if(index!=null)row(id+':tool:'+index,task,tools[event.name]??'执行游戏工具',event.success===false?'unavailable':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null});
+    if(index!=null)row(id+':tool:'+index,task,tools[event.name]??'翻一下资料',event.success===false?'unavailable':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null});
    }else if(type==='web_search_result'){
     const empty=['no_usable_results','rss_no_usable_results'].includes(event.reason);
-    const label=event.status==='ok'?'已找到匹配的游戏资料':empty?'未找到匹配模式的攻略':event.reason==='rate_limited'?'攻略搜索服务暂时限流':'攻略搜索暂时不可用';
+    const label=event.status==='ok'?'资料找到了':empty?'这个模式没查到':event.reason==='rate_limited'?'攻略搜索服务暂时限流':'攻略搜索暂时不可用';
     row(id+':search-summary',task,label,event.status==='ok'?'done':'unavailable');
    }else if(type==='model_start')row(id+':model:'+Number(event.request_index??0),task,'模型正在分析','running');
    else if(type==='model_end')row(id+':model:'+Number(event.request_index??0),task,event.status===429?'云端限流，稍后自动重试':event.status>=400?'模型请求失败':'本步模型分析结束',event.status===429?'queued':event.status>=400?'failed':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null,...(Number.isFinite(Number(event.status))?{status:Number(event.status)}:{})});

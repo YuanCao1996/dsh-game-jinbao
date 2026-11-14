@@ -14,7 +14,7 @@ test('trace defaults off, persists separately and serializes rapid toggles',asyn
 test('search display distinguishes no matching mode from network failure without copying web content',async t=>{
  const f=await fixture(t);await f.a.setEnabled(true);f.event('task_started');
  f.event('web_search_result',{status:'unavailable',reason:'no_usable_results',sources:[{title:'PRIVATE'}]});
- assert.match(JSON.stringify(f.snapshot()),/未找到匹配模式/);assert.ok(!JSON.stringify(f.snapshot()).includes('PRIVATE'));
+ assert.match(JSON.stringify(f.snapshot()),/这个模式没查到/);assert.ok(!JSON.stringify(f.snapshot()).includes('PRIVATE'));
  f.event('web_search_result',{status:'unavailable',reason:'search_timeout'});assert.match(JSON.stringify(f.snapshot()),/攻略搜索暂时不可用/);
 });
 test('trace shows real tool duration and public clauses, ignores reasoning, arguments and cancelled tails',async t=>{const f=await fixture(t);await f.a.setEnabled(true);f.event('task_started');f.event('tool_start',{name:'web_search',index:1,args:{secret:'never-copy'}});f.event('tool_end',{name:'web_search',index:1,elapsed_ms:432,success:true,result:{secret:'never-copy'}});f.event('reasoning_content',{text:'PRIVATE-REASONING'});f.event('public_text',{text:'测试玩家使用 sk-abc'});assert.ok(!f.snapshot().rows.some(r=>r.text));f.event('public_text',{text:'def。联系 test@example.com。'});const json=JSON.stringify(f.snapshot());assert.ok(!/测试玩家|sk-abc|test@example|PRIVATE-REASONING|never-copy/.test(json));assert.equal(f.snapshot().rows.find(r=>r.elapsedMs).elapsedMs,432);f.event('task_cancelled');f.event('public_text',{text:'晚到的数据。'});assert.ok(!JSON.stringify(f.snapshot()).includes('晚到'));assert.ok(!f.snapshot().rows.some(r=>r.phase==='draft'));});
@@ -35,10 +35,10 @@ test('a learning note becomes its own activity row', async () => {  const dir = 
   try {
     const activity = await createAgentActivity({ stateDir: dir });
     await activity.setEnabled(true);
-    assert.equal(activity.note({ label: '记下一条经验：对面双坦先补重伤 · 已验证 3/3 局' }), true);
+    assert.equal(activity.note({ label: '我记下了一条规律：对面双坦先补重伤 · 已验证 3/3 局' }), true);
     const snap = activity.snapshot({ game: 'lol', match: 'm1' });
     assert.equal(snap.rows.length, 1);
-    assert.equal(snap.rows[0].topic, '经验学习');
+    assert.equal(snap.rows[0].topic, '记点经验');
     assert.match(snap.rows[0].label, /对面双坦先补重伤/);
     assert.equal(activity.note({ label: '   ' }), false, 'empty notes never create blank rows');
   } finally { await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
@@ -66,8 +66,8 @@ test('每一行智能体动态都会落盘，且不写草稿正文', async () =>
     assert.ok(lines.length >= 5, `落盘行数不足: ${lines.length}`);
     assert.ok(lines.every(line => line.schema === 1));
     const labels = lines.map(line => line.label).filter(Boolean);
-    assert.ok(labels.some(label => /正在分析本局/.test(label)), '任务开始要落盘');
-    assert.ok(labels.some(label => /检索本局日志/.test(label)), '工具调用要落盘');
+    assert.ok(labels.some(label => /我在看这局/.test(label)), '任务开始要落盘');
+    assert.ok(labels.some(label => /翻本局记录/.test(label)), '工具调用要落盘');
     assert.ok(labels.some(label => /云端限流/.test(label)), '限流要落盘');
     const throttled = lines.find(line => line.status === 429);
     assert.ok(throttled, '429 必须带状态码，否则复盘看不出是被限流');

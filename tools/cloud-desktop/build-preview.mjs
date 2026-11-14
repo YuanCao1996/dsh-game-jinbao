@@ -1,4 +1,4 @@
-import {readFile,mkdir,copyFile,writeFile,readdir} from 'node:fs/promises';
+﻿import {readFile,mkdir,copyFile,writeFile,readdir,stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {resolve,relative,dirname,join,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -50,6 +50,10 @@ export async function buildPreview({root,out,runtime=process.execPath}) {
       let frames = [];
       try { frames = await readdir(resolve(root, petRoot, state, 'frames')); } catch { continue; }
       for (const frame of frames.filter(name => /\.png$/i.test(name))) out.push(petRoot + '/' + state + '/frames/' + frame);
+    }
+    // 单张立绘回退：只画了一张图时用这些文件
+    for (const name of ['static.png', 'portrait.png', 'static.jpg', 'portrait.jpg']) {
+      try { await stat(resolve(root, petRoot, name)); out.push(petRoot + '/' + name); } catch {}
     }
     return out;
   })()),
@@ -130,3 +134,4 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
  if(!process.argv[2])throw Error('Supply a new output directory');
  console.log(JSON.stringify(await buildPreview({root,out:resolve(process.argv[2])})));
 }
+

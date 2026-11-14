@@ -4,12 +4,12 @@
 // 而不是「已更新经验库」这种没有信息量的字句。
 
 const VERB = {
-  add: '记下一条经验',
-  update: '补充验证',
-  dispute: '收到反驳，降级',
-  retire: '退役过时经验',
-  correct: '按你的判断退役',
-  edit: '修订经验',
+  add: '我记下了一条规律',
+  update: '又验证了一遍',
+  dispute: '你说不对，我降一级',
+  retire: '这条过时了，撤掉',
+  correct: '听你的，撤掉',
+  edit: '我改了一下',
 };
 
 const clip = (text, max = 60) => {

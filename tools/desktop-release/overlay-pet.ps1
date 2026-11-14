@@ -24,26 +24,98 @@ function Get-PetRoot {
   return (Join-Path $PSScriptRoot 'assets\pet')
 }
 
+function ConvertTo-PetBitmap {
+  param([string]$Path)
+  $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
+  $bmp.BeginInit()
+  $bmp.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
+  $bmp.CreateOptions = [System.Windows.Media.Imaging.BitmapCreateOptions]::IgnoreImageCache
+  $bmp.UriSource = New-Object System.Uri($Path)
+  $bmp.EndInit()
+  $bmp.Freeze()
+  return $bmp
+}
+
+# 一个动作可以是：帧序列（<状态>/frames/*.png），或单张立绘（<状态>/static.png）。
+# 只画了一张图也能用——单帧时用轻微呼吸动画代替序列帧，不会看起来像死图。
 function Load-PetAction {
   param([string]$Root, [string]$Name)
   if ($script:petFrames.ContainsKey($Name)) { return $script:petFrames[$Name] }
+
   $dir = Join-Path (Join-Path $Root $Name) 'frames'
-  if (-not (Test-Path $dir)) { $script:petFrames[$Name] = $null; return $null }
-  $files = @(Get-ChildItem $dir -Filter '*.png' | Sort-Object Name)
-  if (-not $files.Count) { $script:petFrames[$Name] = $null; return $null }
-  $list = New-Object 'System.Collections.Generic.List[object]'
-  foreach ($file in $files) {
-    $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
-    $bmp.BeginInit()
-    $bmp.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
-    $bmp.CreateOptions = [System.Windows.Media.Imaging.BitmapCreateOptions]::IgnoreImageCache
-    $bmp.UriSource = New-Object System.Uri($file.FullName)
-    $bmp.EndInit()
-    $bmp.Freeze()
-    $list.Add($bmp) | Out-Null
+  if (Test-Path $dir) {
+    $files = @(Get-ChildItem $dir -Filter '*.png' | Sort-Object Name)
+    if ($files.Count) {
+      $list = New-Object 'System.Collections.Generic.List[object]'
+      foreach ($file in $files) { $list.Add((ConvertTo-PetBitmap -Path $file.FullName)) | Out-Null }
+      $script:petFrames[$Name] = $list
+      return $list
+    }
   }
-  $script:petFrames[$Name] = $list
-  return $list
+
+  # 状态级立绘：<状态>/static.png 或该状态目录下任意一张图
+  $stateDir = Join-Path $Root $Name
+  if (Test-Path $stateDir) {
+    $static = @(Get-ChildItem $stateDir -File | Where-Object { $_.Extension -match '^\.(png|jpg|jpeg|webp)$' } | Sort-Object Name)
+    if ($static.Count) {
+      $list = New-Object 'System.Collections.Generic.List[object]'
+      $list.Add((ConvertTo-PetBitmap -Path $static[0].FullName)) | Out-Null
+      $script:petFrames[$Name] = $list
+      return $list
+    }
+  }
+
+  # 全局立绘：assets/pet/static.png（只画了一张图时最省事）
+  foreach ($candidate in @('static.png', 'portrait.png', 'static.jpg', 'portrait.jpg')) {
+    $path = Join-Path $Root $candidate
+    if (Test-Path $path) {
+      $list = New-Object 'System.Collections.Generic.List[object]'
+      $list.Add((ConvertTo-PetBitmap -Path $path)) | Out-Null
+      $script:petFrames[$Name] = $list
+      return $list
+    }
+  }
+
+  $script:petFrames[$Name] = $null
+  return $null
+}
+
+# 单帧时的呼吸动画：轻微放大 + 上浮，避免一张静止图看起来像卡住
+function Start-PetBreathing {
+  param($Control)
+  if (-not $Control) { return }
+  try {
+    $group = New-Object System.Windows.Media.TransformGroup
+    $scale = New-Object System.Windows.Media.ScaleTransform(1.0, 1.0)
+    $move = New-Object System.Windows.Media.TranslateTransform(0, 0)
+    $group.Children.Add($scale) | Out-Null
+    $group.Children.Add($move) | Out-Null
+    $Control.RenderTransform = $group
+    $Control.RenderTransformOrigin = New-Object System.Windows.Point(0.5, 1.0)
+
+    $duration = [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(2400))
+    $scaleX = New-Object System.Windows.Media.Animation.DoubleAnimation(1.0, 1.03, $duration)
+    $scaleY = New-Object System.Windows.Media.Animation.DoubleAnimation(1.0, 1.03, $duration)
+    $lift = New-Object System.Windows.Media.Animation.DoubleAnimation(0.0, -1.5, $duration)
+    foreach ($animation in @($scaleX, $scaleY, $lift)) {
+      $animation.AutoReverse = $true
+      $animation.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+      $animation.EasingFunction = New-Object System.Windows.Media.Animation.SineEase
+    }
+    $scale.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleXProperty, $scaleX)
+    $scale.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleYProperty, $scaleY)
+    $move.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $lift)
+    $script:petBreathing = $true
+  } catch { }
+}
+
+function Stop-PetBreathing {
+  param($Control)
+  if (-not $Control) { return }
+  try {
+    $Control.RenderTransform = $null
+    $script:petBreathing = $false
+  } catch { }
 }
 
 function Initialize-PetLayer {
@@ -70,7 +142,7 @@ function Initialize-PetLayer {
     $script:petIndex = ($script:petIndex + 1) % $frames.Count
     $script:petControl.Source = $frames[$script:petIndex]
   })
-  $script:petTimer.Start()
+  if ($idleFrames.Count -le 1) { Start-PetBreathing -Control $Control } else { $script:petTimer.Start() }
   return $true
 }
 
@@ -122,6 +194,13 @@ function Update-PetLayer {
   $script:petState = $desired
   $script:petIndex = 0
   $script:petControl.Source = $frames[0]
+  if ($frames.Count -le 1) {
+    if ($script:petTimer) { $script:petTimer.Stop() }
+    Start-PetBreathing -Control $script:petControl
+  } else {
+    Stop-PetBreathing -Control $script:petControl
+    if ($script:petTimer -and -not $script:petTimer.IsEnabled) { $script:petTimer.Start() }
+  }
 }
 
 function Stop-PetLayer {

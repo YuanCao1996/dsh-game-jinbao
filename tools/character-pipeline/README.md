@@ -21,6 +21,22 @@ tools/desktop-release/assets/pet/
 
 **缺哪个状态就自动回落到 `idle`**；连 `idle` 都没有时整层隐藏，不会影响界面。
 
+## 只画一张图也能用（单张立绘）
+
+不想一次画九套？**一张图就能上线**，优先级从高到低自动回落：
+
+```
+<状态>/frames/*.png      ← 序列帧（有的话优先，会真动）
+<状态>/static.png        ← 该状态的单张立绘
+assets/pet/static.png    ← 全局立绘（只画一张时放这里，最省事）
+```
+
+单张立绘时程序不会静止不动：会叠一个 **2.4 秒的呼吸动画**（轻微放大 1.03 + 上浮 1.5px，Sine 缓动往返），
+看起来是"活着"的，而不是卡住的一张图。
+
+支持格式：`.png`（推荐，带透明）、`.jpg`、`.webp`。**推荐 1024×1024 透明 PNG**，
+脚底留一点余量；不透明背景的图会显示成一块矩形，不建议。
+
 ## 二、重画规格（画的时候就要按这个来）
 
 | 项 | 规格 |
@@ -85,6 +101,9 @@ assets/pet/idle/action.json        ← 帧数/fps/时长/体积
 
 # 状态映射回归
 powershell -File tools\desktop-release\tests\overlay-pet.test.ps1
+
+# 单张立绘回退
+powershell -File tools\desktop-release\tests\overlay-pet-static.test.ps1
 
 # 悬浮窗渲染预览（不干扰正在运行的实例：用独立 StateDir）
 powershell -File <安装目录>\tools\desktop-release\strategy-overlay.ps1 `

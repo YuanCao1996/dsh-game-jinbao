@@ -4,21 +4,21 @@ import { formatLearningNotice, toActivityRow } from '../lib/learning-notice.mjs'
 
 test('a new lesson says what was learned and how much evidence it has', () => {
   const text = formatLearningNotice({ action: 'add', claim: '对面双坦先补重伤', evidence: { games: 3, hits: 3 } });
-  assert.match(text, /记下一条经验/);
+  assert.match(text, /我记下了一条规律/);
   assert.match(text, /对面双坦先补重伤/);
   assert.match(text, /3 局/);
 });
 
 test('strengthening shows the running record, not just an update', () => {
   const text = formatLearningNotice({ action: 'update', claim: '高光遮挡时先双帧比对', evidence: { games: 7, hits: 6 } });
-  assert.match(text, /补充验证/);
+  assert.match(text, /又验证了一遍/);
   assert.match(text, /已验证 6\/7 局/);
 });
 
 test('a refutation or a player veto says it stops being used', () => {
   assert.match(formatLearningNotice({ action: 'dispute', claim: '第三件做法穿鞋' }), /不再注入/);
   const veto = formatLearningNotice({ action: 'correct', claim: '第三件做法穿鞋', by: 'player' });
-  assert.match(veto, /按你的判断退役/);
+  assert.match(veto, /听你的，撤掉/);
   assert.match(veto, /你做的调整/);
 });
 

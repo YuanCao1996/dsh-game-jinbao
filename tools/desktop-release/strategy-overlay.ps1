@@ -1167,15 +1167,15 @@ try{
     $script:testResult.optimisticQuestionAcknowledged=$null -eq $script:pendingBubble
     # 单行刷新 + 学习行短暂优先：最近学到的经验不能被紧随其后的工具调用顶掉。
     $nowMs=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-    $toolRow=[pscustomobject]@{id='t1';topic='自动教练';clock='06:12';label='读取当前对局';phase='running';at=$nowMs}
-    $learnRow=[pscustomobject]@{id='n1';topic='经验学习';clock='';label='记下一条经验：对面双坦先补重伤';phase='done';at=$nowMs-1000}
+    $toolRow=[pscustomobject]@{id='t1';topic='主动提醒';clock='06:12';label='看看这局';phase='running';at=$nowMs}
+    $learnRow=[pscustomobject]@{id='n1';topic='记点经验';clock='';label='我记下了一条规律：对面双坦先补重伤';phase='done';at=$nowMs-1000}
     $picked=@(Select-AgentActivityRow @($learnRow,$toolRow) 5000)
-    $script:testResult.stickyLearningRow=($picked.Count -eq 1) -and ([string]$picked[0].topic -eq '经验学习')
-    $oldLearn=[pscustomobject]@{id='n2';topic='经验学习';clock='';label='旧的学习行';phase='done';at=$nowMs-9000}
+    $script:testResult.stickyLearningRow=($picked.Count -eq 1) -and ([string]$picked[0].topic -eq '记点经验')
+    $oldLearn=[pscustomobject]@{id='n2';topic='记点经验';clock='';label='旧的学习行';phase='done';at=$nowMs-9000}
     $pickedOld=@(Select-AgentActivityRow @($oldLearn,$toolRow) 5000)
-    $script:testResult.stickyLearningExpires=($pickedOld.Count -ge 1) -and ([string]$pickedOld[-1].topic -eq '自动教练')
+    $script:testResult.stickyLearningExpires=($pickedOld.Count -ge 1) -and ([string]$pickedOld[-1].topic -eq '主动提醒')
     $onlyTool=@(Select-AgentActivityRow @($toolRow) 5000)
-    $script:testResult.singleLineRefresh=($onlyTool.Count -eq 1) -and ([string]$onlyTool[-1].label -eq '读取当前对局')
+    $script:testResult.singleLineRefresh=($onlyTool.Count -eq 1) -and ([string]$onlyTool[-1].label -eq '看看这局')
     Test-AgentActivitySurface
     $script:testExitChoice=$false;$controls.CloseButton.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent)))
     $script:testResult.exitCancelKeepsWindow=!$script:closing -and !$script:exitApproved
