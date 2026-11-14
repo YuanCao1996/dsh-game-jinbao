@@ -25,8 +25,47 @@ Check '动态里有进行中的步骤' 'think' ([pscustomobject]@{ phase = 'InPr
 Check '对局中无事发生' 'idle' ([pscustomobject]@{ phase = 'InProgress'; agentActivity = [pscustomobject]@{ rows = @() } })
 Check '大厅候场' 'wait' ([pscustomobject]@{ phase = 'Lobby' })
 
+# 说话只跟"真的在出声"走：之前是「最后一次播报后 4 秒」，
+# 于是没有新消息的大部分时间都被判成 talk，看起来就是一直在张口。
+$stateDir = Join-Path $env:TEMP ('pet-speech-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+$script:narrowPetStateDir = $stateDir
+$speechFile = Join-Path $stateDir 'speech-status.json'
+$idleSnap = { [pscustomobject]@{ phase = 'InProgress'; agentActivity = [pscustomobject]@{ rows = @() } } }
+function Reset-SpeechProbe { $script:petSpeechProbeAt = [DateTime]::MinValue }
+
+[IO.File]::WriteAllText($speechFile, ('{{"at":{0},"state":"playing"}}' -f $now), [Text.UTF8Encoding]::new($false))
+Reset-SpeechProbe
+Check '实时播报中' 'talk' (& $idleSnap)
+
+[IO.File]::WriteAllText($speechFile, ('{{"at":{0},"state":"synthesizing"}}' -f $now), [Text.UTF8Encoding]::new($false))
+Reset-SpeechProbe
+Check '合成中' 'talk' (& $idleSnap)
+
+[IO.File]::WriteAllText($speechFile, ('{{"at":{0},"state":"idle"}}' -f $now), [Text.UTF8Encoding]::new($false))
+Reset-SpeechProbe
+Check '播报空闲不张口' 'idle' (& $idleSnap)
+
+[IO.File]::WriteAllText($speechFile, ('{{"at":{0},"state":"playing"}}' -f ($now - 60000)), [Text.UTF8Encoding]::new($false))
+Reset-SpeechProbe
+Check '过期状态不算在说' 'idle' (& $idleSnap)
+
+Remove-Item $speechFile -Force
+[IO.File]::WriteAllText((Join-Path $stateDir 'speech-status.json'), 'not json', [Text.UTF8Encoding]::new($false))
+Reset-SpeechProbe
+Check '坏状态文件不崩' 'idle' (& $idleSnap)
+
+# 字幕正在推进时也算在说（出字与口型要同步）
+$script:narrowPetStateDir = $null
+$script:activePlayback = $true
+Reset-SpeechProbe
+Check '字幕推进中' 'talk' (& $idleSnap)
+$script:activePlayback = $false
+
+Remove-Item -Recurse -Force $stateDir -ErrorAction SilentlyContinue
+
 if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1
 }
-Write-Output 'overlay-pet: 状态映射 11/11 通过'
+Write-Output 'overlay-pet: 状态映射 17/17 通过'

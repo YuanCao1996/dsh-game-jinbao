@@ -40,6 +40,9 @@ function Save-Frame([string]$name){
 }
 $results=@{}
 try{
+ # 真实界面里正文字号来自滑杆；测试没设就是 0，字号会算成 1px、条子高度只有 36，
+ # 于是 NarrowCanvas.ActualHeight > 20 这种断言跟界面无关地失败。
+ $controls.FontSlider.Value = 13
  Set-DisplayMode 'narrow';Layout
  Playback-Tick
  Check 'emptyModeShowsVisibleWaitingText' (!$script:collapsed -and $controls.NarrowPanel.Visibility -eq 'Visible' -and $controls.NarrowText.Text.Length -gt 0 -and $controls.NarrowCanvas.ActualHeight -gt 20 -and $controls.NarrowCanvas.ActualWidth -gt 100)
@@ -63,18 +66,22 @@ try{
  Check 'scrollStopsAtLastVisibleScreen' ($script:playbackPhase -eq 'linger' -and $script:scrollOffset -eq $script:scrollEnd -and $controls.NarrowText.RenderTransform.X -eq -$script:scrollEnd)
  Advance 2999;Check 'endLingersForReading' (!$script:collapsed -and $script:playbackPhase -eq 'linger')
  Advance 1;Advance 280
- Check 'idleCollapseKeepsMode' ($script:collapsed -and $script:displayMode -eq 'narrow' -and !$script:subtitleMode)
+ # 设计已改：播完不再缩回小球（那样会「消失一会儿又自己恢复」），
+ # 而是保持窄条可见并显示占位文字。这里校验当前意图。
+ Check 'idleKeepsNarrowBarWithText' (!$script:collapsed -and $script:displayMode -eq 'narrow' -and !$script:subtitleMode -and $controls.NarrowPanel.Visibility -eq 'Visible' -and $controls.NarrowText.Text.Length -gt 0)
  Add-PlaybackMessage (Message 'wake' 'fresh advice')
  Check 'newMessageWakesIdleBubble' (!$script:collapsed -and $script:activePlayback.id -eq 'wake' -and $controls.NarrowPanel.Visibility -eq 'Visible')
  Reset-Playback;$script:subtitleMode=$true;Set-NarrowMetrics;Layout
- Add-PlaybackMessage (Message 'subtitle' ('abcdefghijklmnopqrstuv '*20));Advance 4000
+ # 每行停留时间跟字数挂钩（这行 280 字 → 4200ms），4000ms 差一点就换不了行
+ Add-PlaybackMessage (Message 'subtitle' ('abcdefghijklmnopqrstuv '*20));Advance 5000
  Check 'subtitlesKeepTwoVisibleRows' ($script:subtitleIndex -gt 0 -and $controls.PreviousSubtitle.Text.Length -gt 0 -and $controls.NarrowText.Text.Length -gt 0)
  Check 'subtitleBackgroundTransparent' ($controls.MainBorder.Background.Color.A -eq 0 -and $controls.MainBorder.BorderThickness.Left -eq 0)
  Save-Frame 'subtitle'
  $line=$script:subtitleIndex;$settingsMenu.IsOpen=$true;Advance 60000;Check 'menuPausesTimeline' ($script:subtitleIndex -eq $line)
  $settingsMenu.IsOpen=$false;Advance 1;Check 'menuResumeDoesNotSkipLines' ($script:subtitleIndex -eq $line)
  $controls.FontSlider.Value=20;Set-BodyFontSize;Layout;Playback-Tick
- Check 'fontSettingAppliesToSubtitleRows' ($controls.NarrowText.FontSize -eq 20 -and $controls.PreviousSubtitle.FontSize -eq 20 -and $window.Height -ge 2*$script:subtitleRowHeight)
+ # 字幕比正文大半号（Set-NarrowMetrics 里 size+1，上限 24），正文 20 → 字幕 21。
+ Check 'fontSettingAppliesToSubtitleRows' ($controls.NarrowText.FontSize -eq 21 -and $controls.PreviousSubtitle.FontSize -eq 21 -and $window.Height -ge 2*$script:subtitleRowHeight)
  $before=$window.Width;Resize-Window 80 0;Set-NarrowMetrics;Layout
  Check 'narrowWidthCanResize' ($window.Width -eq $before+80 -and $script:narrowWidth -eq $window.Width)
  Reset-Playback;$script:subtitleMode=$false;Set-NarrowMetrics;Layout

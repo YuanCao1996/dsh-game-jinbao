@@ -226,6 +226,16 @@ function Add-PlaybackMessage($message){
  else{$script:playbackQueue.Add($message);if($script:activePlayback){$script:playbackAccelerated=$true}}
  if($script:displayMode -eq 'narrow'){Wake-NarrowPlayback;Playback-Tick}
 }
+# 空条必须有字。清空后不补占位的话，玩家看到的是一个透明的空条，
+# 会以为悬浮窗消失了（回归用例 emptyModeShowsVisibleWaitingText 盯的就是这个）。
+function Show-NarrowPlaceholder {
+ try{
+  if(([string]$controls.NarrowText.Text).Trim()){return}
+  Set-HighlightedText $controls.NarrowText '金宝待命中 · 点这里展开'
+  $controls.NarrowText.FontSize=[Math]::Max(13,$controls.NarrowText.FontSize)
+  $controls.NarrowText.Foreground='#9CAABA'
+ }catch{}
+}
 function Playback-Tick {
  if($script:displayMode -ne 'narrow' -or $script:closing){$modeClock.Stop();return}
  $now=Get-PlaybackNow
@@ -238,21 +248,22 @@ function Playback-Tick {
  }elseif($script:activePlayback -and $script:playbackLayoutDirty){Prepare-PlaybackLayout $true;$delta=0}
  if(!$script:activePlayback){
   if($script:awaitingPlayback -and !$script:collapsed){
-   Clear-PlaybackRows
+   # 没有新播报时保留上一条消息的外观；只有真的空着才补占位，别把最后一条擦掉。
    $controls.NarrowText.Width=(Get-NarrowWidth);$controls.NarrowText.TextAlignment=if($script:narrowPetVisible){'Left'}else{'Center'}
    [Windows.Controls.Canvas]::SetTop($controls.NarrowText,0);[Windows.Controls.Canvas]::SetLeft($controls.NarrowText,0)
-   # 没有新播报时保留上一条消息，不显示「等待新的对局建议…」占位。
+   Show-NarrowPlaceholder
    $modeClock.Stop();return
   }
-  $modeClock.Stop();Clear-PlaybackRows
+  $modeClock.Stop()
   # 空闲时保持用户选定的形态：这里以前会 Set-Collapsed，播报一停就缩走，
   # 下一条播报又自动展开，表现为「消失一会儿又自己恢复」。
   if($script:displayMode -eq 'narrow'){
    try{
-    # 空闲时保留上一条消息，不再写「金宝待命中」占位。
+    # 空闲时保留上一条消息，没有内容才写占位。
     $controls.NarrowText.Foreground='#DDE5EE'
     $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null)
     $controls.NarrowCanvas.Opacity=1
+    Show-NarrowPlaceholder
    }catch{}
   }
   return
@@ -290,12 +301,13 @@ function Playback-Tick {
  }elseif($script:playbackPhase -eq 'fade'){
   if($script:playbackQueue.Count){Finish-Playback;Playback-Tick}
   elseif($script:lineElapsed -ge 280){
-   Finish-Playback;Clear-PlaybackRows
-   # 用户主动收起成字幕条时，播完保持条状并显示占位；之前这里会 Set-Collapsed，
-   # 于是播完自动缩走、下一条播报又自动弹回来，看起来像"消失又自己恢复"。
+   # 不在这里 Clear-PlaybackRows：清了就只剩一个透明空条，看着像悬浮窗没了。
+   Finish-Playback
    if($script:displayMode -eq 'narrow'){
-    try{# 播完保留最后一条消息的外观，只把透明度恢复。
-     $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$controls.NarrowCanvas.Opacity=1}catch{}
+    try{
+     $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$controls.NarrowCanvas.Opacity=1
+     Show-NarrowPlaceholder
+    }catch{}
     $modeClock.Stop()
    }else{Set-Collapsed $true -PreserveMode;$modeClock.Stop()}
   }

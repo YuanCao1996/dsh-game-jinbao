@@ -184,6 +184,42 @@ function Initialize-PetLayer {
   return $true
 }
 
+# 口型动画只跟"真的在出声/真的在出字"走，否则没有新消息时嘴也在动。
+# 三条来源：
+#   1) 本机 SpeechSynthesizer 正在念（$script:synth.State）
+#   2) 云端播报的实时状态 speech-status.json 是 synthesizing/playing
+#   3) 字幕/滚动正在推进（$script:activePlayback，调用方自己判断）
+# 状态文件每 700ms 最多读一次：这个函数会被每次快照刷新调用。
+$script:petSpeechProbeAt = [DateTime]::MinValue
+$script:petSpeechActive = $false
+
+function Get-PetSpeechActive {
+  try {
+    if ($script:synth -and [string]$script:synth.State -eq 'Speaking') { return $true }
+  } catch { }
+  $now = [DateTime]::Now
+  try {
+    if (($now - $script:petSpeechProbeAt).TotalMilliseconds -lt 700) { return $script:petSpeechActive }
+  } catch { }
+  $script:petSpeechProbeAt = $now
+  $active = $false
+  try {
+    $stateDir = $script:narrowPetStateDir
+    if ($stateDir) {
+      $file = Join-Path $stateDir 'speech-status.json'
+      if (Test-Path $file) {
+        $status = [IO.File]::ReadAllText($file, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        $age = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [double]$status.at
+        $state = [string]$status.state
+        # 状态文件过期就当没在说，避免残留状态让嘴一直动
+        if ($age -ge 0 -and $age -lt 5000 -and ($state -eq 'playing' -or $state -eq 'synthesizing')) { $active = $true }
+      }
+    }
+  } catch { }
+  $script:petSpeechActive = $active
+  return $active
+}
+
 # 把快照映射成宠物状态；优先级：结算 > 阵亡 > 选人 > 说话 > 思考 > 候场 > 待机/睡觉
 function Get-PetState {
   param($Snapshot)
@@ -196,11 +232,20 @@ function Get-PetState {
   }
   if ($Snapshot.dead -eq $true) { return 'dead' }
   if ($phase -eq 'ChampSelect') { return 'pick' }
+  # 说话：只有真的在出声（TTS）或真的在出字（字幕推进）才算
+  $speaking = $false
+  try { $speaking = Get-PetSpeechActive } catch { $speaking = $false }
+  if (-not $speaking) {
+    try { if ($script:activePlayback) { $speaking = $true } } catch { }
+  }
+  if ($speaking) { return 'talk' }
   $playback = @($Snapshot.playback)
   if ($playback.Count) {
     $last = $playback[$playback.Count - 1]
     $lastAt = [double]$(if ($null -ne $last.at) { $last.at } else { 0 })
-    if ($lastAt -gt 0 -and ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - $lastAt) -lt 4000) { return 'talk' }
+    # 兜底窗口从 4 秒收到 1.2 秒：字打完了、话说完了就该闭嘴。
+    # 4 秒会让"没有新消息"的大部分时间都判成 talk，用户看到的就是一直在张口。
+    if ($lastAt -gt 0 -and ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - $lastAt) -lt 1200) { return 'talk' }
   }
   $coach = $Snapshot.coachStatus
   if ($coach -and [string]$coach.state -eq 'running') { return 'think' }
@@ -273,13 +318,14 @@ function Get-PetSettings {
 }
 
 function Initialize-NarrowPet {
-  param($Image, $Tail, [string]$StateDir)
+  param($Image, $Tail, [string]$StateDir, [string]$Root)
   $script:narrowPetStateDir = $StateDir
   if (-not $Image) { Write-PetDiag 'init-no-image'; return $false }
   $script:narrowPetControl = $Image
   $script:narrowPetTail = $Tail
   $script:narrowPetStateDir = $StateDir
-  $root = Get-PetRoot -BaseDir $null
+  # Root 只给测试用：默认还是 assets/pet，测试要指向自己的素材目录
+  $root = if ($Root) { $Root } else { Get-PetRoot -BaseDir $null }
   $script:petRoot = $root
   $frames = Get-NarrowAction -Root $root -State 'idle'
   if (-not $frames) { $frames = Load-PetAction -Root $root -Name 'icon' }
@@ -442,5 +488,8 @@ function Stop-PetTalk {
       }
     }
     $script:petTalking = $false
+    # 说话动作和呼吸共用 Y / ScaleY 两个属性，上面把动画清空会把呼吸一起停掉。
+    # 待机现在只有一张图，呼吸是它唯一的动作，必须重新挂回去。
+    Start-PetBreathing -Control $Control
   } catch { }
 }

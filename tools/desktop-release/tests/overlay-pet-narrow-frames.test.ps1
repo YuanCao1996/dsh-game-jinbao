@@ -84,7 +84,7 @@ $script:narrowPetTimer = $null
 $script:narrowPetControl = $null
 $image2 = New-Object System.Windows.Controls.Image
 $tail2 = New-Object System.Windows.Shapes.Path
-$ok = Initialize-NarrowPet -Image $image2 -Tail $tail2 -StateDir $root
+$ok = Initialize-NarrowPet -Image $image2 -Tail $tail2 -StateDir $root -Root $root
 Check '初始化返回成功' ($ok -eq $true)
 Check '多帧启动动画计时器' ($null -ne $script:narrowPetTimer)
 Stop-NarrowPetAnimation

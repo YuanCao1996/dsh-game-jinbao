@@ -40,8 +40,18 @@ Check '标记为说话中' ($script:petTalking -eq $true)
 Stop-PetTalk -Control $image
 Check '停止后标记复位' ($script:petTalking -eq $false)
 
+# 说话和呼吸共用 Y / ScaleY：停说话时如果不把呼吸挂回来，待机（单帧）就彻底静止了
+Check '停说话后呼吸恢复' ($script:petBreathing -eq $true)
+$groupAfter = $image.RenderTransform
+$hasBreathing = $false
+foreach ($child in $groupAfter.Children) {
+  if ($child -is [System.Windows.Media.ScaleTransform] -and $child.ScaleX -ne 1.0) { $hasBreathing = $true }
+  if ($child -is [System.Windows.Media.TranslateTransform]) { $hasBreathing = $true }
+}
+Check '呼吸变换已重建' $hasBreathing
+
 if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1
 }
-Write-Output 'overlay-pet: 打字机与说话动作 9/9 通过'
+Write-Output 'overlay-pet: 打字机与说话动作 11/11 通过'
