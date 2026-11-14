@@ -23,7 +23,7 @@ function localKnowledgeNames(c){
  for(const item of (Array.isArray(c?.me?.items)?c.me.items:[]))push(typeof item==='string'?item:item?.name);
  return names.slice(0,12).join('、');
 }
-export function cloudContext(memory,game,match,{eventQuery=false,observationPlan=false,userMemory=false}={}){
+export function cloudContext(memory,game,match,{eventQuery=false,observationPlan=false,userMemory=false,experience=false}={}){
  const c=memory.current;
  if(c&&(c.game!==game||c.match!==match))throw fail(409,'Match changed');
  const compact=value=>typeof value==='string'?value.slice(0,120):value&&typeof value==='object'?Object.fromEntries(['name','id','count','level','ready','cooldown'].filter(k=>['string','number','boolean'].includes(typeof value[k])).map(k=>[k,typeof value[k]==='string'?value[k].slice(0,120):value[k]])):value;
@@ -36,19 +36,19 @@ export function cloudContext(memory,game,match,{eventQuery=false,observationPlan
   bench:c?.phase==='ChampSelect'?c?.bench?.slice(0,20):undefined,
   offers:c?.offers?.slice(0,6).map(compact),owned_augments:c?.ownedAugments?.slice(0,12).map(compact),
   equipment_decision:equipment?{...equipment,currentItems:equipment.currentItems.slice(0,8).map(compact),enemies:equipment.enemies.slice(0,5).map(e=>({hero:String(e.hero??'').slice(0,120),items:e.items.slice(0,8).map(compact)})),unassignedEnemyItems:equipment.unassignedEnemyItems.slice(0,8).map(compact),confirmedAugments:equipment.confirmedAugments.slice(0,12).map(compact),assumedAugments:equipment.assumedAugments.slice(0,6)}:undefined},
-  events:eventWindow(c?.events).rows,client_context:{game_id:game,mode:c?.mode??'',capabilities:{event_query_v1:eventQuery,observation_plan_v1:game==='generic'&&observationPlan,user_memory_v1:userMemory},user_memory:{confirmed_preferences:(memory.preferences??[]).slice(-6)}}};
+  events:eventWindow(c?.events).rows,client_context:{game_id:game,mode:c?.mode??'',capabilities:{event_query_v1:eventQuery,observation_plan_v1:game==='generic'&&observationPlan,user_memory_v1:userMemory,experience_v1:experience},user_memory:{confirmed_preferences:(memory.preferences??[]).slice(-6)}}};
  const oversized=()=>Buffer.byteLength(JSON.stringify(value))>24000;
  while(oversized()&&value.events.length){value.events.shift();value.client_context.context_reduced=true;}
  while(oversized()&&value.client_context.user_memory.confirmed_preferences.length){value.client_context.user_memory.confirmed_preferences.shift();value.client_context.context_reduced=true;}
  if(oversized())throw fail(413,'Current facts exceed the bounded context budget');
  return value;
 }
-export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgress=()=>{},capture,queryEvents,observationPlan,memoryTools,onObservation,
+export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgress=()=>{},capture,queryEvents,observationPlan,memoryTools,experienceTools,onObservation,
  getActivityEnabled=()=>false,serviceBaseUrl='https://api.jinbaoai.top',apiPrefix='/desktop/agent',deviceId='default',fetchImpl=fetch,pollMs=800,timeoutMs=90000}){
  if(!['/desktop/agent','/desktop/agent-preview'].includes(apiPrefix))throw Error('Invalid Agent route');
  const service=serviceUrl(serviceBaseUrl);const lifetime=new AbortController(),teardown=new AbortController();let busy=false,settled=Promise.resolve(),finish=()=>{},wireRevision=0,wireKey='',wireValue,waitForCancellation=false;
  function transportContext(memory,request){
-  const value=cloudContext(memory,request.game,request.match,{eventQuery:!!queryEvents,observationPlan:!!observationPlan,userMemory:!!memoryTools});
+  const value=cloudContext(memory,request.game,request.match,{eventQuery:!!queryEvents,observationPlan:!!observationPlan,userMemory:!!memoryTools,experience:!!experienceTools});
   if(getActivityEnabled())value.client_context.capabilities.agent_activity_v1=true;
   value.client_context.task={automatic:request.automatic===true,topic:['advice','equipment','praise','chat'].includes(request.topic)?request.topic:'chat',time_critical:request.timeCritical===true}
   // 已选强化的名字单独给一份：服务端按名字查本地索引，把确定的效果文本直接写进提示词，
@@ -114,6 +114,14 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
       if(!current())throw fail(409,'Match changed');
       if(!result||typeof result!=='object'||Buffer.byteLength(JSON.stringify(result))>10000)result={status:'unavailable',reason:'memory_unavailable'};
       await call('/tasks/'+task+'/memory-results',token,{request_id:event.request_id,result},signal);
+     }
+     if(!terminalUpdate&&event.event==='experience_requested'&&!handled.has(event.request_id)){
+      if(!/^[a-f0-9]{32}$/.test(event.request_id??''))throw fail(502,'Invalid experience request');handled.add(event.request_id);
+      let result={status:'unavailable',reason:'experience_unavailable'};
+      try{if(experienceTools&&current())result=await experienceTools({...request,args:event.args});}catch{}
+      if(!current())throw fail(409,'Match changed');
+      if(!result||typeof result!=='object'||Buffer.byteLength(JSON.stringify(result))>12000)result={status:'unavailable',reason:'experience_unavailable'};
+      await call('/tasks/'+task+'/experience-results',token,{request_id:event.request_id,result},signal);
      }
      if(!terminalUpdate&&event.event==='observation_plan_requested'&&!handled.has(event.request_id)){
       if(!/^[a-f0-9]{32}$/.test(event.request_id??''))throw fail(502,'Invalid plan request');handled.add(event.request_id);let status='unavailable';

@@ -3,7 +3,7 @@ import{createCloudCoach}from'./auto-coach.mjs';
 import{claimInstance}from'./instance.mjs';
 import{createEventQuery}from'./event-query.mjs';
 import{createRuntimeRouter}from'./runtime-router.mjs';
-import{createLocalAgent}from'./local-agent.mjs';
+import{createLocalAgent}from'./local-agent.mjs';import{createExperienceToolkit}from'./experience-tools.mjs';
 import{locateNativeModules}from'./native-modules.mjs';
 import{createWebSearch}from'./web-search.mjs';
 import{createStandaloneUpdates}from'./updates.mjs';
@@ -68,8 +68,19 @@ const FAIL_REASON={
 const onProgress=event=>{diagnostics.accept(event);activity.accept(event); // 任务失败时把错误码也带给动态面板，便于区分超时/限流/模型错误。
  if(event.event==='task_failed')activity.accept({...event,label:'分析失败('+(FAIL_REASON[event.code]||event.code||event.error||'未知')+')'});
 if(['generic_observation','public_text','budget_check','model_reserved','model_permission'].includes(event.event))return;return createAgentStatus(stateDir,event.game,event.match)(['completed','task_completed','task_cancelled','task_stale'].includes(event.event)?'complete':event.event==='task_failed'?'error':event.event==='tool_start'?'tool':'start',event.name);};
+// 私有经验：云端 agent 通过回调在本机读写，数据不出本机（与 BYOK 同一套语义）。
+const experienceToolkit=createExperienceToolkit({dir:stateDir,player:String(process.env.JINBAO_PLAYER_ID||'local')});
+async function experienceTools({args}={}){
+ const action=args&&args.action;
+ if(action==='list'){const rows=await experienceToolkit.listPrivate();
+  return {status:'ok',lessons:rows.map(r=>({kind:r.kind,claim:r.claim,games:(r.evidence&&r.evidence.games)||1,hits:(r.evidence&&r.evidence.hits)||1}))};}
+ if(action==='edit'){const out=await experienceToolkit.editLine({kind:args.kind,from:args.source,to:args.to,reason:args.reason});
+  if(!out||!out.ok)return {status:'unavailable',reason:String((out&&out.reason)||'edit_failed').slice(0,60)};
+  return {status:'ok',retired:out.retired||0,added:out.added||1,claim:String(args.to)};}
+ return {status:'unavailable',reason:'invalid_action'};
+}
 const rawAgent=createRuntimeRouter({getMode:()=>setup?.config().mode??'cloud',isCurrent,onEvent:onProgress,factories:{
- cloud:()=>createCloudAgent({getActivityEnabled:activity.isEnabled,apiPrefix:'/desktop/agent-preview',deviceId:stateDir,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),onProgress,memoryTools:userMemory.execute,observationPlan:args=>observation.plan(args)}),
+ cloud:()=>createCloudAgent({getActivityEnabled:activity.isEnabled,apiPrefix:'/desktop/agent-preview',deviceId:stateDir,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),experienceTools,onProgress,memoryTools:userMemory.execute,observationPlan:args=>observation.plan(args)}),
  byok:()=>createLocalAgent({stateDir,getConfig:()=>setup.config(),getKey:async()=>(await credentials.resolve('JINBAO_USER_MODEL_API_KEY'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),onProgress,getActivityEnabled:activity.isEnabled,memoryTools:userMemory.execute,search:query=>setup.search(query),webSearch:createWebSearch(),observationPlan:args=>observation.plan(args)}),
 }});
 const agent={...rawAgent,ask:request=>pacing.run(request,async admitted=>{const role=speech.role(),answer=await rawAgent.ask({...admitted,role});if(role!==speech.role())throw Object.assign(Error('Role changed'),{status:409,code:'agent_preempted'});if(admitted.topic==='chat')speech.chat({...admitted,text:answer});return answer;})};
