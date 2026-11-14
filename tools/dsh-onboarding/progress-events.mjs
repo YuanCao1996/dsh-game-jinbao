@@ -62,6 +62,30 @@ export function projectProgressEvent(state,event){
   }
   if(event.kind==='augment_offer_closed')addProgressEvent(state,'offer-closed:'+event.roll,'海克斯面板关闭，等待确认选择结果',seconds,undefined,'augment_offer_closed');
 }
+// 敌方关键成装的即时提醒：查资料、问模型都要几十秒，而"跳不跳一个中娅的岩雀"
+// 是当场就要做的决定。这里用本地规则先说一句，模型的完整分析随后再补。
+const THREAT_RULES=[
+ {test:/中娅|沙漏/,line:hero=>hero+'出中娅了，别先手跳她'},
+ {test:/兰德里/,line:hero=>hero+'有兰德里，别贴着兵线打'},
+ {test:/荆棘/,line:hero=>hero+'出荆棘了，别硬接普攻'},
+ {test:/水银/,line:hero=>hero+'出了水银，控制别浪费'},
+ {test:/无尽|死亡之帽/,line:hero=>hero+'爆发起来了，别单吃'},
+ {test:/救赎|钢铁烈阳/,line:hero=>hero+'有保命装，别all in'},
+];
+export function threatAlerts(state,hero,added){
+ const now=Number(state.at)||Date.now();
+ const alerts=[];
+ for(const item of added){
+  const rule=THREAT_RULES.find(r=>r.test.test(item));
+  if(!rule)continue;
+  const text=rule.line(hero);
+  const recent=(state.broadcasts??[]).some(b=>b&&b.text===text&&now-Number(b.at||0)<120000);
+  if(recent)continue;
+  alerts.push(text);
+ }
+ return alerts;
+}
+
 export function observeEquipment(state){
   const seen=new Set();
   for(const player of heroes(state)){
@@ -79,6 +103,10 @@ export function observeEquipment(state){
     for(const [id,item] of previous){const n=item.count-(current.get(id)?.count??0);if(n>0&&item.completed)removed.push(item.name+(n>1?' ×'+n:''));}
     if(added.length&&state.enemies.includes(player)){
       state.completedEquipmentEvents=[...(state.completedEquipmentEvents??[]),{at:state.at,time:state.gameSeconds,hero:player.champion,items:added}].slice(-12);
+      // 关键装备立刻说一句，不用等模型（实测中娅那次等了约 3 分钟）。
+      for(const text of threatAlerts(state,player.champion,added)){
+        state.broadcasts=[...(state.broadcasts??[]),{at:Number(state.at)||Date.now(),text,priority:2,localAlert:true,expiresAt:(Number(state.at)||Date.now())+15000}].slice(-12);
+      }
     }
     if(added.length||removed.length)addProgressEvent(state,JSON.stringify(['inventory',key,state.at,added,removed]),`装备更新：${player.champion}`+(added.length?' · 新增 '+added.join('、'):'')+(removed.length?' · 移除 '+removed.join('、'):''),state.gameSeconds,'equipment','inventory');
   }

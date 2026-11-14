@@ -103,3 +103,31 @@ test('a countdown-default pick is kept as auto-picked without claiming the user 
  assert.deepEqual(s.ownedAugments,['灵魂虹吸']);
  assert.deepEqual(s.revealedAugments,['坦克引擎']);
 });
+
+test('敌方出关键成装时立刻给一句提醒，重复出现不刷屏', async () => {
+  const { observeEquipment } = await import('../progress-events.mjs');
+  const mkEnemy = items => ({ champion: '岩雀', championAlias: 'Taliyah', items });
+  const state = () => ({
+    game: 'lol', at: 1_700_000_000_000, gameSeconds: 600,
+    me: { champion: '卡兹克', items: [] }, allies: [], enemies: [mkEnemy([])],
+    events: [], broadcasts: [], equipmentSnapshots: new Map(),
+  });
+  // 第一次观察只是基线，不该编造购买
+  let s = state();
+  observeEquipment(s);
+  assert.equal(s.broadcasts.length, 0);
+
+  // 敌方合成中娅 → 立刻有一句，且不再等模型
+  s.enemies = [mkEnemy([{ id: 3157, name: '中娅沙漏', count: 1 }])];
+  s.at += 20_000;
+  observeEquipment(s);
+  assert.equal(s.broadcasts.length, 1);
+  assert.match(s.broadcasts[0].text, /中娅/);
+  assert.match(s.broadcasts[0].text, /岩雀/);
+  assert.equal(s.broadcasts[0].priority, 2);
+
+  // 同一件装备再次被观察到（重复快照）不应重复提醒
+  s.at += 5_000;
+  observeEquipment(s);
+  assert.equal(s.broadcasts.length, 1);
+});
