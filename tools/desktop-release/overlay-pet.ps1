@@ -86,28 +86,36 @@ function Load-PetAction {
 
 # 气泡里只有 44px：全身帧缩进去脸就没了，看不出在说话。
 # 所以窄条优先用头部特写（<状态>-narrow 目录），没有才退回全身帧。
-# 注意不能直接拿 Load-PetAction 的结果当"有没有这套素材"：它在状态缺失时会回落到
-# 全局 icon.png（一张图），那样切到没有素材的状态就会从动画退化成一张静态图标。
+#
+# 这里必须用 Test-Path 判断"这套素材存不存在"，不能直接看 Load-PetAction 的返回：
+# 它在目录缺失时会一路回落到全局 icon.png（一张静态图），于是任何没有素材的状态
+# 都会被当成"有一套 1 帧的素材"，动画就退化成静态图标了。
 function Get-NarrowAction {
   param([string]$Root, [string]$State)
-  if (-not $State) { return $null }
-  $head = Load-PetAction -Root $Root -Name ($State + '-narrow')
-  if ($head) { return $head }
-  if ($State -eq 'idle') {
-    # 待机时通用头部素材比全身帧更适合气泡
-    $generic = Load-PetAction -Root $Root -Name 'narrow'
-    if ($generic) { return $generic }
+  $inRoot = {
+    param([string]$name)
+    if (-not $name) { return $null }
+    if (-not (Test-Path (Join-Path $Root $name))) { return $null }
+    return (Load-PetAction -Root $Root -Name $name)
   }
-  if (Test-Path (Join-Path $Root $State)) {
-    $own = Load-PetAction -Root $Root -Name $State
+  if ($State) {
+    $head = & $inRoot ($State + '-narrow')
+    if ($head) { return $head }
+    if ($State -eq 'idle') {
+      # 待机时通用头部素材比全身帧更适合气泡
+      $generic = & $inRoot 'narrow'
+      if ($generic) { return $generic }
+    }
+    $own = & $inRoot $State
     if ($own) { return $own }
   }
-  # 这个状态没有专属素材：退回待机那一套，别显示成一张全局图标
-  $idleHead = Load-PetAction -Root $Root -Name 'idle-narrow'
-  if ($idleHead) { return $idleHead }
-  $idleGeneric = Load-PetAction -Root $Root -Name 'narrow'
-  if ($idleGeneric) { return $idleGeneric }
-  return (Load-PetAction -Root $Root -Name 'idle')
+  # 这个状态没有专属素材：退回待机那一套（头部特写优先），别显示成一张全局图标
+  foreach ($fallback in @('idle-narrow', 'narrow', 'idle')) {
+    $frames = & $inRoot $fallback
+    if ($frames) { return $frames }
+  }
+  # 连待机都没有：只能给全局立绘/图标
+  return (Load-PetAction -Root $Root -Name 'icon')
 }
 
 # 单帧时的呼吸动画：轻微放大 + 上浮，避免一张静止图看起来像卡住

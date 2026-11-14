@@ -1,0 +1,35 @@
+{
+  "name": "talk",
+  "frames": 24,
+  "fps": 12.0,
+  "size": 192,
+  "baseline": 0.94,
+  "durationMs": 2000,
+  "loopDelta": 0.51,
+  "focus": "full",
+  "crop": {
+    "union": [
+      56,
+      46,
+      828,
+      700
+    ],
+    "perFrameJitter": true
+  },
+  "source": {
+    "start": 3.92,
+    "duration": 2.0,
+    "masks": [
+      [
+        1057,
+        624,
+        1265,
+        707
+      ]
+    ]
+  },
+  "bytes": {
+    "frames": 471917,
+    "apng": 459912
+  }
+}

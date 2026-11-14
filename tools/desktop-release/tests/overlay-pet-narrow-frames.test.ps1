@@ -41,9 +41,14 @@ $pick = Get-NarrowAction -Root $root -State 'idle'
 Check '气泡优先用头部特写' ($pick.Count -eq 4)
 Check '头部特写是另一套素材' (-not [object]::ReferenceEquals($pick, $loadedIdle))
 
-# 2) 没有 <状态>-narrow 时用 idle 的 narrow 兜底
+# 2) 没有 <状态>-narrow 时用该状态自己的全身帧
 $pickTalk = Get-NarrowAction -Root $root -State 'talk'
 Check 'talk 没有头部特写就用全身帧' ($pickTalk.Count -eq 2)
+
+# 2b) 完全没有素材的状态要退回待机那套头部特写，不能退化成一张全局图标
+#     （Load-PetAction 在目录缺失时会回落 icon.png，直接看返回值会被骗）
+$pickThink = Get-NarrowAction -Root $root -State 'think'
+Check '无素材状态退回待机头部特写' ($pickThink.Count -eq 4)
 
 # 3) 头部特写和通用 narrow 都没有时，退回状态自己
 Remove-Item -Recurse -Force (Join-Path $root 'narrow'), (Join-Path $root 'idle-narrow')
@@ -107,7 +112,7 @@ Stop-NarrowPetAnimation
 
 Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 
-$total = 13
+$total = 14
 if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1

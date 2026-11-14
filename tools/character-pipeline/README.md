@@ -27,12 +27,16 @@ tools/desktop-release/assets/pet/
 
 ```
 assets/pet/idle-narrow/frames/*.png    ← 气泡用（128px 胸像，脸占满）
+assets/pet/talk-narrow/frames/*.png    ← 说话时那一套（口型幅度更大）
 assets/pet/narrow/frames/*.png         ← 通用兜底（不分状态时用）
 assets/pet/idle/frames/*.png           ← 大图用（全身 192px）
 ```
 
 查找顺序：`<状态>-narrow` → `narrow`（仅待机）→ `<状态>` → 待机那套 → 全局立绘。
 **没有 `<状态>-narrow` 就会拿全身帧塞进 44px**，所以这两个状态要成对做。
+
+> 判断"这套素材存不存在"必须用 `Test-Path` 看目录，不能看 `Load-PetAction` 的返回——
+> 它在目录缺失时会一路回落到全局 `icon.png`，于是任何没素材的状态都会变成"有一套 1 帧的素材"。
 
 ## 只画一张图也能用（单张立绘）
 
