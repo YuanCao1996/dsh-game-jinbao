@@ -118,18 +118,43 @@ function Get-NarrowAction {
   return (Load-PetAction -Root $Root -Name 'icon')
 }
 
+# 呼吸、说话、姿态三者共用同一个 TransformGroup，顺序固定：缩放 → 旋转 → 位移。
+# 以前各处各自 New 一个组，后来加旋转就会被下一次 Start-PetBreathing 建组时吃掉，
+# 所以统一从这里取，缺哪个补哪个。
+function Get-PetTransformGroup {
+  param($Control)
+  if (-not $Control) { return $null }
+  $group = $Control.RenderTransform
+  if (-not ($group -is [System.Windows.Media.TransformGroup])) {
+    $group = New-Object System.Windows.Media.TransformGroup
+    $Control.RenderTransform = $group
+    $Control.RenderTransformOrigin = New-Object System.Windows.Point(0.5, 1.0)
+  }
+  $scale = $null; $move = $null; $rotate = $null
+  foreach ($child in $group.Children) {
+    if ($child -is [System.Windows.Media.ScaleTransform] -and -not $scale) { $scale = $child }
+    elseif ($child -is [System.Windows.Media.TranslateTransform] -and -not $move) { $move = $child }
+    elseif ($child -is [System.Windows.Media.RotateTransform] -and -not $rotate) { $rotate = $child }
+  }
+  if (-not $scale) { $scale = New-Object System.Windows.Media.ScaleTransform(1.0, 1.0) }
+  if (-not $rotate) { $rotate = New-Object System.Windows.Media.RotateTransform(0.0) }
+  if (-not $move) { $move = New-Object System.Windows.Media.TranslateTransform(0, 0) }
+  $group.Children.Clear()
+  $group.Children.Add($scale) | Out-Null
+  $group.Children.Add($rotate) | Out-Null
+  $group.Children.Add($move) | Out-Null
+  return [pscustomobject]@{ Group = $group; Scale = $scale; Rotate = $rotate; Move = $move }
+}
+
 # 单帧时的呼吸动画：轻微放大 + 上浮，避免一张静止图看起来像卡住
 function Start-PetBreathing {
   param($Control)
   if (-not $Control) { return }
   try {
-    $group = New-Object System.Windows.Media.TransformGroup
-    $scale = New-Object System.Windows.Media.ScaleTransform(1.0, 1.0)
-    $move = New-Object System.Windows.Media.TranslateTransform(0, 0)
-    $group.Children.Add($scale) | Out-Null
-    $group.Children.Add($move) | Out-Null
-    $Control.RenderTransform = $group
-    $Control.RenderTransformOrigin = New-Object System.Windows.Point(0.5, 1.0)
+    $parts = Get-PetTransformGroup -Control $Control
+    if (-not $parts) { return }
+    $scale = $parts.Scale
+    $move = $parts.Move
 
     $duration = [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(2400))
     $scaleX = New-Object System.Windows.Media.Animation.DoubleAnimation(1.0, 1.03, $duration)
@@ -342,6 +367,7 @@ function Initialize-NarrowPet {
   if ($Tail) { $Tail.Visibility = 'Collapsed' }
   # 多帧就转帧动画，只有一张就叠呼吸（否则单帧会一动不动）
   if ($frames.Count -gt 1) { Start-NarrowPetAnimation } else { Start-PetBreathing -Control $Image }
+  Set-PetPosture -Control $Image -State 'idle'
   return $true
 }
 
@@ -434,33 +460,63 @@ function Update-NarrowPet {
   $script:narrowPetIndex = 0
   $script:narrowPetControl.Source = $frames[0]
   if ($frames.Count -gt 1) { Start-NarrowPetAnimation } else { Stop-NarrowPetAnimation }
+  Set-PetPosture -Control $script:narrowPetControl -State $desired
   if ($desired -eq 'talk') { Start-PetTalk -Control $script:narrowPetControl } else { Stop-PetTalk -Control $script:narrowPetControl }
 }
 
-# ── 说话时的细微动作 ─────────────────────────────────────────
+# ── 状态姿态 ─────────────────────────────────────────────────
+# 没有对应素材的状态（阵亡/胜利/失利/思考/候场…）以前和待机长得一模一样，
+# 状态机等于白做。这里只用旋转 + 透明度做轻量区分，不需要新素材：
+# 阵亡往下垂一点、变淡；失利轻微歪头；睡觉再垂一点；思考极轻微。
+$script:petPosture = @{
+  idle  = @{ angle = 0.0;  opacity = 1.0 }
+  talk  = @{ angle = 0.0;  opacity = 1.0 }
+  think = @{ angle = -1.5; opacity = 1.0 }
+  win   = @{ angle = 0.0;  opacity = 1.0 }
+  lose  = @{ angle = 3.0;  opacity = 0.9 }
+  dead  = @{ angle = -6.0; opacity = 0.75 }
+  pick  = @{ angle = -1.0; opacity = 1.0 }
+  wait  = @{ angle = 0.0;  opacity = 1.0 }
+  sleep = @{ angle = 5.0;  opacity = 0.8 }
+}
+
+function Set-PetPosture {
+  param($Control, [string]$State)
+  if (-not $Control) { return }
+  $entry = $script:petPosture[$State]
+  if (-not $entry) { $entry = $script:petPosture['idle'] }
+  try {
+    $parts = Get-PetTransformGroup -Control $Control
+    if ($parts) {
+      # 先把终值落到基础值上（动画结束后属性就停在这儿，读基础值也拿得到），
+      # 再用 From=当前角度 补间过去，避免每次都从 0 起跳。
+      $target = [double]$entry.angle
+      $current = 0.0
+      try { $current = [double]$parts.Rotate.Angle } catch { $current = 0.0 }
+      $parts.Rotate.Angle = $target
+      $animation = New-Object System.Windows.Media.Animation.DoubleAnimation
+      $animation.From = $current
+      $animation.To = $target
+      $animation.Duration = [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(320))
+      $animation.EasingFunction = New-Object System.Windows.Media.Animation.SineEase
+      $parts.Rotate.BeginAnimation([System.Windows.Media.RotateTransform]::AngleProperty, $animation)
+    }
+    $Control.Opacity = [double]$entry.opacity
+    $script:petPostureState = $State
+  } catch { }
+}
+
+# 说话时的细微动作 ─────────────────────────────────────────
 # 只有一张静态立绘时，"在说话"要看得出来：用点头 + 轻微竖向挤压代替张嘴。
 # 和呼吸共用一个 RenderTransformGroup（呼吸仍是基线，说话时叠加更快的一层）。
 function Start-PetTalk {
   param($Control)
   if (-not $Control) { return }
   try {
-    if (-not $Control.RenderTransform -or $Control.RenderTransform -isnot [System.Windows.Media.TransformGroup]) {
-      $group = New-Object System.Windows.Media.TransformGroup
-      $scale = New-Object System.Windows.Media.ScaleTransform(1.0, 1.0)
-      $move = New-Object System.Windows.Media.TranslateTransform(0, 0)
-      $group.Children.Add($scale) | Out-Null
-      $group.Children.Add($move) | Out-Null
-      $Control.RenderTransform = $group
-      $Control.RenderTransformOrigin = New-Object System.Windows.Point(0.5, 1.0)
-    }
-    $group = [System.Windows.Media.TransformGroup]$Control.RenderTransform
-    $move = $null
-    $scale = $null
-    foreach ($child in $group.Children) {
-      if ($child -is [System.Windows.Media.TranslateTransform]) { $move = $child }
-      if ($child -is [System.Windows.Media.ScaleTransform]) { $scale = $child }
-    }
-    if (-not $move -or -not $scale) { return }
+    $parts = Get-PetTransformGroup -Control $Control
+    if (-not $parts) { return }
+    $move = $parts.Move
+    $scale = $parts.Scale
     # 点头：向下 1.2px 再回位，0.5 秒一个来回
     $nod = New-Object System.Windows.Media.Animation.DoubleAnimation(0.0, 1.2, ([System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(260))))
     $nod.AutoReverse = $true
