@@ -1,4 +1,4 @@
-# 气泡形象的帧动画：真的会动、换状态会换帧、头部特写优先。
+﻿# 气泡形象的帧动画：真的会动、换状态会换帧、头部特写优先。
 # 之前这层只设了第一帧 + 呼吸，序列帧等于没接上——这套测试就是盯住这个回归。
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Drawing
