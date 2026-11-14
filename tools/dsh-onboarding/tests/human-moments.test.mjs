@@ -117,7 +117,7 @@ test('jinbao 的台词共 40 句，且全部带着事实槽位或短语气口', 
     const rendered = line.includes('{') ? mod.renderMoment(line, sample) : line;
     assert.ok(rendered, '槽位未填: ' + line);
     assert.ok(rendered.length <= 12, '过长: ' + rendered + ' (' + rendered.length + '字)');
-    assert.ok(!/[。！？]$/.test(line), '不要句末标点: ' + line);
+    assert.ok(!/[。？]$/.test(line), '不要句号或问号结尾: ' + line);
   }
   assert.ok(lines.some(l => l.includes('{champion}')), '缺少英雄槽位');
   assert.ok(lines.some(l => l.includes('{level}')), '缺少等级槽位');
@@ -125,6 +125,8 @@ test('jinbao 的台词共 40 句，且全部带着事实槽位或短语气口', 
   assert.ok(lines.some(l => l.includes('{minute}')), '缺少分钟槽位');
   assert.ok(lines.some(l => l.includes('{kills}')), '缺少人头槽位');
   assert.equal(typeof mod.renderMoment, 'function');
+  const excited = lines.filter(l => l.includes('！')).length;
+  assert.ok(excited >= 12, '活力不足：带感叹号的句子只有 ' + excited + ' 句');
 });
 
 test('事实槽位：有值就替换，缺值就放弃这句而不是硬编', async () => {
