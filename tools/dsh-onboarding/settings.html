@@ -260,6 +260,9 @@ function renderLifetime(logged){
  }).catch(()=>{node.hidden=true});
 }
 initializeModelChoices();initializeSettingsUi();
+// 首次进入必须主动拉一次状态与经验列表：此前只有按钮回调里才调用 refresh()，页面因此永远停在“正在检查…”的占位文案。
+function refreshInitialSettings(){refresh().catch(err=>{const box=el('account');if(box)box.textContent='无法读取登录状态：'+(err&&err.message?err.message:'请从应用重新打开设置页');const s=el('emailStatus');if(s)s.textContent='无法检查邮箱服务';});try{if(typeof refreshExperience==='function')refreshExperience();}catch{}}
+refreshInitialSettings();
 // 新手引导 / 探索图鉴 / 开黑队伍 收进左侧导航，不再每页顶部重复出现。
 const navHref=(id,path)=>{const node=document.getElementById(id);if(node)node.href=path+'#'+nonce;};
 navHref('navWelcome','/welcome');
@@ -290,17 +293,17 @@ async function refreshExperience(){
  const list=document.getElementById('experienceList');if(!list)return;
  const empty=document.getElementById('experienceEmpty');
  try{
-  const data=await (await fetch('/api/experience')).json();
+  const data=await api('experience');
   const rows=(data&&data.rows)||[];
   list.textContent='';
   if(!rows.length){empty.textContent='还没有经验：打完一局会自动生成。';empty.hidden=false;return;}
   empty.hidden=true;
   for(const row of rows){
    const line=document.createElement('div');line.className='experienceRow';
-   const badge=(row.private?'私有':'公有')+' · '+(row.status==='stale'?'已否决':'生效中')+' · '+(row.evidence&&row.evidence.hits!=null?row.evidence.hits+'/'+row.evidence.games+'局':'');
+   const stateLabel=row.status==='retired'?'已退役':row.status==='stale'?'已否决':row.status==='public'?'公有生效中':'生效中';const badge=(row.private?'私有':'公有')+' · '+stateLabel+' · '+(row.evidence&&row.evidence.hits!=null?row.evidence.hits+'/'+row.evidence.games+'局':'');
    const text=document.createElement('span');text.textContent=row.claim+'  ['+badge+']';
    const veto=document.createElement('button');veto.type='button';veto.textContent='这条不对';
-   veto.disabled=row.status==='stale';
+   veto.disabled=row.status==='stale'||row.status==='retired';veto.hidden=row.status==='retired';
    veto.addEventListener('click',async()=>{
     const reason=window.prompt('哪里不对？（可留空）','')||'';
     await fetch('/api/experience/correct',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:row.id,reason})});
