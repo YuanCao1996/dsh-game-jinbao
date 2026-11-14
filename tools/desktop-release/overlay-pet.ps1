@@ -66,7 +66,8 @@ function Load-PetAction {
   }
 
   # 全局立绘：assets/pet/static.png（只画了一张图时最省事）
-  foreach ($candidate in @('static.png', 'portrait.png', 'static.jpg', 'portrait.jpg')) {
+  # 小尺寸优先用头部特写（30~40px 下脸比全身清楚），没有再退回全身立绘。
+  foreach ($candidate in @('icon.png', 'avatar.png', 'icon.jpg', 'static.png', 'portrait.png', 'static.jpg', 'portrait.jpg')) {
     $path = Join-Path $Root $candidate
     if (Test-Path $path) {
       $list = New-Object 'System.Collections.Generic.List[object]'

@@ -52,7 +52,7 @@ export async function buildPreview({root,out,runtime=process.execPath}) {
       for (const frame of frames.filter(name => /\.png$/i.test(name))) out.push(petRoot + '/' + state + '/frames/' + frame);
     }
     // 单张立绘回退：只画了一张图时用这些文件
-    for (const name of ['static.png', 'portrait.png', 'static.jpg', 'portrait.jpg']) {
+    for (const name of ['icon.png', 'avatar.png', 'icon.jpg', 'static.png', 'portrait.png', 'static.jpg', 'portrait.jpg']) {
       try { await stat(resolve(root, petRoot, name)); out.push(petRoot + '/' + name); } catch {}
     }
     return out;
