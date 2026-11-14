@@ -3,6 +3,8 @@
     [switch]$Interactive,
     [string]$PreviewPath,
     [string]$PreviewTab='advice',
+    # 截图时临时切到某个形态（large/narrow/silent）：SelfTest 不读配置，不然拍不到窄条
+    [string]$PreviewMode='',
     [switch]$SelfTest
 )
 $ErrorActionPreference='Stop'
@@ -951,6 +953,9 @@ Initialize-NarrowPet -Image $narrowPetImage -Tail $narrowPetTail -StateDir $Stat
 Set-Tab $PreviewTab;Update-State
 try{
  if($PreviewPath){
+   # 截图前先切形态并刷一轮形象层，否则拍到的还是大框、形象层也还是 Collapsed
+   if($PreviewMode){try{Set-DisplayMode $PreviewMode}catch{}}
+   try{Update-NarrowPet -Snapshot $script:snapshot -Force}catch{}
   $width=[int][Math]::Ceiling($window.Width);$height=[int][Math]::Ceiling($window.Height)
   $root=$window.Content;$root.Measure((New-Object Windows.Size($width,$height)));$root.Arrange((New-Object Windows.Rect(0,0,$width,$height)));$root.UpdateLayout()
   $bitmap=New-Object Windows.Media.Imaging.RenderTargetBitmap($width,$height,96,96,[Windows.Media.PixelFormats]::Pbgra32);$bitmap.Render($root)

@@ -19,6 +19,11 @@
 用法：
   python pipeline.py --input video/待机.mp4 --name 待机 --fps 12 --size 192
   python pipeline.py --input frames/待机/ --name 待机 --fps 12 --size 192
+
+  真实素材常用的几个开关：
+    --key 114,217,75          背景不是纯绿时按实测色给（AI 生成常是柔和绿）
+    --start 4.2 --duration 2  10 秒的片子只取中间干净又容易循环的 2 秒
+    --mask 1057,624,1265,707  把右下角水印涂成键色一起抠掉，可重复
 """
 from __future__ import annotations
 
@@ -48,7 +53,8 @@ def find_ffmpeg() -> str | None:
     return None
 
 
-def extract_frames(video: Path, workdir: Path, fps: float) -> list[Path]:
+def extract_frames(video: Path, workdir: Path, fps: float,
+                   start: float | None = None, duration: float | None = None) -> list[Path]:
     """从视频导出帧；没有 ffmpeg 时给出可执行的替代建议而不是静默失败。"""
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
@@ -56,21 +62,28 @@ def extract_frames(video: Path, workdir: Path, fps: float) -> list[Path]:
             '本机没有 ffmpeg，无法直接读取视频。\n'
             '两条路：\n'
             '  1) 用剪映/PR/PotPlayer 把视频导出成 PNG 序列，放到一个目录里，再用 --input 指向该目录；\n'
-            '  2) 安装 ffmpeg 后重跑（winget install Gyan.FFmpeg）。\n'
+            '  2) 跑 tools/character-pipeline/fetch-ffmpeg.ps1 装一份（会落到 bin/，不动系统 PATH）。\n'
         )
     target = workdir / 'source'
     target.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [ffmpeg, '-y', '-i', str(video), '-vf', f'fps={fps}', '-start_number', '0', str(target / '%04d.png')],
-        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+    for stale in target.glob('*.png'):
+        stale.unlink()
+    cmd = [ffmpeg, '-y']
+    if start is not None:
+        cmd += ['-ss', f'{start:.3f}']
+    cmd += ['-i', str(video)]
+    if duration is not None:
+        cmd += ['-t', f'{duration:.3f}']
+    cmd += ['-vf', f'fps={fps}', '-start_number', '0', str(target / '%04d.png')]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     frames = sorted(target.glob('*.png'))
     if not frames:
-        raise SystemExit('视频没有解出任何帧，请检查文件是否可播放。')
+        raise SystemExit('视频没有解出任何帧，请检查文件是否可播放、--start/--duration 是否超出片长。')
     return frames
 
 
-def load_frames(path: Path, fps: float, workdir: Path) -> list[tuple[Path, Image.Image]]:
+def load_frames(path: Path, fps: float, workdir: Path,
+                start: float | None = None, duration: float | None = None) -> list[tuple[Path, Image.Image]]:
     if path.is_dir():
         files = sorted(child for child in path.iterdir() if child.suffix.lower() in FRAME_EXTS)
         if not files:
@@ -78,7 +91,8 @@ def load_frames(path: Path, fps: float, workdir: Path) -> list[tuple[Path, Image
         return [(file, Image.open(file).convert('RGBA')) for file in files]
     if path.suffix.lower() in FRAME_EXTS:
         return [(path, Image.open(path).convert('RGBA'))]
-    return [(file, Image.open(file).convert('RGBA')) for file in extract_frames(path, workdir, fps)]
+    # 视频：只把路径交回去，像素由 build() 逐帧处理，避免整段解码后全塞内存
+    return [(file, None) for file in extract_frames(path, workdir, fps, start, duration)]  # type: ignore[list-item]
 
 
 def chroma_key(image: Image.Image, key: tuple[int, int, int], tolerance: float, softness: float, despill: bool) -> Image.Image:
@@ -126,10 +140,29 @@ def chroma_key(image: Image.Image, key: tuple[int, int, int], tolerance: float, 
     return Image.fromarray(out, 'RGBA')
 
 
-def crop_and_scale(image: Image.Image, size: int, baseline: float) -> Image.Image:
-    """按不透明像素裁掉空白，再等比缩放到统一画布，并把脚底对齐到 baseline。"""
+def apply_masks(image: Image.Image, masks: list[tuple[int, int, int, int]], key: tuple[int, int, int]) -> Image.Image:
+    """把指定矩形涂成键色。
+
+    干什么用：AI 生成工具会在右下角压水印，水印有时出现有时消失，
+    直接抠会残留半透明鬼影；涂成键色后就跟背景一起被抠掉。
+    """
+    if not masks:
+        return image
+    clone = image.copy()
+    for left, top, right, bottom in masks:
+        clone.paste(Image.new('RGBA', (max(0, right - left), max(0, bottom - top)), key + (255,)), (left, top))
+    return clone
+
+
+def crop_and_scale(image: Image.Image, size: int, baseline: float,
+                   fixed_box: tuple[int, int, int, int] | None = None) -> Image.Image:
+    """按不透明像素裁掉空白，再等比缩放到统一画布，并把脚底对齐到 baseline。
+
+    fixed_box：整段动作共用的裁切框。逐帧各裁各的会让角色在画面上左右抖
+    （头发一飘包围盒就变），所以默认用并集框，动作里的位移靠画面表达。
+    """
     alpha = image.getchannel('A')
-    box = alpha.getbbox()
+    box = fixed_box or alpha.getbbox()
     if box:
         image = image.crop(box)
     width, height = image.size
@@ -151,15 +184,84 @@ def crop_and_scale(image: Image.Image, size: int, baseline: float) -> Image.Imag
     return canvas
 
 
+def head_box_from_keyed(keyed_dir: Path, count: int, union: tuple[int, int, int, int],
+                        ratio: float, margin: float) -> tuple[int, int, int, int]:
+    """在角色并集框里取「头部特写」方形裁切框。
+
+    为什么需要：气泡里的形象只有 44px，全身帧缩进去脸就没了，看不出在说话。
+    为什么不直接用头部那一段的水平范围：这个角色头发张得很开，按范围取会把整片头发算进去，
+    框变成 865px 宽，脸反而更小。改成以身体中轴为准、边长按头部高度算，得到真正的胸像构图。
+    """
+    top = union[1]
+    head_height = max(1, int(round((union[3] - union[1]) * ratio)))
+    # 身体中轴：各帧不透明像素的水平重心取中位数，比框中心稳（头发左右飘不影响）
+    centroids: list[float] = []
+    lefts: list[int] = []
+    rights: list[int] = []
+    for index in range(count):
+        alpha = np.asarray(Image.open(keyed_dir / f'{index:04d}.png').getchannel('A'))
+        columns = (alpha > 32).sum(axis=0)
+        total = int(columns.sum())
+        if total <= 0:
+            continue
+        centroids.append(float((np.arange(alpha.shape[1]) * columns).sum() / total))
+        box = Image.open(keyed_dir / f'{index:04d}.png').getchannel('A').getbbox()
+        if box:
+            lefts.append(box[0])
+            rights.append(box[2])
+    if not centroids:
+        return union
+    axis_x = float(np.median(centroids))
+    # 侧边留 margin，正方形边长按头部高度算；再用整体宽度兜一下别超出角色
+    side = int(round(head_height * (1.0 + 2.0 * margin)))
+    body_width = max(rights) - min(lefts) if lefts else side
+    side = max(head_height, min(side, body_width))
+    center_y = top + head_height / 2.0
+    half = side / 2.0
+    x0 = int(round(axis_x - half))
+    y0 = int(round(center_y - half))
+    return (x0, y0, x0 + side, y0 + side)
+
+
 def build(input_path: Path, out_root: Path, name: str, fps: float, size: int, baseline: float,
-          key: tuple[int, int, int], tolerance: float, softness: float, despill: bool, max_frames: int | None) -> dict:
+          key: tuple[int, int, int], tolerance: float, softness: float, despill: bool,
+          max_frames: int | None, start: float | None = None, duration: float | None = None,
+          masks: list[tuple[int, int, int, int]] | None = None, union_crop: bool = True,
+          focus: str = 'full', head_ratio: float = 0.34, head_margin: float = 0.12) -> dict:
+    """两遍处理：第一遍抠像并累计并集裁切框，第二遍按同一个框裁切缩放出片。
+
+    为什么要两遍：源片有 1280x720，一次全解码进内存要几百 MB；
+    而逐帧各裁各的又会让角色抖动，所以第一遍把抠好的帧落到 workdir，第二遍再统一裁。
+    """
+    masks = masks or []
     workdir = out_root / '.work' / name
     workdir.mkdir(parents=True, exist_ok=True)
-    frames = load_frames(input_path, fps, workdir)
+    keyed_dir = workdir / 'keyed'
+    keyed_dir.mkdir(parents=True, exist_ok=True)
+    for stale in keyed_dir.glob('*.png'):
+        stale.unlink()
+
+    frames = load_frames(input_path, fps, workdir, start, duration)
     if max_frames:
         frames = frames[:max_frames]
     if not frames:
         raise SystemExit('没有可用帧。')
+
+    union: tuple[int, int, int, int] | None = None
+    boxes: list[tuple[int, int, int, int] | None] = []
+    for index, (file, loaded) in enumerate(frames):
+        image = loaded if loaded is not None else Image.open(file).convert('RGBA')
+        keyed = chroma_key(apply_masks(image, masks, key), key, tolerance, softness, despill)
+        keyed.save(keyed_dir / f'{index:04d}.png', optimize=True)
+        box = keyed.getchannel('A').getbbox()
+        boxes.append(box)
+        if box:
+            union = box if union is None else (
+                min(union[0], box[0]), min(union[1], box[1]),
+                max(union[2], box[2]), max(union[3], box[3]),
+            )
+        if loaded is None:
+            image.close()
 
     action_dir = out_root / name
     frames_dir = action_dir / 'frames'
@@ -167,18 +269,38 @@ def build(input_path: Path, out_root: Path, name: str, fps: float, size: int, ba
     for stale in frames_dir.glob('*.png'):
         stale.unlink()
 
+    # 并集框会随时间累计抖动，用空帧框（若有）再收一次，避免个别帧把画面撑得过大
+    fixed_box = union if union_crop else None
+    head_box = None
+    if focus == 'head':
+        if union:
+            head_box = head_box_from_keyed(keyed_dir, len(frames), union, head_ratio, head_margin)
+        else:
+            raise SystemExit('--focus head 需要至少一帧有内容')
+        fixed_box = head_box
+    used_baseline = baseline if focus != 'head' else 1.0
+
     processed: list[Image.Image] = []
-    for index, (_, image) in enumerate(frames):
-        keyed = chroma_key(image, key, tolerance, softness, despill)
-        placed = crop_and_scale(keyed, size, baseline)
+    for index in range(len(frames)):
+        keyed = Image.open(keyed_dir / f'{index:04d}.png').convert('RGBA')
+        placed = crop_and_scale(keyed, size, used_baseline, fixed_box)
         placed.save(frames_dir / f'{index:03d}.png', optimize=True)
         processed.append(placed)
+        keyed.close()
 
     # APNG：网页/手机端可直接播放，省得再转一次
     processed[0].save(
         action_dir / 'anim.png', format='PNG', save_all=True, append_images=processed[1:],
         duration=int(round(1000 / fps)), loop=0, disposal=1, optimize=True,
     )
+
+    # 循环质量：首尾帧差越小越不跳，顺手报出来
+    loop_delta = None
+    if len(processed) >= 2:
+        first = np.asarray(processed[0]).astype(int)
+        last = np.asarray(processed[-1]).astype(int)
+        if first.shape == last.shape:
+            loop_delta = round(float(np.abs(first - last).mean()), 2)
 
     meta = {
         'name': name,
@@ -187,6 +309,14 @@ def build(input_path: Path, out_root: Path, name: str, fps: float, size: int, ba
         'size': size,
         'baseline': baseline,
         'durationMs': round(len(processed) / fps * 1000),
+        'loopDelta': loop_delta,
+        'focus': focus,
+        'crop': {'union': list(fixed_box) if fixed_box else None, 'perFrameJitter': len({b for b in boxes if b}) > 1},
+        'source': {
+            'start': start,
+            'duration': duration,
+            'masks': [list(m) for m in masks],
+        },
         'bytes': {
             'frames': sum(file.stat().st_size for file in frames_dir.glob('*.png')),
             'apng': (action_dir / 'anim.png').stat().st_size,
@@ -209,15 +339,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--softness', type=float, default=22.0, help='边缘羽化宽度（度）')
     parser.add_argument('--no-despill', action='store_true', help='关闭去溢色')
     parser.add_argument('--max-frames', type=int, default=None, help='最多处理多少帧（调试用）')
+    parser.add_argument('--start', type=float, default=None, help='从第几秒开始截（视频输入）')
+    parser.add_argument('--duration', type=float, default=None, help='截多长（秒，视频输入）')
+    parser.add_argument('--mask', action='append', default=[], metavar='X1,Y1,X2,Y2',
+                        help='把这些矩形涂成键色后抠掉，用来抹水印；可重复')
+    parser.add_argument('--no-union-crop', action='store_true',
+                        help='逐帧各自裁切（默认用并集框，避免角色抖动）')
+    parser.add_argument('--focus', default='full', choices=['full', 'head'],
+                        help='head=只出头部特写（气泡里 44px 用，脸才看得见）')
+    parser.add_argument('--head-ratio', type=float, default=0.34, help='头部特写占角色高度比例，默认 0.34')
     args = parser.parse_args(argv)
 
     key = tuple(int(part) for part in args.key.split(','))
     if len(key) != 3:
         raise SystemExit('--key 需要形如 0,255,0')
 
+    masks: list[tuple[int, int, int, int]] = []
+    for raw in args.mask:
+        parts = [int(part) for part in raw.replace(' ', '').split(',')]
+        if len(parts) != 4:
+            raise SystemExit(f'--mask 需要形如 1057,624,1265,707，收到 {raw}')
+        masks.append((parts[0], parts[1], parts[2], parts[3]))
+
     meta = build(
         Path(args.input), Path(args.out), args.name, args.fps, args.size, args.baseline,
         key, args.tolerance, args.softness, not args.no_despill, args.max_frames,
+        start=args.start, duration=args.duration, masks=masks, union_crop=not args.no_union_crop,
+        focus=args.focus, head_ratio=args.head_ratio,
     )
     print(json.dumps(meta, ensure_ascii=False, indent=2))
     return 0

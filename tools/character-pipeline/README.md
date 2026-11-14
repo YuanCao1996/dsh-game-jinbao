@@ -21,6 +21,19 @@ tools/desktop-release/assets/pet/
 
 **缺哪个状态就自动回落到 `idle`**；连 `idle` 都没有时整层隐藏，不会影响界面。
 
+### 收起形态（气泡里 44px）单独一套：`<状态>-narrow`
+
+气泡里只有 44px，全身帧缩进去脸就没了，**看不出在说话**。所以气泡优先读头部特写：
+
+```
+assets/pet/idle-narrow/frames/*.png    ← 气泡用（128px 胸像，脸占满）
+assets/pet/narrow/frames/*.png         ← 通用兜底（不分状态时用）
+assets/pet/idle/frames/*.png           ← 大图用（全身 192px）
+```
+
+查找顺序：`<状态>-narrow` → `narrow`（仅待机）→ `<状态>` → 待机那套 → 全局立绘。
+**没有 `<状态>-narrow` 就会拿全身帧塞进 44px**，所以这两个状态要成对做。
+
 ## 只画一张图也能用（单张立绘）
 
 不想一次画九套？**一张图就能上线**，优先级从高到低自动回落：
@@ -66,7 +79,8 @@ assets/pet/static.png    ← 全局立绘（只画一张时放这里，最省事
 |---|---|
 | `make-greenplate.py` | 透明立绘直接喂图生视频 → 工具自己编背景，抠像必烂。先垫成纯绿首帧（默认落到 `tools/character-pipeline/firstframe/`，不进 git） |
 | `check-clip.py` | 背景不纯 / 角色出画 / 时长超 3s / 首尾帧差太多 → 进管线前先体检 |
-| `pipeline.py` | 抠像、裁切、归一化、出 PNG 序列 + APNG |
+| `pick-loop.py` | 长片里挑首尾最接得上的一段（并排除水印还在的时间窗） |
+| `pipeline.py` | 抠像、并集裁切、归一化、出 PNG 序列 + APNG |
 
 一条龙（`idle` 为例）：
 
@@ -126,11 +140,19 @@ assets/pet/idle/action.json        ← 帧数/fps/时长/体积
 
 | 参数 | 默认 | 作用 |
 |---|---|---|
-| `--size` | 192 | 画布边长（悬浮窗显示 30，可加大） |
+| `--size` | 192 | 画布边长（气泡那套用 128 就够，显示只有 44px） |
 | `--baseline` | 0.94 | 脚底对齐比例 |
+| `--key` | 0,255,0 | 键色 RGB；**AI 素材几乎都不是纯绿，按实测填**（见 ORIGIN.md） |
 | `--tolerance` | 28 | 绿幕色相容差（度） |
 | `--softness` | 22 | 边缘羽化宽度（度） |
 | `--no-despill` | 关 | 关掉去溢色（边缘发绿时再开） |
+| `--start` / `--duration` | 整段 | 只取一段（长片必用，配合 `pick-loop.py` 选窗口） |
+| `--mask` | 无 | 把矩形涂成键色一起抠掉，**抹右下角水印**；可重复 |
+| `--focus head` | full | 只出头部特写（气泡用；按身体中轴取胸像，不是按头发宽度） |
+| `--no-union-crop` | 关 | 逐帧各自裁切。默认用并集框——头发一飘包围盒就变，逐帧裁会左右抖 |
+
+`action.json` 里会写 `loopDelta`（首尾帧平均像素差，越小越不跳）、`crop.union`、`source.start/duration`，
+方便回查这一套是怎么来的。
 
 ## 五、自测
 

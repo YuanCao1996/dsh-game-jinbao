@@ -1,0 +1,35 @@
+{
+  "name": "idle",
+  "frames": 24,
+  "fps": 12.0,
+  "size": 192,
+  "baseline": 0.94,
+  "durationMs": 2000,
+  "loopDelta": 0.46,
+  "focus": "full",
+  "crop": {
+    "union": [
+      56,
+      46,
+      824,
+      702
+    ],
+    "perFrameJitter": true
+  },
+  "source": {
+    "start": 4.92,
+    "duration": 2.0,
+    "masks": [
+      [
+        1057,
+        624,
+        1265,
+        707
+      ]
+    ]
+  },
+  "bytes": {
+    "frames": 475640,
+    "apng": 462444
+  }
+}

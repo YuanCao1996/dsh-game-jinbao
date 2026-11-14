@@ -71,13 +71,36 @@ $py = 'C:\Users\Administrator\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies
 & $py tools\character-pipeline\check-clip.py --input D:\art\idle.mp4
 ```
 
-体检过了再抠像：
+体检过了再挑一段能循环的，然后抠像：
 
 ```powershell
-& $py tools\character-pipeline\pipeline.py `
-   --input "D:\art\idle.mp4" --name idle `
-   --out tools\desktop-release\assets\pet --fps 12 --size 192
+# 挑首尾最接得上的一段（会顺手排除水印还在的时间窗）
+& $py tools\character-pipeline\pick-loop.py --input D:\art\idle.mp4 `
+   --key 114,217,75 --watermark 1057,624,1265,707 --name idle
+
+# 气泡用（44px，要脸）：头部特写
+& $py tools\character-pipeline\pipeline.py --input D:\art\idle.mp4 --name idle-narrow `
+   --key 114,217,75 --start 4.92 --duration 2.0 --mask 1057,624,1265,707 --focus head --size 128 `
+   --out tools\desktop-release\assets\pet
+
+# 大图备用（全身）
+& $py tools\character-pipeline\pipeline.py --input D:\art\idle.mp4 --name idle `
+   --key 114,217,75 --start 4.92 --duration 2.0 --mask 1057,624,1265,707 --size 192 `
+   --out tools\desktop-release\assets\pet
 ```
+
+## 实测记录（2026-11-14，第一段真实素材）
+
+| 项 | 实测值 | 说明 |
+|---|---|---|
+| 背景色 | `#72D94B`（RGB 114,217,75） | **不是纯 `#00FF00`**，AI 生成的绿是柔和绿；按实测色传给 `--key` |
+| 背景均匀度 | 标准差 1.6 | 很干净，抠像不用担心噪点 |
+| 水印 | 右下 x 1057–1265、y 624–707 | 前 3.5 秒和后 2 秒有，**4–7.5 秒整段没有** |
+| 最佳循环窗口 | 第 4.92 秒起 2 秒 | 首尾帧差 2.25（4.2 秒起是 12.27，差 5 倍） |
+| 头发摆幅 | 左边界在 x 42–504 之间变 | 幅度很大，所以必须用并集裁切，逐帧裁会抖 |
+| 抠像参数 | `--key 114,217,75 --tolerance 28 --softness 22` | 白衬衫/白袜子完好，边缘无绿边 |
+
+结论：**水的不是提示词，是「绿幕不纯 + 水印 + 挑错循环段」这三件事**，现在都有脚本挡。
 
 ## 第 6 步：装进悬浮窗看效果
 

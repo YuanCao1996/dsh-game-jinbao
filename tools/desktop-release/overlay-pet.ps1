@@ -1,4 +1,4 @@
-﻿# 金宝形象层（悬浮窗内的宠物）：加载 PNG 序列帧，按对局状态切换动作。
+# 金宝形象层（悬浮窗内的宠物）：加载 PNG 序列帧，按对局状态切换动作。
 #
 # 为什么是序列帧：WPF 没有能解 VP9-alpha 的解码器，社区那套 webm + Chromium 的做法
 # 搬不过来；序列帧零依赖、透明度准确，192px 每帧约 9KB，八套动作总共几 MB。
@@ -17,6 +17,9 @@ $script:petControl = $null
 $script:petRoot = ''
 $script:petIdleSince = [DateTime]::Now
 $script:petEnabled = $true
+# 气泡里的帧动画（和全身那套 petTimer 分开：气泡只在窄条可见时才转）
+$script:narrowPetTimer = $null
+$script:narrowPetIndex = 0
 
 function Get-PetRoot {
   param([string]$BaseDir)
@@ -79,6 +82,32 @@ function Load-PetAction {
 
   $script:petFrames[$Name] = $null
   return $null
+}
+
+# 气泡里只有 44px：全身帧缩进去脸就没了，看不出在说话。
+# 所以窄条优先用头部特写（<状态>-narrow 目录），没有才退回全身帧。
+# 注意不能直接拿 Load-PetAction 的结果当"有没有这套素材"：它在状态缺失时会回落到
+# 全局 icon.png（一张图），那样切到没有素材的状态就会从动画退化成一张静态图标。
+function Get-NarrowAction {
+  param([string]$Root, [string]$State)
+  if (-not $State) { return $null }
+  $head = Load-PetAction -Root $Root -Name ($State + '-narrow')
+  if ($head) { return $head }
+  if ($State -eq 'idle') {
+    # 待机时通用头部素材比全身帧更适合气泡
+    $generic = Load-PetAction -Root $Root -Name 'narrow'
+    if ($generic) { return $generic }
+  }
+  if (Test-Path (Join-Path $Root $State)) {
+    $own = Load-PetAction -Root $Root -Name $State
+    if ($own) { return $own }
+  }
+  # 这个状态没有专属素材：退回待机那一套，别显示成一张全局图标
+  $idleHead = Load-PetAction -Root $Root -Name 'idle-narrow'
+  if ($idleHead) { return $idleHead }
+  $idleGeneric = Load-PetAction -Root $Root -Name 'narrow'
+  if ($idleGeneric) { return $idleGeneric }
+  return (Load-PetAction -Root $Root -Name 'idle')
 }
 
 # 单帧时的呼吸动画：轻微放大 + 上浮，避免一张静止图看起来像卡住
@@ -243,7 +272,7 @@ function Initialize-NarrowPet {
   $script:narrowPetStateDir = $StateDir
   $root = Get-PetRoot -BaseDir $null
   $script:petRoot = $root
-  $frames = Load-PetAction -Root $root -Name 'narrow'
+  $frames = Get-NarrowAction -Root $root -State 'idle'
   if (-not $frames) { $frames = Load-PetAction -Root $root -Name 'icon' }
   if (-not $frames) { $frames = Load-PetAction -Root $root -Name 'idle' }
   if (-not $frames) { $Image.Visibility = 'Collapsed'; return $false }
@@ -251,8 +280,46 @@ function Initialize-NarrowPet {
   $Image.Source = $frames[0]
   $Image.Visibility = 'Collapsed'
   if ($Tail) { $Tail.Visibility = 'Collapsed' }
-  Start-PetBreathing -Control $Image
+  # 多帧就转帧动画，只有一张就叠呼吸（否则单帧会一动不动）
+  if ($frames.Count -gt 1) { Start-NarrowPetAnimation } else { Start-PetBreathing -Control $Image }
   return $true
+}
+
+# 推一帧。抽出来是为了能直接测（DispatcherTimer 的 Tick 没法在测试里触发）。
+function Step-NarrowPetFrame {
+  if (-not $script:narrowPetControl) { return $false }
+  $frames = $script:narrowPetFrames
+  if (-not $frames -or $frames.Count -le 1) { return $false }
+  try {
+    $script:narrowPetIndex = ($script:narrowPetIndex + 1) % $frames.Count
+    $script:narrowPetControl.Source = $frames[$script:narrowPetIndex]
+    return $true
+  } catch { return $false }
+}
+
+# 气泡形象的帧动画：12fps 轮播当前状态的序列帧。
+# 之前这里只设了第一帧 + 呼吸，序列帧根本不会动（动画等于没接），所以单独开一个计时器。
+function Start-NarrowPetAnimation {
+  param([int]$Fps = 12)
+  if (-not $script:narrowPetControl) { return }
+  if ($script:narrowPetTimer) { return }
+  $timer = New-Object System.Windows.Threading.DispatcherTimer
+  $timer.Interval = [TimeSpan]::FromMilliseconds([Math]::Max(40, [int](1000 / [Math]::Max(1, $Fps))))
+  $timer.Add_Tick({
+    try {
+      if (-not $script:narrowPetVisible) { return }
+      Step-NarrowPetFrame | Out-Null
+    } catch { }
+  })
+  $script:narrowPetTimer = $timer
+  $timer.Start()
+}
+
+function Stop-NarrowPetAnimation {
+  if ($script:narrowPetTimer) {
+    try { $script:narrowPetTimer.Stop() } catch { }
+    $script:narrowPetTimer = $null
+  }
 }
 
 # 每次快照刷新时调用：读配置（5 秒节流）→ 显示/隐藏 → 换动作
@@ -290,10 +357,9 @@ function Update-NarrowPet {
     }
   }
   if (-not $script:narrowPetVisible) { return }
-  if (-not $script:narrowPetFrames -or $script:narrowPetFrames.Count -le 1) { return }
   $desired = Get-PetState -Snapshot $Snapshot
   if (-not $desired) { return }
-  $frames = Load-PetAction -Root $script:petRoot -Name $desired
+  $frames = Get-NarrowAction -Root $script:petRoot -State $desired
   if (-not $frames) { return }
   if ($script:narrowPetState -eq $desired) {
     # 状态没变也要保证动画跟随（例如从 talk 回到 idle）
@@ -301,7 +367,11 @@ function Update-NarrowPet {
     return
   }
   $script:narrowPetState = $desired
+  # 换状态要换整套帧并归零，否则帧动画还在轮播上一套（长度不同会越界或串帧）
+  $script:narrowPetFrames = $frames
+  $script:narrowPetIndex = 0
   $script:narrowPetControl.Source = $frames[0]
+  if ($frames.Count -gt 1) { Start-NarrowPetAnimation } else { Stop-NarrowPetAnimation }
   if ($desired -eq 'talk') { Start-PetTalk -Control $script:narrowPetControl } else { Stop-PetTalk -Control $script:narrowPetControl }
 }
 

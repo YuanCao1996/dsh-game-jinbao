@@ -96,10 +96,33 @@ def analyse_frame(array: np.ndarray) -> dict:
     return {'green': share, 'box': box, 'shape': array.shape[:2]}
 
 
+def workdir_candidates(video: Path, override: str) -> list[Path]:
+    """抽帧目录的候选顺序。
+
+    为什么不能直接放素材旁边或系统 TEMP：实测 ffmpeg 在沙箱里会被挡在用户目录外
+    （PowerShell/Python 能写，ffmpeg 写就 Permission denied），所以优先放在当前工作目录下，
+    并且靠「真的抽一帧试试」来确认，而不是靠能不能建目录来猜。
+    """
+    import os
+    import tempfile
+    if override:
+        return [Path(override)]
+    candidates = [Path.cwd() / '.check' / video.stem]
+    workspace = os.environ.get('DSH_WORKSPACE')
+    if workspace:
+        candidates.append(Path(workspace) / '.check' / video.stem)
+    candidates += [
+        video.parent / f'{video.stem}.check',
+        Path(tempfile.gettempdir()) / 'jinbao-check' / video.stem,
+    ]
+    return candidates
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--input', required=True)
     ap.add_argument('--fix-hint', action='store_true', help='失败时多给一点怎么改')
+    ap.add_argument('--workdir', default='', help='抽帧临时目录；默认系统 TEMP（源目录可能只读）')
     args = ap.parse_args()
 
     video = Path(args.input)
@@ -121,13 +144,25 @@ def main() -> int:
     elif seconds > MAX_SECONDS:
         problems.append(f'时长 {seconds:.1f}s 偏长（建议 ≤3s），循环动作越长越容易接不上')
 
-    workdir = Path(video).parent / '.check'
+    # 抽帧 + 体检：目录候选逐个真抽一帧来验证，避免「能建目录但 ffmpeg 写不进去」
     size = (info.get('width') or 0, info.get('height') or 0)
+    frames: list[np.ndarray] = []
     if not size[0] or not size[1]:
         problems.append('读不出分辨率，文件可能有问题')
-        frames = []
     else:
-        frames = sample_frames(ffmpeg, video, seconds or 2.0, workdir, size)
+        skipped: list[Path] = []
+        for workdir in workdir_candidates(video, args.workdir):
+            try:
+                workdir.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                skipped.append(workdir)
+                continue
+            frames = sample_frames(ffmpeg, video, seconds or 2.0, workdir, size)
+            if frames:
+                if skipped:
+                    print(f'（前 {len(skipped)} 个目录写不进去，用 {workdir} 抽帧）')
+                break
+            skipped.append(workdir)
     if not frames:
         problems.append('抽不出帧，请换一个工具重新导出')
     else:
