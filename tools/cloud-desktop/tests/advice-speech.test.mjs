@@ -36,3 +36,12 @@ test('出装顺序同样只念前三件', () => {
 test('普通战术句子原样保留', () => {
   assert.equal(briefSpeech('稳住节奏，别单独追人。'), '稳住节奏，别单独追人。');
 });
+
+test('朗读前去掉分类前缀与间隔符，界面文本不变', async () => {
+  const { stripSpokenPrefixes } = await import('../roles.mjs');
+  assert.equal(stripSpokenPrefixes('已选海克斯 · 珠光护手'), '珠光护手');
+  assert.equal(stripSpokenPrefixes('装备更新：买入 法穿鞋'), '买入 法穿鞋');
+  assert.equal(stripSpokenPrefixes('我方阵容  安妮 法师 · 盖伦 坦克'), '安妮 法师，盖伦 坦克');
+  assert.equal(stripSpokenPrefixes('【装备决策事实 JSON】先补虚空之杖'), '先补虚空之杖');
+  assert.equal(stripSpokenPrefixes('这波他们技能交完了，值'), '这波他们技能交完了，值');
+});

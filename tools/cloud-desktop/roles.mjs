@@ -59,6 +59,18 @@ function buildSpeechLine(value){
   return text;
 }
 
+// TTS 前清理：界面上的分类前缀与分隔符念出来很怪（"已选海克斯 · 珠光护手"）。
+// 只影响朗读，界面文本保持原样。
+const SPOKEN_PREFIX=/^(?:已选海克斯|装备更新|本局已选|我方阵容|敌方阵容|阵容|局势估计|对局|当前对局|关键事件|补充说明)\s*[·：:，,]?\s*/;
+export function stripSpokenPrefixes(value){
+ return String(value ?? '')
+  .replace(/【[^】]{0,24}】/g,'')
+  .replace(/(?:\s*·\s*)/g,'，')
+  .replace(SPOKEN_PREFIX,'')
+  .replace(/\s{2,}/g,' ')
+  .trim();
+}
+
 export function briefSpeech(value,maxChars=60){
  // 三条规则（都有真实事故支撑）：
  // 1. 只念屏幕上的「开头」，听到的和看到的才对得上（旧实现会跳过超长首句去念后面那句，
@@ -66,7 +78,7 @@ export function briefSpeech(value,maxChars=60){
  // 2. 首句过长时在标点处截断加省略号，不再整句丢弃。
  // 3. 完全没有任何句读的超长文本（例如 200 个同字）视为噪声，不念 —— 避免把一坨文字塞给 TTS。
  const limit=Math.max(12,maxChars);
- const text=speechSegments(speakable(buildSpeechLine(value)),80).join('').trim();
+ const text=speechSegments(speakable(stripSpokenPrefixes(buildSpeechLine(value))),80).join('').trim();
  if(!text)return '';
  const first=(text.match(/^[^。！？!?]*[。！？!?]?/)??[''])[0].trim()||text;
  if(first.length<=limit)return first;
