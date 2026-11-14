@@ -1,5 +1,5 @@
 import { condenseAdvice, stripSources } from './advice-text.mjs';
-import{appendFile,writeFile,rename}from'node:fs/promises';import{join}from'node:path';
+import{mkdir,appendFile,writeFile,rename}from'node:fs/promises';import{join}from'node:path';
 import{stateCoachingTrigger,buildLolCoachingPlan,createAdviceValidity,adviceIsValid}from'../dsh-coach-server/lib/lol-coaching-plan.js';
 import{createCoachScheduler}from'./coach-scheduler.mjs';
 import{requestPraise}from'../dsh-onboarding/praise-cloud.mjs';
@@ -36,7 +36,15 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
  const DIMENSION={ace:'map',turret:'map',inhib:'map',objective:'map',purchase:'build',enemyChange:'risk',augment:'augment',postAugment:'augment',death:'now',situation:'now',coordination:'now',ultimate:'plan',opening:'plan',loading:'plan',selection:'plan',ended:'now'};
  const live=v=>v&&['lol','wzry','generic'].includes(v.game)&&v.match&&!v.ended&&v.phase!=='CapturePaused'&&Number.isFinite(v.updatedAt)&&now()-v.updatedAt<=30000&&v.updatedAt<=now()+500;
  const stillCurrent=v=>{const latest=view();return !closed&&live(latest)&&latest.game===v.game&&latest.match===v.match;};
- const note=(v,action,reason,extra={})=>{try{trace({game:v?.game,match:v?.match,action,reason,...extra});}catch{}};
+ const note=(v,action,reason,extra={})=>{
+  try{trace({game:v?.game,match:v?.match,action,reason,...extra});}catch{}
+  // 与诊断录制解耦的时间线：只回答“这次播报的时间花在哪”，不写正文或玩家信息。
+  try{
+   const dir=join(stateDir,'logs');
+   const line=JSON.stringify({at:now(),game:v?.game,match:v?.match,action,reason,...extra})+String.fromCharCode(10);
+   mkdir(dir,{recursive:true}).then(()=>appendFile(join(dir,'coach-timeline.jsonl'),line,{mode:0o600})).catch(()=>{});
+  }catch{}
+ };
  const status=async(v,state,label,extra={},opts={})=>{if(!stillCurrent(v))return;if(!opts.noted)note(v,'coach_'+state,undefined,extra);try{await publishStatus({game:v.game,match:v.match,state,label,at:now(),...extra});}catch{}};
  // A broadcast is counted the moment it is written. status() skips its own note when
  // the context moved on between publish and status, which used to leave
