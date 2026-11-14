@@ -120,3 +120,29 @@ export function createExperienceToolkit({ dir, player = 'local' } = {}) {
 
   return { readMd, saveMd, editLine, listPrivate, privateKinds: [...PRIVATE_KINDS] };
 }
+
+// 云端 agent 的私有经验回调：请求结构与 BYOK 工具一致，结果按服务端约定裁剪。
+export function experienceCallback(toolkit) {
+  if (!toolkit) throw new Error('experience callback needs a toolkit');
+  return async function experienceTools({ args } = {}) {
+    const action = args && args.action;
+    if (action === 'list') {
+      const rows = await toolkit.listPrivate();
+      return {
+        status: 'ok',
+        lessons: rows.map((row) => ({
+          kind: row.kind,
+          claim: row.claim,
+          games: (row.evidence && row.evidence.games) || 1,
+          hits: (row.evidence && row.evidence.hits) || 1,
+        })),
+      };
+    }
+    if (action === 'edit') {
+      const out = await toolkit.editLine({ kind: args.kind, from: args.source, to: args.to, reason: args.reason });
+      if (!out || !out.ok) return { status: 'unavailable', reason: String((out && out.reason) || 'edit_failed').slice(0, 60) };
+      return { status: 'ok', retired: out.retired || 0, added: out.added || 1, claim: String(args.to) };
+    }
+    return { status: 'unavailable', reason: 'invalid_action' };
+  };
+}
