@@ -117,6 +117,9 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
   try{
    const c=(await getContext(v.game,v.match)).current;if(!stillCurrent(v)||!c||c.match!==v.match||c.ended){note(v,'skip','context_changed');return;}
    if(c.me?.genericState?.sourceKind==='log'&&now()-c.me.genericState.sourceUpdatedAt>30000){note(v,'skip','source_stale');return;}
+   // 对局日志静默超过 2 分钟说明这局已经结束（或客户端断了），不能再拿旧快照生成建议：
+   // 实测有一次日志在 23:19 停更，17 分钟后系统还在按冻结的 08:19 快照播报。
+   if(Number.isFinite(c.at)&&now()-c.at>120000){note(v,'skip','stale_facts');return;}
    if(v.game!=='lol'){
     const signature=JSON.stringify(v.game==='generic'?[c.me?.genericState?.observationRevision]:[c.phase,c.me?.champion,c.me?.level,c.me?.dead,c.me?.items,c.me?.teamKills,c.me?.enemyKills,c.enemies?.map(p=>p.items)]);
     if((signature===store.signature&&adviceIsValid(store.lastValidity,c,now()))||now()-(store.lastAt??-Infinity)<30000){note(v,'skip','no_trigger');return;}
