@@ -46,6 +46,14 @@
 #streamSettings .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;background:#eef3ee;color:#4a6b4a}
 #streamSettings .pill[data-bad=true]{background:#fbeaea;color:#a3402f}
 </style>
+<section id="highlightSettings">
+  <h2>对局高光截图</h2>
+  <p class="hint">关键事件（多杀、团灭、破水晶、大龙、首杀）自动留一张画面，每局最多 6 张，只截游戏画面、存在本机、不上传。关闭后探索页的对局详情只显示播报与批注。</p>
+  <div class="stream-row">
+    <label><input id="highlightEnabled" type="checkbox" style="width:auto;margin-right:6px">开启高光截图</label>
+    <span id="highlightStatus" class="pill">—</span>
+  </div>
+</section>
 <section id="streamSettings">
   <h2>主播模式（B站弹幕）</h2>
   <p class="hint">开启后，观众在直播间发的弹幕会被筛选后进入悬浮窗；只有带触发词的弹幕才会被回应。观众的消息会带「观众」标签，和玩家自己的提问分开显示。观众回复默认只上屏、不朗读。</p>
@@ -193,6 +201,15 @@ function renderSpeech(s){
  const errors={speech_login_required:'请先在账号页完成电脑登录。',speech_key_required:'请先保存自己的 DashScope 语音 Key。',speech_rate_limited:'语音请求受限，稍后有新消息时再尝试。',speech_provider_unavailable:'语音服务未能完成合成，请检查服务或密钥后试听。',speech_playback_failed:'本机音频播放失败，请检查音频输出设备。',speech_audio_invalid:'语音服务返回了无效音频。'};
  el('speechStatus').textContent=s.roleName+' · '+(s.enabled||['synthesizing','playing'].includes(s.state)?(states[s.state]||'待播报'):'自动播报已关闭')+' · 待播 '+s.queueDepth+' 条'+(s.lastCode?' · '+(errors[s.lastCode]||'语音异常，请导出诊断记录。'):'');
 }
+async function loadHighlightSettings(){
+  try{
+    const data=await api('highlights');
+    const box=el('highlightEnabled');
+    if(box)box.checked=data.enabled!==false;
+    const pill=el('highlightStatus');
+    if(pill)pill.textContent='已保存 '+(data.count||0)+' 张';
+  }catch{}
+}
 async function loadStreamSettings(){
   try{
     const data=await api('stream');
@@ -228,6 +245,12 @@ async function saveStreamSettings(){
   }catch(error){alert('保存失败：'+(error&&error.message||'未知'));}
 }
 if(typeof document!=='undefined'&&document.getElementById){
+  const highlightBox=el('highlightEnabled');
+  if(highlightBox)highlightBox.addEventListener('change',async()=>{
+    try{await api('highlights',{enabled:highlightBox.checked===true});await loadHighlightSettings();}
+    catch(error){alert('保存失败：'+(error&&error.message||'未知'));}
+  });
+  loadHighlightSettings();
   const saveBtn=el('streamSave');
   if(saveBtn)saveBtn.addEventListener('click',saveStreamSettings);
   const enabledBox=el('streamEnabled');
@@ -246,7 +269,7 @@ async function pairing(kind){clearTimeout(polling);let b;if(kind==='wechat'){b=a
 el('login').onclick=()=>run(()=>pairing('app'));el('wechat').onclick=()=>run(()=>pairing('wechat'));el('activate').onclick=()=>run(async()=>{await api('login/code',{activationCode:el('activationCode').value});el('activationCode').value='';await refresh(true);message('激活成功。',true);});
 const settingsPages={display:['显示与播报','悬浮窗显示模式、窄条字幕与语音开关；保存后约 1 秒生效。'],voice:['角色与语音','选择与 App 相同的角色音色，设置战况和聊天播报。'],account:['账号与额度','管理当前电脑的登录账号与官方模型额度。'],model:['模型服务','选择调用方式。手动保存后，下次请求生效。'],games:['游戏与观察','LoL 自动检测，其他游戏可手动选择观察窗口。'],phone:['手机连接','同步电脑对局，配对不改变模型账号与额度。'],memory:['记忆与展示','按游戏管理偏好，并决定是否展示智能体执行过程。'],updates:['更新与诊断','查看更新记录，管理本机运行与诊断。']};
 function selectSettingsPage(name){if(!settingsPages[name])return;document.querySelectorAll('[data-settings-page]').forEach(button=>{if(button.dataset.settingsPage===name)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});document.querySelectorAll('main>[data-settings-group]').forEach(node=>node.dataset.settingsActive=String(node.dataset.settingsGroup===name));el('settingsPageTitle').textContent=settingsPages[name][0];el('settingsPageDescription').textContent=settingsPages[name][1];message('');const active=document.querySelector('main>[data-settings-group="'+name+'"]');if(active&&typeof active.animate==='function'&&!matchMedia('(prefers-reduced-motion:reduce)').matches)active.animate([{opacity:.5,transform:'translateY(4px)'},{opacity:1,transform:'translateY(0)'}],{duration:150,easing:'ease-out'});}
-function initializeSettingsUi(){if(typeof document.querySelectorAll!=='function')return;const groups={'显示与播报':'display','角色与语音':'voice','金宝账号':'account','模型服务':'model','连接手机 App':'phone','用户偏好记忆':'memory','经验积累':'memory','版本与更新':'updates','直播展示':'memory','主播模式（B站弹幕）':'memory'};document.querySelectorAll('main>section,main>details.panel').forEach(node=>{if(node.id==='updateNotice')return;const heading=node.querySelector('h2');node.dataset.settingsGroup=node.dataset.settingsGroup||(node.id==='accountCard'?'account':node.id==='genericPanel'?'games':node.id==='activitySettings'?'memory':node.tagName==='DETAILS'?'updates':groups[heading?.textContent]);});document.querySelectorAll('[data-settings-page]').forEach(button=>button.onclick=()=>selectSettingsPage(button.dataset.settingsPage));const modelSection=document.querySelector('main>section[data-settings-group="model"]');modelSection.after(el('modelActions'));el('modelActions').querySelector('.model-buttons').append(el('save'));['baseUrl','model','apiKey','emailAddress','emailCode'].forEach(id=>{const error=document.createElement('small');error.id=id+'Error';error.className='field-error';error.setAttribute('aria-live','polite');el(id).after(error);el(id).setAttribute('aria-describedby',error.id);if(['baseUrl','model','apiKey'].includes(id))el(id).onblur=()=>validateModelField(id);});[['gameWindow','游戏窗口'],['memoryGame','目标游戏'],['diagnosticKind','诊断问题类型']].forEach(([id,text])=>{const label=document.createElement('label');label.htmlFor=id;label.textContent=text;el(id).before(label);});const exit=el('exit').onclick;el('exit').onclick=()=>{if(confirm('退出金宝将停止本次辅助，登录、配对和设置会保留。是否继续？'))return exit();};const label=document.createElement('small');label.className='section-note';label.textContent='即时生效，不需要手动保存。';el('activitySettings').append(label);selectSettingsPage(location.search==='?page=voice'?'voice':'account');}
+function initializeSettingsUi(){if(typeof document.querySelectorAll!=='function')return;const groups={'显示与播报':'display','角色与语音':'voice','金宝账号':'account','模型服务':'model','连接手机 App':'phone','用户偏好记忆':'memory','经验积累':'memory','版本与更新':'updates','直播展示':'memory','主播模式（B站弹幕）':'memory','对局高光截图':'memory'};document.querySelectorAll('main>section,main>details.panel').forEach(node=>{if(node.id==='updateNotice')return;const heading=node.querySelector('h2');node.dataset.settingsGroup=node.dataset.settingsGroup||(node.id==='accountCard'?'account':node.id==='genericPanel'?'games':node.id==='activitySettings'?'memory':node.tagName==='DETAILS'?'updates':groups[heading?.textContent]);});document.querySelectorAll('[data-settings-page]').forEach(button=>button.onclick=()=>selectSettingsPage(button.dataset.settingsPage));const modelSection=document.querySelector('main>section[data-settings-group="model"]');modelSection.after(el('modelActions'));el('modelActions').querySelector('.model-buttons').append(el('save'));['baseUrl','model','apiKey','emailAddress','emailCode'].forEach(id=>{const error=document.createElement('small');error.id=id+'Error';error.className='field-error';error.setAttribute('aria-live','polite');el(id).after(error);el(id).setAttribute('aria-describedby',error.id);if(['baseUrl','model','apiKey'].includes(id))el(id).onblur=()=>validateModelField(id);});[['gameWindow','游戏窗口'],['memoryGame','目标游戏'],['diagnosticKind','诊断问题类型']].forEach(([id,text])=>{const label=document.createElement('label');label.htmlFor=id;label.textContent=text;el(id).before(label);});const exit=el('exit').onclick;el('exit').onclick=()=>{if(confirm('退出金宝将停止本次辅助，登录、配对和设置会保留。是否继续？'))return exit();};const label=document.createElement('small');label.className='section-note';label.textContent='即时生效，不需要手动保存。';el('activitySettings').append(label);selectSettingsPage(location.search==='?page=voice'?'voice':'account');}
 function initializeModelChoices(){if(typeof document.querySelectorAll!=='function')return;const group=document.createElement('fieldset'),legend=document.createElement('legend');group.className='mode-choices';legend.textContent='模型调用方式';group.append(legend);const descriptions={cloud:'使用金宝账号额度，无需配置密钥。',byok:'使用你的模型与额度，需要本机 DSH 引擎。',demo:'不调用模型，不产生模型请求。'};for(const option of el('mode').options){const label=document.createElement('label'),input=document.createElement('input'),copy=document.createElement('span'),title=document.createElement('strong'),help=document.createElement('small');label.className='mode-choice';input.type='radio';input.name='model-mode-choice';input.value=option.value;input.checked=option.selected;input.onchange=()=>{el('mode').value=input.value;show();};title.textContent=option.textContent;help.textContent=descriptions[option.value];copy.append(title,help);label.append(input,copy);group.append(label);}el('mode').after(group);el('mode').hidden=true;document.querySelector('label[for="mode"]').hidden=true;}
 function renderLifetime(logged){
  const node=el('loginLifetime');if(!node)return;

@@ -22,10 +22,12 @@ function Update-OverlayComposer {
   $controls.ComposerPlaceholder.Text=if($teamMode -or !$suggestion){$base}else{$base+'　例如：'+$suggestion}
   $controls.ComposerPlaceholder.ToolTip=$suggestion
  }
- $progress=if($script:job){if($script:snapshot.status){[string]$script:snapshot.status}else{'教练正在分析…'}}else{''}
- $controls.ChatStatusText.Text=$progress
- if($teamMode){$progress=[string]$script:snapshot.teamChatStatus;$controls.ChatStatusText.Text=$progress}
- $controls.ChatStatusText.Visibility=if($progress){'Visible'}else{'Collapsed'}
+ # Execution progress belongs to the activity line; keep the composer compact.
+ $progress=if($teamMode){[string]$script:snapshot.teamChatStatus}else{''}
+ $controls.SendButton.ToolTip=if($progress){$progress}elseif($script:job){'教练正在回复，请稍候'}else{'Enter 发送；Shift+Enter 换行'}
+ $controls.ChatStatusText.Text=''
+ $controls.ChatStatusText.Visibility='Collapsed'
+
 }
 function Show-OverlayModeMenu {
  $menu=New-Object Windows.Controls.ContextMenu;$menu.Background='#19212A';$menu.Foreground='#E8EEF5';$menu.BorderBrush='#394A59'
@@ -178,6 +180,12 @@ if(!$controls.RichContent){return}
  $rows=@($script:snapshot.chatRows|Where-Object {$_ -and $_.text})
  # 战况页把教练建议与对话合并成一条时间线：先取 thread，缺失时退回 chatRows。
  $thread=@($script:snapshot.thread|Where-Object {$_ -and $_.text})
+ if($script:pendingBubble){
+  $pending=$script:pendingBubble
+  $ack=@($thread+$rows | Where-Object {$_.role -eq 'user' -and $_.text -eq $pending.text -and $_.at -and [double]$_.at -ge [double]$pending.at})
+  if([string]$script:snapshot.match -ne $pending.match -or $ack.Count){$script:pendingBubble=$null}
+  else{if(!$thread.Count){$thread=@($rows)};$rows+= $pending;$thread+= $pending}
+ }
  $key=$script:tab+'|'+$font+'|'+$controls.OpacitySlider.Value+'|'+$controls.PageText.Text+'|'+(ConvertTo-Json -InputObject $rows -Compress -Depth 3)+'|'+(ConvertTo-Json -InputObject $thread -Compress -Depth 3)
  if($force -or $script:surfaceKey -ne $key){
   $script:surfaceKey=$key;$controls.RichContent.Children.Clear()

@@ -1,3 +1,4 @@
+﻿import {activityLine} from './activity-line.mjs';
 import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
 import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId, leaderboardRowData } from './leaderboard-pages.mjs';
 import { mkdir, readdir, stat, open, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
@@ -10,7 +11,7 @@ import { projectWzryFacts } from '../dsh-coach-server/lib/adapters/wzry-facts.js
 import { createMatchTracker } from '../dsh-coach-server/lib/match-tracker.js';
 import { rankedAugments, augmentLine, offerNames } from './augment-ranking.mjs';
 import { TIEBREAK_QUESTION, tiebreakPick } from './vision-tiebreak.mjs';
-import { projectProgressEvent,observeEquipment,addProgressEvent } from './progress-events.mjs';
+import { projectProgressEvent,observeEquipment,addProgressEvent,progressSeconds } from './progress-events.mjs';
 import { createGameMemory } from '../dsh-coach-server/lib/game-memory.js';
 import { normalizeLolMode } from '../dsh-coach-server/lib/game-mode-prompt.js';
 import {trackAugmentRound,updateAugmentRecommendations,createEquipmentCoach} from './equipment-context.mjs';
@@ -24,6 +25,7 @@ import {createCompanion} from '../dsh-coach-server/lib/companion.mjs';
 import {whoKilled,recordMultikill,settlePraise,PRAISE_ROLES,killInfoFromEvents} from './multikill-praise.mjs';
 import {recordChoice,settleChoiceReactions,resetChoiceReactions} from './choice-reactions.mjs';
 import {settleHumanMoments,resetHumanMoments} from './human-moments.mjs';
+import { createHighlights, shouldCapture } from './highlights.mjs';
 import {champSelectPartnerText} from '../lol-companion/partner-index.mjs';
 import {createKnowledgeSearch} from './knowledge-search.mjs';
 import {isCompletedItem} from '../lol-companion/item-policy.mjs';
@@ -48,7 +50,7 @@ export function clock(seconds) {
 }
 export function initialOverlayState() {
   return { game: null, mode: '', match: null, at: 0, selfIdentityAt: 0, matchStartedAt: 0, gameSeconds: null, ended: false, phase: '',observedMatch:false,
-    me: {}, allies: [], enemies: [], bench: [], playerStats: [], enemyItems: [], events: [], equipmentSnapshots:new Map(),
+    me: {}, allies: [], enemies: [], bench: [], playerStats: [], enemyItems: [], events: [], equipmentSnapshots:new Map(), activityEvents:[],
     ownedAugments: [], revealedAugments: [], augmentRounds: [], offers: [], offerRound: null, offerHistory: [], augmentCaptureAvailable: null, augmentCaptureReason: '', equipment: '', equipmentStatus:'', equipmentAssumptions: [], augmentAdvice: '', teamfight: '', broadcasts: [], chat: [],
     agentStatus:'', agentError:'', coachStatus:null, praiseChains:{}, notices:[], noticeWinRate:null };
 }
@@ -145,7 +147,7 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
    if(!what)continue;
    const key='purchase:'+[who,what,Number(item.time)||0].join('|');
    if(state.events.some(entry=>entry.key===key))continue;
-   state.events.push({key,time:Number.isFinite(Number(item.time))?clock(Number(item.time)):clock(state.gameSeconds),text:'装备更新：'+(who?who+' · ':'')+'买入 '+what,kind:'purchase'});
+   state.events.push({key,time:clock(progressSeconds(item.time,state.gameSeconds)),text:'装备更新：'+(who?who+' · ':'')+'买入 '+what,kind:'purchase'});
   }
   state.events=state.events.slice(-200);
  }
@@ -262,6 +264,15 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     }
   }
   const previousOwned=[...state.ownedAugments];
+  // Raw kill announcements are display-only; do not change coaching/history policy.
+  const announcements=event.kind==='chat_events'?list(event.events):event.kind==='event'?[{...event,kind:event.name}]:[event];
+  for(const item of announcements){
+    const labels={kill:'发生击杀',ChampionKill:'发生击杀',death:'英雄阵亡',ace:'团灭',tower:'防御塔被摧毁',turret:'防御塔被摧毁',Ace:'团灭',TurretKilled:'防御塔被摧毁'};
+    if(!labels[item?.kind])continue;
+    const key=JSON.stringify([item.kind,item.id??'',item.time??event.time??at,item.killer??'',item.victim??'']);
+    if(!state.activityEvents.some(e=>e.key===key))state.activityEvents.push({key,kind:item.kind,time:typeof item.time==='string'?item.time:clock(Number(item.time??state.gameSeconds)),text:labels[item.kind]});
+  }
+  state.activityEvents=state.activityEvents.slice(-30);
   projectProgressEvent(state,event);
   trackAugmentRound(state,event,previousOwned);
   // 待确认收尾：跑完 trackAugmentRound 之后再把那一轮置为已关闭且未确认，
@@ -453,9 +464,9 @@ const friendlyKnowledgeMessage=message=>{
 };
 // 智能体动态兜底：没有活动回合时，把本局事件流（装备/海克斯/团灭…）当作行喂进去，
 // 面板就不会整块空着——这类信息本来就是玩家想看的。
-const EVENT_FALLBACK_LIMIT=6;
+
 // 对局状态“只在变化时露一次”：记住上次的英雄/等级/KDA 组合与显示截止时间。
-let liveStatsKey='';let liveStatsUntil=0;
+
 // —— 战况页内联信息（原「海克斯页 / 胜率页」的内容）——
 // 页签取消后，这些内容以「新消息」形式进入战况时间线；brief 是给窄条/收起态的一行速览，
 // 方便玩家一眼决断。同 key 只记一次，最多保留 20 条。
@@ -473,59 +484,7 @@ const noticeUpsert=(state,key,payload)=>{
  if(existing){existing.text=payload.text;existing.brief=String(payload.brief??'');if(payload.table)existing.table=payload.table;if('footer' in payload)existing.footer=payload.footer;if(payload.slots)existing.slots=payload.slots;return false;}
  return noticePush(state,key,payload);
 };
-export const withEventFallback=(activity,state)=>{ const base=activity??{supported:false,enabled:false,revision:0,rows:[]};
- let rows=Array.isArray(base.rows)?base.rows:[];
- // 事件并入智能体动态：正在进行的那几步保留，后面接上本局事件；面板显示最近几行。
- // 装备更新（尤其敌方/别人的）属于出装页，塞进这里会把真正的事件全挤掉（实测 40 条里 25 条是它）。
- // 只有真正在跑（running/draft）才算进行中；queued 是排队等背压，实测会长时间
- // 占住这一行，导致整局都看不到事件。
- const KEEP_WORKING=new Set(['running','draft']);
- const working=rows.filter(row=>KEEP_WORKING.has(String(row?.phase??'')));
- // 只把「确实发生了什么」的事件放进动态：团灭/塔/水晶/龙/先锋/多杀/阵亡/海克斯三选一与已选。
- // 疑似识别、面板关闭提示、装备更新这些既不准也不重要，会把关键事件挤掉。
- // 事件流展示范围：关键对局事件 + 装备更新 + 疑似强化识别 + 聊天框 OCR 到的买卖/强化公告。
- // 之前为了防刷屏把装备和疑似识别滤掉了，但玩家需要看到这些细节，改为放宽并在别处控制总量。
- const FEED_KINDS=new Set(['Ace','TurretKilled','InhibKilled','InhibRespawningSoon','InhibRespawned','DragonKill','BaronKill','HeraldKill','Multikill','Death','augment_offer','augment_picked','inventory','augment_mutate','chat_events','purchase']);
- const stateKinds=new Set(['GameStart','GameEnd']);
- // 归属未确认的识别不进面板：OCR 合并了行时说不清是谁的强化，显示出来只会误导。
- const unattributed=event=>String(event.kind??'')==='augment_mutate'
-  && /归属未确认|：无 ·|：未知 ·|归属不明/.test(String(event.text??''));
- const events=(Array.isArray(state?.events)?state.events.filter(event=>!stateKinds.has(event.kind)&&FEED_KINDS.has(String(event.kind??''))&&!unattributed(event)).slice(-EVENT_FALLBACK_LIMIT):[]).map((event,index)=>({
-  id:'event-'+(event.at??index)+'-'+(event.key??''),task:'events',topic:'本局事件',
-  clock:event.time??'',kind:String(event.kind??''),label:String(event.text??'').slice(0,60),phase:'done'}));
- // 单行显示：有正在进行的回合就显示步骤，空闲时显示最新事件。
- // 两者不混排——混排时"最新"可能是比当前步骤更旧的事件，看起来像卡住。
- // 关键对局事件优先占位，疑似识别与装备更新只做补充。
- // 之前只要有一个进行中的步骤，整段事件就被丢掉，玩家因此在动态里看不到推塔、团灭。
- const KEY_FEED=new Set(['Ace','TurretKilled','InhibKilled','InhibRespawningSoon','InhibRespawned','DragonKill','BaronKill','HeraldKill','Multikill','Death']);
- const keyEvents=events.filter(row=>KEY_FEED.has(String(row.kind??'')));
- const otherEvents=events.filter(row=>!KEY_FEED.has(String(row.kind??''))).slice(-2);
- if(working.length){
-   rows=[...working.slice(-2),...keyEvents.slice(-4),...otherEvents];
- }else if(events.length){
-   rows=[...keyEvents.slice(-6),...otherEvents];
- }
- if(!rows.length)return base;
- // 最新的排最上面；顶部常驻一行对局状态（时间/英雄/等级/KDA/金币），随状态刷新跳动。
- const me=state.me??{};
- // 英雄/等级/KDA 任一变化才把这段状态露出来（金币每时每刻都在变，不参与触发）。
- const statsKey=[state.match??'',me.champion??'',me.level??'',me.k??'',me.d??'',me.a??''].join('|');
- if(statsKey!==liveStatsKey){liveStatsKey=statsKey;liveStatsUntil=Date.now()+20000;}
- const showLive=state.game!=='generic'&&Date.now()<liveStatsUntil;
- const live=showLive?['对局 '+(state.gameSeconds!=null?clock(state.gameSeconds):'--'),
-  (me.champion??''),me.level!=null?'Lv'+me.level:'',
-  (me.k!=null&&me.d!=null&&me.a!=null)?me.k+'/'+me.d+'/'+me.a:'',
-  me.gold!=null?me.gold+' 金':''].filter(Boolean).join(' · '):'';
- const ordered=rows.slice().reverse();
- // 对局状态不再单独占一行：直接拼到最新那条事件前面（实测两行会被认为是重复占位）。
- if(live&&ordered.length){
-  const head=ordered[0];
-  ordered[0]={...head,label:live+' · '+String(head.label??'')};
- }else if(live){
-  ordered.push({id:'match-live',task:'match',topic:'对局',clock:'',label:live,phase:'live'});
- }
- return {...base,rows:ordered};
-};
+export const withEventFallback=(activity,state)=>activityLine(activity??{supported:false,enabled:false,revision:0,rows:[]},state);
 
 // 战况/出装等页面的正文可能来自模型或资料库，会带「来源…」和链接。视图出口统一剥一次，
 // 这样任何页面都不会再把来源甩给玩家（之前只剥了播报那一条路径）。
@@ -795,6 +754,7 @@ const playerRows = players.map(p => {
   // 同一句话 45 秒内只上屏一次：
   // 实测一局里「三个都没进榜，建议刷新换一批」重复 7 次、「推荐选 歌利亚巨人」重复 6 次，
   // 界面在刷屏，观众也会觉得啰嗦。这里做单点去重（显示、截图、语音都走这条）。
+  // 每次出视图前按当前英雄刷新批注（节流 30 秒）。
   const validBroadcasts = (() => {
     const seen = new Map();
     const out = [];
@@ -945,7 +905,7 @@ const playerRows = players.map(p => {
    })(),
    // Events are too long to list here; the page keeps only the newest line and updates it.
    eventTicker: (() => { const last = state.events.at(-1); return last ? `${last.time ?? ''} ${last.text ?? ''}`.trim() : ''; })(),
-    chatRows: state.chat.slice(-40).map(r => ({role:r.role,origin:r.origin??'',text:r.text,failed:r.failed===true})),
+    chatRows: state.chat.slice(-40).map(r => ({role:r.role,origin:r.origin??'',text:r.text,at:r.at,failed:r.failed===true})),
     suggestedQuestion: suggestOverlayQuestion(state),
     // 经验库给出的历史段落（已带标题与实际字节预算）；教练消息里包含整份 context，
     // 因此把它放进视图就等于放进提示词，无需再改消息构造。
@@ -957,6 +917,30 @@ const playerRows = players.map(p => {
 export async function createOverlayService({ stateDir, agentChat, agentImage, search, pollMs = 500, equipmentDebounceMs=2000, equipmentCooldownMs=30000, equipmentOpeningRetryMs=15000, knowledgeRetryMs=15000,activity,canAutoRequest,experience=null,praiseCloudGraceMs=30000 }) {
   search=createKnowledgeSearch(search);
   const logs = join(stateDir, 'logs'), output = join(stateDir, 'overlay-state.json');
+  // 高光截图：关键事件（多杀/团灭/破水晶/大龙/首杀）各留一张，每局上限 6 张，本机存储。
+  const highlights = createHighlights({ stateDir });
+  const capturedHighlights = new Set();
+  // 本地人味句/选择反馈也落盘，对局详情页才能完整回放当时说过的每句话。
+  const momentsFile = join(stateDir, 'local-moments.jsonl');
+  // 玩家写的批注：每 30 秒读一次，按当前英雄取最近三条，注入提示词让建议立刻变化。
+  const annotationsFile = join(stateDir, 'annotations.jsonl');
+  let annotationsAt = 0;
+  const loadUserNotes = async champion => {
+    if (!champion) return [];
+    if (Date.now() - annotationsAt < 30000 && Array.isArray(state.userNotes)) return state.userNotes;
+    annotationsAt = Date.now();
+    let rows = [];
+    try {
+      rows = (await readFile(annotationsFile, 'utf8')).split(String.fromCharCode(10)).filter(Boolean)
+        .map(line => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean);
+    } catch { rows = []; }
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return rows
+      .filter(row => row && row.champion === champion && Number(row.at) >= cutoff)
+      .slice(-3)
+      .map(row => ({ text: String(row.text ?? '').slice(0, 40), tags: Array.isArray(row.tags) ? row.tags.slice(0, 2) : [] }));
+  };
+  const loggedMoments = new Set();
   await mkdir(logs, { recursive: true });
   const router=createOverlayRouter(), offsets = new Map();
   const memory = createGameMemory(stateDir);
@@ -1286,6 +1270,14 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       for (const { event, file, position } of pending) {
         updateAugmentRecommendations(state,knowledge.rows??[]);
         const observed = router.apply(event,file);
+        // 关键事件留一张画面（同一事件只截一次；上限与间隔由模块控制）。
+        if (event?.kind === 'event' && shouldCapture(event)) {
+          const shotKey = String(event.t ?? '') + ':' + String(event.name ?? event.EventName ?? '');
+          if (!capturedHighlights.has(shotKey)) {
+            capturedHighlights.add(shotKey);
+            void highlights.maybeCapture({ event, game: state?.game, match: state?.match, gameSeconds: state?.gameSeconds }).catch(() => {});
+          }
+        }
         if(event?.kind==='augment_picked'&&event.roll!=null)decidedRolls.add(String(event.roll));
         if(event?.kind==='augment_vision_ambiguous')ambiguous.push(event);
         if (observed) { await memory.record(observed,event,file,position); observedStates.add(observed); }
@@ -1301,6 +1293,18 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
  if (state?.match && (endedEvent || phaseEndedEvent)) {
    try {
      settleHumanMoments(state, Date.now(), { role: await currentPraiseRole(), clock: state.gameSeconds, ended: true, win: state.matchWin ?? (endedEvent?.Result === 'Win' ? true : endedEvent?.Result === 'Lose' ? false : null) });
+     // 把这一轮新产生的人味句/选择反馈写进本地记录，供对局详情页回放（只落盘，不参与实时渲染）。
+     for (const entry of state.broadcasts ?? []) {
+       if (!(entry?.humanMoment || entry?.choiceReaction)) continue;
+       const id = String(entry.at) + '|' + String(entry.text ?? '');
+       if (loggedMoments.has(id)) continue;
+       loggedMoments.add(id);
+       void appendFile(momentsFile, JSON.stringify({
+         at: Number(entry.at) || Date.now(), game: state.game, match: state.match,
+         kind: 'local-moment', key: entry.humanKind ?? entry.choiceKind ?? 'moment',
+         broadcast: String(entry.text ?? ''), local: true,
+       }) + String.fromCharCode(10), { mode: 0o600 }).catch(() => {});
+     }
      await flush();
    } catch {}
  }
@@ -1342,6 +1346,8 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       }
       // 多杀点评优先交给云端生成一句话；这里先等 7 秒宽限（云端建单+轮询+出句
       // 实测 3~6 秒），超时没等到才用本地兜底，保证玩家听不到两句重复的播报。
+      // 按当前英雄刷新玩家批注（内部节流 30 秒），供提示词即时吸收。
+      try { state.userNotes = await loadUserNotes(state.me?.champion); } catch {}
       settlePraise(state, Date.now(), { role: await currentPraiseRole(), cloudGraceMs: praiseCloudGraceMs });
       // 买装备 / 选海克斯之后的即时反馈：同一个角色，同一套语音通道。
       settleChoiceReactions(state, Date.now(), { role: await currentPraiseRole() });
@@ -1390,7 +1396,10 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
           try { return await run(); }
           catch (error) {
             const status = Number(error?.status);
-            const transient = status === 503 || status === 504 || /timeout|unavailable|upstream/i.test(String(error?.code ?? ''));
+            // A timed-out turn may already have run tools. Do not silently submit
+            // it again, nor replay a task that the server explicitly marked failed.
+            const transient = error?.retryable !== false && status !== 504 &&
+              (status === 503 || /unavailable|upstream/i.test(String(error?.code ?? '')));
             if (!transient || !stillCurrent()) throw error;
             await new Promise(resolve => setTimeout(resolve, 800));
             return run();

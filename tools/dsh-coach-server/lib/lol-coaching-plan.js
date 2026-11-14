@@ -169,6 +169,8 @@ export function buildLolCoachingPlan(events = [], current = null) {
     autoPickedAugments: list(current?.revealedAugments),
     // 最近的成装变化：装备是滚动信息，超过几分钟就不再是「当前局势」。
     // 这里只带 5 分钟内、最多 3 条，并给 minutesAgo 让模型自己判断时效。
+    // 玩家自己写的批注（最近 3 条）：只在相关时体现，别复述原文。
+    userNotes: list(current?.userNotes).slice(-3).map(note => ({ text: String(note?.text ?? '').slice(0, 40), tags: list(note?.tags).slice(0, 2) })),
     recentEquipment: (() => {
       const nowMs = Date.now();
       return list(current?.completedEquipmentEvents)
@@ -234,6 +236,7 @@ export function buildLolCoachingPlan(events = [], current = null) {
     enemies: (facts.enemies ?? []).slice(0, 5).map(person => ({ ...person, items: Array.isArray(person.items) ? person.items.slice(-2) : person.items })),
     priorOpeningPlan: facts.priorOpeningPlan ? { text: String(facts.priorOpeningPlan.text ?? '').slice(0, 160) } : null,
   recentEquipment: (facts.recentEquipment ?? []).slice(-3),
+  userNotes: (facts.userNotes ?? []).slice(-3),
   };
   let factsJson = JSON.stringify(compact);
   const buildPrompt = () => [
@@ -242,15 +245,15 @@ export function buildLolCoachingPlan(events = [], current = null) {
     '【本轮筛选事实 JSON】' + factsJson,
     mayhemBrief,
     '输出：最多两句、总计不超过60字、单段不换行，先结论后依据；不复述面板、不喊口号、不显示玩家名。',
-    '事实与资料分开：缺技能/强化/装备/胜率资料时用资料查询工具；查不到就说明缺口、不编造数据。历史建议不是事实。',
-    '人名只用 facts.lineup 里的称号，禁止本名/简称/别称与名单外英雄；同一英雄只算一次（安妮＝黑暗之女，不能并列成两个威胁）。',
-    '出装只列还没买的成装（facts.me.items 里已有的不列）；本局已有 facts.priorOpeningPlan 时必须沿用它，改路线要写明改了什么、为什么改。',
-    '已选强化点名装备时（钢化你心→心之钢、命运之武器→第一件传说、易损→暴击装），出装顺序与下一件成装必须优先安排该装备，并说明是为了让这个强化生效。',
-    '阵亡回合必须点名一件具体装备并给理由（如「先买负极大斗篷」），不许说「补个防装」这类方向话。',
-    '已阵亡时当前血量是 0：不写「你还剩X%血」，不说「先回城补血」；提血量写「倒下时是X%」，动作只写「复活后…」。',
-    'facts.recentEquipment 是最近的成装变化：仅 minutesAgo ≤ 3 可当现状并点出是谁的，更早的不要当成威胁。',
-  '多杀数量只认 facts.multikill.streak（2双杀/3三杀/4四杀/5五杀及以上），为 null 时不要提多杀。',
-    '海克斯三选一时候选与排名已由界面卡片展示，不复述「No.N · 名称」，只给结论（选哪张或建议刷新）加半句理由。',
+    '事实与资料分开：缺技能/强化/装备/胜率资料时用资料查询工具；查不到就说明缺口、不编造数据。',
+    '人名只用 facts.lineup 的称号，禁本名/简称/别称与名单外英雄；同一英雄只算一次（安妮＝黑暗之女）。',
+    '出装只列还没买的成装（facts.me.items 已有的不列）；有 facts.priorOpeningPlan 时必须沿用它，改路线要写明为什么改。',
+    '强化点名装备时（钢化你心→心之钢、命运之武器→第一件传说、易损→暴击装），出装顺序与下一件成装要优先安排它并说明理由。',
+    '阵亡回合必须点名一件具体装备并给理由，不许说「补个防装」这类方向话。',
+    '已阵亡时当前血量是 0：不写「你还剩X%血」、不写回城；提血量写「倒下时是X%」，动作只写「复活后…」。',
+    '多杀只认 facts.multikill.streak（2双杀/3三杀/4四杀/5五杀），为 null 不要提多杀。',
+    '三选一不复述「No.N · 名称」，只给结论（选哪张或建议刷新）加半句理由。',
+    'facts.recentEquipment 仅 minutesAgo ≤ 3 可当现状并点出是谁的；facts.userNotes 相关时一句话体现，不复述原文。',
   ].filter(Boolean);
   let prompt = buildPrompt().join(String.fromCharCode(10));
   // 仍超预算时先压事实里的长文本，最后才丢大乱斗攻略（它比事实更不可省）。
@@ -264,6 +267,14 @@ export function buildLolCoachingPlan(events = [], current = null) {
   if (prompt.length > 1950) {
     compact.triggeringObservations = [];
     compact.recentAdvice = [];
+    factsJson = JSON.stringify(compact);
+    prompt = buildPrompt().join(String.fromCharCode(10));
+  }
+  // 大乱斗攻略是打法依据，优先保住：再瘦一轮事实（事件/强化轮次/上一版计划）之后才考虑丢。
+  if (prompt.length > 1950) {
+    compact.recentEvents = [];
+    compact.augmentRounds = [];
+    compact.priorOpeningPlan = null;
     factsJson = JSON.stringify(compact);
     prompt = buildPrompt().join(String.fromCharCode(10));
   }

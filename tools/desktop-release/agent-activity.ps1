@@ -10,6 +10,8 @@ function Select-AgentActivityRow($rows,[int]$stickyMs=5000){
  }
  # 规定：动态只占一行，随事件持续刷新（事件已并入这里，不再单独开一行/一块）。
  # 视图里的行是「最新在前」，取第一条就是最新。
+ $active=$all | Where-Object {$_.phase -eq 'running'} | Select-Object -First 1
+ if($active){return @($active)}
  return @($all | Select-Object -First 1)
 }
 foreach($name in @('AgentActivityPanel','AgentActivityScroll','AgentActivityRows','AgentActivityLatest')){$controls[$name]=$window.FindName($name)}
@@ -53,7 +55,7 @@ function Update-AgentActivity {
  if(!$script:activityJob){$controls.ActivityMenuItem.IsChecked=$activity.enabled -eq $true}
  $visible=$activity.enabled -eq $true -and $script:tab -eq 'advice' -and $script:displayMode -eq 'large' -and !$script:collapsed
  $controls.AgentActivityPanel.Visibility=if($visible){'Visible'}else{'Collapsed'}
- $controls.AgentActivityPanel.MaxHeight=[Math]::Min(132,[Math]::Max(44,$window.ActualHeight*0.22))
+ $controls.AgentActivityPanel.Height=27;$controls.AgentActivityPanel.MaxHeight=27
  if(!$activity.enabled){$controls.AgentActivityRows.Children.Clear();$script:activityNodes=@{};$script:activityRevision=-1;return}
  if(!$visible -or $script:activityRevision -eq $activity.revision){return}
  $script:activityRevision=$activity.revision;$scroll=$controls.AgentActivityScroll;$offset=$scroll.VerticalOffset
@@ -70,12 +72,13 @@ function Update-AgentActivity {
    $phase=switch([string]$row.phase){'running'{'进行中'}'queued'{'等待'}'done'{'完成'}'failed'{'失败'}'unavailable'{'不可用'}'cancelled'{'已取消'}'draft'{'草稿'}default{''}}
    $duration=if($null -ne $row.elapsedMs){' · '+([Math]::Round([double]$row.elapsedMs/1000,1))+'秒'}else{''}
    $learn=([string]$row.topic -eq '经验学习')
-   $line.Text=if($learn){'✔ '+([string]$row.label)}else{([string]$row.clock)+'  '+([string]$row.topic)+' · '+([string]$row.label)+' · '+$phase+$duration}
+   $line.ToolTip=([string]$row.clock)+' · '+([string]$row.topic)+' · '+([string]$row.label)+' · '+$phase+$duration
+   $line.Text=if($learn){'✔ '+([string]$row.label)}else{([string]$row.clock)+'  '+([string]$row.label)+$(if($row.task -eq 'events'){''}else{' · '+$phase+$duration})}
    # row.text is deliberately not rendered: it is what made each entry several lines.
-   $line.Foreground=if($learn){'#7FD1A0'}else{switch([string]$row.phase){'running'{'#E7BE79'}'failed'{'#F5AD91'}'draft'{'#AEBECE'}default{'#94A3B8'}}}
+   $line.Foreground=if($row.task -eq 'events'){switch -Regex ([string]$row.kind){'augment'{'#C8A6FF'}'inventory|purchase'{'#E7BE79'}'Ace|kill|Kill|Death|death'{'#F5AD91'}default{'#7FD1A0'}}}elseif($learn){'#7FD1A0'}else{switch([string]$row.phase){'running'{'#E7BE79'}'failed'{'#F5AD91'}'draft'{'#AEBECE'}default{'#94A3B8'}}}
   }
   foreach($id in @($script:activityNodes.Keys)){if(!$ids.ContainsKey($id)){$controls.AgentActivityRows.Children.Remove($script:activityNodes[$id]);$script:activityNodes.Remove($id)}}
-  if(!$rows.Count){$line=New-Object Windows.Controls.TextBlock;$line.Text='等待下一次分析；完成后的建议仍显示在上方。';$line.Foreground='#94A3B8';$line.FontSize=11;$line.TextWrapping='NoWrap';$line.TextTrimming='CharacterEllipsis';$controls.AgentActivityRows.Children.Clear();$controls.AgentActivityRows.Children.Add($line)|Out-Null}
+  if(!$rows.Count){$line=New-Object Windows.Controls.TextBlock;$line.Text='等待新事件或下一步分析';$line.Foreground='#94A3B8';$line.FontSize=11;$line.TextWrapping='NoWrap';$line.TextTrimming='CharacterEllipsis';$controls.AgentActivityRows.Children.Clear();$controls.AgentActivityRows.Children.Add($line)|Out-Null}
   elseif($controls.AgentActivityRows.Children.Count -gt $script:activityNodes.Count){for($i=$controls.AgentActivityRows.Children.Count-1;$i -ge 0;$i--){if($controls.AgentActivityRows.Children[$i] -notin @($script:activityNodes.Values)){$controls.AgentActivityRows.Children.RemoveAt($i)}}}
   $scroll.UpdateLayout();if($script:activityFollow){$scroll.ScrollToEnd()}else{$scroll.ScrollToVerticalOffset($offset)}
  }finally{$script:activityRendering=$false}
@@ -88,10 +91,10 @@ function Test-AgentActivitySurface {
  $activity=@{supported=$true;enabled=$true;revision=1;rows=@(1..40|ForEach-Object {@{id="trace-$_";topic='自动教练';clock='08:32';label="读取关键事件 $_";phase='done';elapsedMs=400}})}
  $script:snapshot|Add-Member -Force NoteProperty agentActivity $activity
  Set-DisplayMode 'large';Set-Tab 'advice';Update-AgentActivity;$window.UpdateLayout()
- $script:testResult.activityLargeOnly=$controls.AgentActivityPanel.IsVisible -and $controls.AgentActivityRows.Children.Count -eq 1
- $node=$script:activityNodes['trace-40'];$controls.AgentActivityScroll.ScrollToTop();$window.UpdateLayout();$script:activityFollow=$false
- $activity.rows[-1].label='读取阵容完成';$activity.revision++;Update-AgentActivity;$window.UpdateLayout()
- $script:testResult.activityIncremental=$node -eq $script:activityNodes['trace-40'] -and $node.Text.Contains('读取阵容完成')
+ $script:testResult.activityLargeOnly=$controls.AgentActivityPanel.IsVisible -and $controls.AgentActivityRows.Children.Count -eq 1 -and $controls.AgentActivityPanel.ActualHeight -le 27
+ $node=$script:activityNodes['trace-1'];$controls.AgentActivityScroll.ScrollToTop();$window.UpdateLayout();$script:activityFollow=$false
+ $activity.rows[0].label='读取阵容完成';$activity.revision++;Update-AgentActivity;$window.UpdateLayout()
+ $script:testResult.activityIncremental=$node -eq $script:activityNodes['trace-1'] -and $node.Text.Contains('读取阵容完成')
  $script:testResult.activityScrollHeld=$controls.AgentActivityScroll.ScrollableHeight -le 1 -and $controls.AgentActivityLatest.Visibility -eq 'Collapsed'
  $controls.AgentActivityLatest.RaiseEvent((New-Object Windows.RoutedEventArgs([Windows.Controls.Button]::ClickEvent)));$window.UpdateLayout()
  $script:testResult.activityLatestWorks=$controls.AgentActivityScroll.ScrollableHeight-$controls.AgentActivityScroll.VerticalOffset -lt 2

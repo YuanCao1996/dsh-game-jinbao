@@ -12,3 +12,12 @@ test('chat preserves full answers, rejects empty reply, exposes quota failure an
  await service.close();const saved=JSON.parse(await readFile(join(stateDir,'overlay-chat.json'),'utf8'));assert.ok(saved.chat.some(row=>row.text===answer));
  service=await createOverlayService({stateDir,agentChat,pollMs:100000});assert.match(service.view().chat,/请详细说明/);assert.equal((await service.ask('重启后')).answer,answer);
 });
+test('timeout and terminal cloud failures are not silently resubmitted; user turn is visible while pending',async t=>{
+ const stateDir=await mkdtemp(join(tmpdir(),'jinbao-chat-deadline-'));let calls=0,release;
+ const service=await createOverlayService({stateDir,pollMs:100000,agentChat:async()=>{calls++;await new Promise(resolve=>{release=resolve;});throw Object.assign(Error('timeout'),{status:504});}});
+ t.after(()=>service.close());
+ const pending=service.ask('看一下当前装备');const rejected=assert.rejects(pending,e=>e.status===504);
+ while(!release)await new Promise(resolve=>setTimeout(resolve,10));
+ const row=service.view().chatRows.find(r=>r.role==='user'&&r.text==='看一下当前装备');assert.ok(row.at>0);
+ release();await rejected;assert.equal(calls,1);
+});

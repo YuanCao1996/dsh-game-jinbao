@@ -116,10 +116,10 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
     </StackPanel>
     <Button x:Name="LatestMessageButton" DockPanel.Dock="Bottom" Content="回到最新消息 ↓" FontSize="11" HorizontalAlignment="Center" Visibility="Collapsed" Margin="0,4"/>
     <Border x:Name="AgentActivityPanel" DockPanel.Dock="Top" Visibility="Collapsed" BorderBrush="#34424F" BorderThickness="0,0,0,1" Margin="2,0,2,4" Padding="0,0,0,4">
-     <DockPanel MaxHeight="132">
+     <DockPanel Height="22" MaxHeight="22">
       <TextBlock DockPanel.Dock="Top" Text="智能体动态 · 实时" Foreground="#D6B278" FontSize="10" Margin="0,0,0,2" Visibility="Collapsed"/>
       <Button x:Name="AgentActivityLatest" DockPanel.Dock="Bottom" Content="回到最新过程 ↓" FontSize="10" Padding="6,2" HorizontalAlignment="Center" Visibility="Collapsed"/>
-      <ScrollViewer x:Name="AgentActivityScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"><StackPanel x:Name="AgentActivityRows"/></ScrollViewer>
+      <ScrollViewer x:Name="AgentActivityScroll" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"><StackPanel x:Name="AgentActivityRows"/></ScrollViewer>
      </DockPanel>
     </Border>
     <ScrollViewer x:Name="PageScroll" Background="Transparent" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" PanningMode="VerticalOnly">
@@ -676,6 +676,7 @@ function Update-State {
  if($script:job -and $script:job.State -in @('Completed','Failed','Stopped')){
   $result=Receive-Job $script:job -ErrorAction SilentlyContinue
   if($result -and !$result.ok -and $script:pendingQuestion -and !$controls.QuestionBox.Text){$controls.QuestionBox.Text=$script:pendingQuestion}
+  if(!$result -or !$result.ok){$script:pendingBubble=$null}
   $script:pendingQuestion=$null
   if($result -and $result.ok){$script:renderedTab=$null}
   $controls.HintText.Text=if($result -and $result.ok){'已完成'}elseif($result -and $result.message){[string]$result.message}else{'请求失败，请检查设置页的模型和服务状态。'}
@@ -725,8 +726,12 @@ function Start-Request([string]$route,[hashtable]$payload){
 function Send-Question {
  $question=$controls.QuestionBox.Text.Trim()
  if(!$question -or $script:job){return}
+ $script:pendingBubble=[pscustomobject]@{role='user';text=$question;at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();match=[string]$script:snapshot.match}
+ Update-OverlaySurface $true
+ $controls.PageScroll.ScrollToEnd()
  Start-Request 'ask' @{question=$question}
  if($script:job){$script:pendingQuestion=$question;$controls.QuestionBox.Text=''}
+ else{$script:pendingBubble=$null;Update-OverlaySurface $true}
 }
 $controls.SendButton.Add_Click({Send-Question})
 # 悬浮窗不再提供「个人/队伍」切换与队伍管理按钮：
@@ -1147,8 +1152,15 @@ try{
     $script:testResult.voiceInputPresent=$mic.Content -eq '语音'
     $script:job='ui-only';$selectionFixture.status='已联网搜索，继续分析…'
     [IO.File]::WriteAllText($stateFile,($selectionFixture|ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false));Update-State
-    $script:testResult.toolProgressVisible=$controls.ChatStatusText.Text -eq '已联网搜索，继续分析…' -and $controls.ChatStatusText.Visibility -eq 'Visible'
+    $script:testResult.toolProgressVisible=$controls.ChatStatusText.Visibility -eq 'Collapsed' -and $controls.SendButton.Content -eq '思考中'
     $script:job=$null
+    $script:pendingBubble=[pscustomobject]@{role='user';text='即时显示回归问题';at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();match=[string]$script:snapshot.match}
+    Update-OverlaySurface $true
+    $script:testResult.optimisticQuestionVisible=$script:surfaceKey.Contains('即时显示回归问题')
+    $ackBubble=[pscustomobject]@{role='user';text='即时显示回归问题';at=$script:pendingBubble.at;kind='chat'}
+    $script:snapshot | Add-Member -Force NoteProperty chatRows (@($script:snapshot.chatRows)+@($ackBubble))
+    Update-OverlaySurface $true
+    $script:testResult.optimisticQuestionAcknowledged=$null -eq $script:pendingBubble
     # 单行刷新 + 学习行短暂优先：最近学到的经验不能被紧随其后的工具调用顶掉。
     $nowMs=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $toolRow=[pscustomobject]@{id='t1';topic='自动教练';clock='06:12';label='读取当前对局';phase='running';at=$nowMs}

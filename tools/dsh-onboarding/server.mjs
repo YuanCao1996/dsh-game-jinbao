@@ -1,5 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {createLocalExploration} from './exploration-local.mjs';
+import { createAnnotations, ANNOTATION_TAGS } from './annotations.mjs';
+import { createHighlights, matchFolder } from './highlights.mjs';
 import { createBilibiliDanmaku, createViewerFilter } from '../lol-companion/danmaku-bridge.mjs';
 import { viewerReply } from '../lol-companion/viewer-reply.mjs';
 import http from 'node:http';
@@ -50,6 +52,11 @@ export async function createSetupServer({credentials,stateDir,port=3084,coachPor
  // 探索记录改为本地版：不联网、不上传、没有排行榜（排行榜/跨设备同步才需要服务器）。
 const explorationCatalog=JSON.parse(readFileSync(new URL('./exploration-catalog.json',import.meta.url),'utf8'));
 const exploration=createLocalExploration({stateDir,catalog:explorationCatalog});
+ // 批注追加式存储；高光截图默认开启（只截游戏画面、本机存储、可关闭）。
+ const annotations = createAnnotations({ stateDir });
+ const highlights = createHighlights({ stateDir, enabled: () => highlightSettings.enabled });
+ const highlightSettings = { enabled: true };
+ try { const saved = JSON.parse(await readFile(join(stateDir, 'highlights.json'), 'utf8')); if (typeof saved?.enabled === 'boolean') highlightSettings.enabled = saved.enabled; } catch {}
 
 // 打完一局自动记录探索足迹：每 20 秒看一眼当前对局，只在本局英雄/模式已确定时写入，
 // 记录本身幂等，重启后也不会重复计数。
@@ -414,6 +421,36 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
     return;
    }
    if(req.url==='/api/exploration/suggestion'&&req.method==='GET'){const view=overlay.view();send(res,200,{suggestion:currentHeroSuggestion(view),modeSuggestion:currentModeSuggestion(view)});return;}
+   const detailUrl=new URL(req.url,'http://127.0.0.1');
+   // 对局详情：回忆 + 当时的播报（云端与本地）+ 高光截图 + 批注
+   if(detailUrl.pathname==='/api/match-detail'&&req.method==='GET'){
+    const match=detailUrl.searchParams.get('match')??'';
+    if(!match)throw error(400);
+    const records=await (async()=>{try{return JSON.parse(await readFile(join(stateDir,'exploration','records.json'),'utf8'))}catch{return{matches:[]}}})();
+    const memory=(records.matches??[]).find(row=>row.id===match)??null;
+    const readLines=async name=>{try{return (await readFile(join(stateDir,'logs',name),'utf8')).split(String.fromCharCode(10)).filter(Boolean).map(line=>{try{return JSON.parse(line)}catch{return null}}).filter(Boolean)}catch{return[]}};
+    const cloud=(await readLines('coach_broadcasts.jsonl')).filter(row=>row.match===match);
+    const local=(await readLines('local-moments.jsonl')).filter(row=>row.match===match);
+    const broadcasts=[...cloud,...local].map(row=>({at:typeof row.at==='number'?row.at:Date.parse(String(row.at??'')),text:String(row.broadcast??''),key:String(row.key??row.kind??''),local:row.local===true})).filter(row=>row.text&&Number.isFinite(row.at)).sort((a,b)=>a.at-b.at);
+    const shots=await highlights.list(match);
+    const notes=await annotations.list({match});
+    send(res,200,{memory,broadcasts,shots,notes,tags:ANNOTATION_TAGS});return;
+   }
+   // 高光截图：列表 + 开关
+   if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{enabled:highlightSettings.enabled,count:(await highlights.list()).length});return;}
+   if(detailUrl.pathname==='/api/highlights'&&req.method==='POST'){const value=await body(req,1024);highlightSettings.enabled=value.enabled===true;await writeFile(join(stateDir,'highlights.json'),JSON.stringify({enabled:highlightSettings.enabled}),{mode:0o600});send(res,200,{ok:true,enabled:highlightSettings.enabled});return;}
+   // 批注：追加与查询
+   if(detailUrl.pathname==='/api/annotations'&&req.method==='POST'){const value=await body(req,4096);const entry=await annotations.add(value);send(res,200,{ok:true,entry});return;}
+   if(detailUrl.pathname==='/api/annotations'&&req.method==='GET'){const match=detailUrl.searchParams.get('match')??'';const champion=detailUrl.searchParams.get('champion')??'';send(res,200,{notes:await annotations.list({match,match:match||undefined,champion:champion||undefined}),tags:ANNOTATION_TAGS});return;}
+   // 高光图片（只允许读 highlights 索引里的文件）
+   if(detailUrl.pathname==='/api/match-shot'&&req.method==='GET'){
+    const match=detailUrl.searchParams.get('match')??'',file=detailUrl.searchParams.get('file')??'';
+    const rows=await highlights.list(match);
+    const hit=rows.find(row=>row.file===file);
+    if(!hit)throw error(404);
+    const data=await readFile(join(stateDir,'highlights',matchFolder(hit.match),hit.file));
+    res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'private, max-age=86400','Content-Length':data.length});res.end(data);return;
+   }
    if(req.url.startsWith('/api/exploration')){
     try{
      const url=new URL(req.url,'http://127.0.0.1');

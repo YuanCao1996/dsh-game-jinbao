@@ -153,6 +153,7 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
      const rawReason=String(update.error??update.reason??update.detail??'').trim();
      const quota=/quota|rate_limit|RATE_LIMIT|DAILY_QUOTA/i.test(rawReason);
      const error=fail(quota?429:503,'Cloud Agent task failed'+(rawReason?': '+rawReason.slice(0,120):''));
+     error.retryable=false;
      error.code=/^[A-Za-z0-9_.-]{1,80}$/.test(rawReason)?rawReason:(rawReason?'task_failed_detail':'task_failed');
      if(rawReason)error.detail=rawReason.slice(0,160);
      throw error;

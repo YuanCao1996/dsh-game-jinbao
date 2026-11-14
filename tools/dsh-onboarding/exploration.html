@@ -224,6 +224,35 @@ ol#ranking{padding-left:20px;margin:10px 0 0}
 /* ── 收尾 ── */
 .footnote{margin-top:42px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-faint)}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+/* 对局详情页：高光截图 + 当时播报 + 批注 */
+#matchPage{position:fixed;inset:0;z-index:40;background:rgba(28,24,18,.55);display:flex;align-items:center;justify-content:center;padding:24px}
+#matchPage[hidden]{display:none}
+.match-sheet{width:min(920px,96vw);max-height:92dvh;overflow:auto;background:var(--paper-lift);border-radius:18px;padding:26px 28px 30px;box-shadow:0 28px 80px rgba(40,30,16,.32)}
+.match-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:6px}
+.match-head h3{margin:0;font-size:20px;font-weight:650}
+.match-head .meta{font-size:12.5px;color:var(--ink-faint);margin-top:4px}
+.match-close{border:0;background:transparent;font-size:22px;line-height:1;color:var(--ink-faint);cursor:pointer;padding:4px 8px;border-radius:8px}
+.match-close:hover{background:rgba(122,102,72,.08);color:var(--ink)}
+.shot-strip{display:flex;gap:10px;overflow-x:auto;padding:8px 2px 12px}
+.shot-strip a{flex:0 0 auto;display:block;border-radius:10px;overflow:hidden;border:1px solid var(--line);position:relative}
+.shot-strip img{display:block;width:168px;height:94px;object-fit:cover}
+.shot-strip span{position:absolute;left:6px;bottom:6px;font-size:11px;padding:1px 6px;border-radius:6px;background:rgba(20,16,10,.62);color:#fff}
+.shot-empty{font-size:13px;color:var(--ink-faint);padding:10px 2px 14px}
+.line-list{display:flex;flex-direction:column;gap:8px;margin:6px 0 4px}
+.line-row{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:rgba(122,102,72,.05)}
+.line-row time{flex:0 0 auto;font-size:12px;color:var(--ink-faint);font-variant-numeric:tabular-nums;padding-top:2px}
+.line-row .txt{font-size:13.5px;line-height:1.55;color:var(--ink)}
+.line-row .tag{flex:0 0 auto;font-size:11px;padding:1px 6px;border-radius:6px;border:1px solid var(--line);color:var(--ink-faint)}
+.note-box{margin-top:16px;border-top:1px dashed var(--line);padding-top:14px}
+.note-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.note-tags button{font:inherit;font-size:12.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink-soft);cursor:pointer}
+.note-tags button[aria-pressed="true"]{background:var(--ochre-soft);border-color:rgba(169,118,47,.4);color:var(--ochre)}
+.note-box textarea{width:100%;min-height:64px;font:inherit;font-size:13.5px;padding:10px;border-radius:10px;border:1px solid var(--line);background:#fff;resize:vertical}
+.note-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:8px}
+.note-actions button{font:inherit;font-size:13px;padding:7px 16px;border-radius:10px;border:1px solid var(--line);background:#fff;cursor:pointer}
+.note-actions button[data-primary]{background:var(--ochre);border-color:var(--ochre);color:#fff}
+.note-item{font-size:13px;color:var(--ink-soft);padding:7px 0;border-bottom:1px dashed rgba(122,102,72,.16)}
+.note-item b{font-weight:600;color:var(--ink)}
 @media(max-width:720px){
   main{padding:18px 16px 56px}
   .hero{padding:24px 20px}
@@ -309,7 +338,31 @@ ol#ranking{padding-left:20px;margin:10px 0 0}
   <button id="memoryClose" aria-label="关闭">×</button>
   <div id="memoryBody"></div>
 </aside>
-</main><script>
+</main>
+<div id="matchPage" hidden>
+  <div class="match-sheet" role="dialog" aria-modal="true" aria-label="对局详情">
+    <div class="match-head">
+      <div>
+        <h3 id="matchTitle">对局详情</h3>
+        <div class="meta" id="matchMeta"></div>
+      </div>
+      <button class="match-close" id="matchClose" aria-label="关闭">×</button>
+    </div>
+    <div class="drawer-sec">关键截图</div>
+    <div class="shot-strip" id="matchShots"></div>
+    <div class="drawer-sec">当时的播报</div>
+    <div class="line-list" id="matchBroadcasts"></div>
+    <div class="note-box">
+      <div class="drawer-sec" style="margin-top:0">记一笔（会记进你的偏好，下次他会记得）</div>
+      <div class="note-tags" id="matchTags"></div>
+      <textarea id="matchNoteText" placeholder="这局想对他说什么？例如：别老让我出肉，我想打输出"></textarea>
+      <div class="note-actions">
+        <button id="matchNoteSave" data-primary>保存批注</button>
+      </div>
+      <div id="matchNotes" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div><script>
 function iconsAllowed(){try{return localStorage.getItem("jinbao-icons-allowed")!=="0"}catch{return true}}
 window.jinbaoIconsAllowed=function(value){try{localStorage.setItem("jinbao-icons-allowed",value?"1":"0")}catch{}location.reload()};
 const incomingNonce=location.hash.slice(1);let nonce=incomingNonce;
@@ -456,8 +509,10 @@ function openMemory(name,done,data,game,season,category){
       +'</div>'
     +'</div>'
     +(total
-      ?'<div class="drawer-sec">最近的对局</div>'+rows.map(row=>(
-          '<div class="recall-mini">'
+      ?'<div class="drawer-sec">成长概览</div>'
+        +'<div class="statline" style="margin:2px 0 12px">'+esc(growthLine(rows))+'</div>'
+        +'<div class="drawer-sec">最近的对局（点击查看高光与批注）</div>'+rows.map(row=>(
+          '<div class="recall-mini" data-match="'+esc(row.id||'')+'" style="cursor:pointer">'
           +'<div class="row"><span>'+esc(fmtDay(row.endedAt))+' '+esc(fmtTime(row.endedAt))+'</span>'
             +'<span class="badge" data-win="'+resultKey(row)+'">'+esc(resultLabel(row))+' · '+mins(row.durationSeconds)+' 分钟</span></div>'
           +'<div class="kda-sm"><em style="font-style:normal;color:var(--ink-faint);font-weight:400;font-size:12px;margin-right:6px">KDA</em>'+esc(kdaText(row))+'</div>'
@@ -471,6 +526,8 @@ function openMemory(name,done,data,game,season,category){
       :'<div class="trail-empty" style="margin-top:6px">从下一局开始，这里会记录和它一起打的每局：KDA、这局拿了哪些海克斯、有没有三杀团灭。</div>')
     +'<button id="memoryMark" class="mark-btn" data-done="'+done+'">'+(done?'取消「已探索」标记':'标记为已探索')+'</button>';
   drawer.hidden=false;
+  // 每局卡片可点进详情：高光截图 + 当时播报 + 批注
+  drawer.querySelectorAll('[data-match]').forEach(node=>{node.onclick=()=>openMatch(node.dataset.match);});
   $('memoryClose').onclick=()=>{drawer.hidden=true};
   $('memoryMark').onclick=()=>run(async()=>{
     if(!confirm(done?'确认撤销这个探索记录？':'标记为已探索？仅真正玩过才计入。'))return;
@@ -489,6 +546,123 @@ function checkMilestone(count){
   if(seen>=reached)return null;
   try{localStorage.setItem('jinbao-exploration-milestone',String(reached))}catch{}
   return reached;
+}
+
+function growthLine(rows){
+  if(!rows||!rows.length)return '还没有本机对局记录';
+  const wins=rows.filter(row=>resultKey(row)==='win').length;
+  const best=rows.map(row=>(row.kda||[]).filter(Number.isFinite))
+    .filter(k=>k.length===3)
+    .sort((a,b)=>((b[0]+b[2])/Math.max(1,b[1]))-((a[0]+a[2])/Math.max(1,a[1])))[0];
+  const augments=new Set();rows.forEach(row=>(row.augments||[]).forEach(a=>augments.add(a)));
+  const marks=new Set();rows.forEach(row=>(row.highlights||[]).forEach(h=>marks.add(h)));
+  return '共 '+rows.length+' 局 · '+wins+' 胜 '+(rows.length-wins)+' 负'
+    +(best?(' · 最佳 '+best.join('/')):'')
+    +' · 收集海克斯 '+augments.size+' 个'
+    +(marks.size?(' · 高光 '+marks.size+' 次'):'');
+}
+
+function fmtMatchClock(at){
+  const date=new Date(Number(at)||0);
+  const pad=n=>String(n).padStart(2,'0');
+  return pad(date.getHours())+':'+pad(date.getMinutes())+':'+pad(date.getSeconds());
+}
+
+async function openMatch(matchId){
+  if(!matchId)return;
+  const page=$('matchPage');
+  if(!page)return;
+  page.hidden=false;
+  $('matchTitle').textContent='对局详情';
+  $('matchMeta').textContent='正在读取…';
+  $('matchShots').innerHTML='';
+  $('matchBroadcasts').innerHTML='';
+  $('matchNotes').innerHTML='';
+  $('matchNoteText').value='';
+  let data=null;
+  try{
+    data=await fetch('/api/match-detail?match='+encodeURIComponent(matchId)).then(r=>r.ok?r.json():null);
+  }catch{}
+  if(!data){$('matchMeta').textContent='读取失败，请稍后重试';return;}
+  const memory=data.memory||{};
+  const title=(memory.entity||'对局')+' · '+(resultKey(memory)==='win'?'胜利':resultKey(memory)==='lose'?'失败':'结果未知');
+  $('matchTitle').textContent=title;
+  $('matchMeta').textContent=[
+    memory.endedAt?fmtDay(memory.endedAt)+' '+fmtTime(memory.endedAt):'',
+    memory.durationSeconds?mins(memory.durationSeconds)+' 分钟':'',
+    (memory.kda&&memory.kda.length)?('KDA '+kdaText(memory.kda)):'',
+    (memory.items&&memory.items.length)?(memory.items.slice(0,4).join('、')):''
+  ].filter(Boolean).join(' · ');
+
+  const shots=Array.isArray(data.shots)?data.shots:[];
+  if(shots.length){
+    $('matchShots').innerHTML=shots.map(shot=>(
+      '<a href="/api/match-shot?match='+encodeURIComponent(matchId)+'&file='+encodeURIComponent(shot.file)+'" target="_blank" rel="noopener">'
+      +'<img loading="lazy" src="/api/match-shot?match='+encodeURIComponent(matchId)+'&file='+encodeURIComponent(shot.file)+'" alt="'+esc(shot.label||'高光')+'">'
+      +'<span>'+esc(shot.label||'高光')+'</span></a>'
+    )).join('');
+  }else{
+    $('matchShots').innerHTML='<div class="shot-empty">这一局没有留下截图（关键事件：多杀/团灭/破水晶/大龙/首杀）</div>';
+  }
+
+  const lines=Array.isArray(data.broadcasts)?data.broadcasts:[];
+  if(lines.length){
+    $('matchBroadcasts').innerHTML=lines.map(line=>(
+      '<div class="line-row"><time>'+esc(fmtMatchClock(line.at))+'</time>'
+      +'<span class="txt">'+esc(line.text)+'</span>'
+      +(line.local?'<span class="tag">当场的反应</span>':'')
+      +'</div>'
+    )).join('');
+  }else{
+    $('matchBroadcasts').innerHTML='<div class="shot-empty">这一局没有播报记录</div>';
+  }
+
+  const tags=Array.isArray(data.tags)?data.tags:[];
+  const selected=new Set();
+  $('matchTags').innerHTML=tags.map(tag=>(
+    '<button type="button" data-tag="'+esc(tag)+'" aria-pressed="false">'+esc(tag)+'</button>'
+  )).join('');
+  $('matchTags').querySelectorAll('button[data-tag]').forEach(btn=>{
+    btn.onclick=()=>{
+      const tag=btn.dataset.tag;
+      if(selected.has(tag)){selected.delete(tag);btn.setAttribute('aria-pressed','false');}
+      else{selected.add(tag);btn.setAttribute('aria-pressed','true');}
+    };
+  });
+
+  const renderNotes=notes=>{
+    if(!notes||!notes.length){$('matchNotes').innerHTML='';return;}
+    $('matchNotes').innerHTML=notes.slice().reverse().map(note=>(
+      '<div class="note-item"><b>'+esc(fmtDay(note.at))+' '+esc(fmtTime(note.at))+'</b>'
+      +(note.tags&&note.tags.length?(' · '+esc(note.tags.join('、'))):'')
+      +(note.text?('<br>'+esc(note.text)):'')+'</div>'
+    )).join('');
+  };
+  renderNotes(data.notes||[]);
+
+  $('matchNoteSave').onclick=async()=>{
+    const text=$('matchNoteText').value.trim();
+    const picked=[...selected];
+    if(!text&&!picked.length){alert('选个标签或写一句话再保存');return;}
+    $('matchNoteSave').disabled=true;
+    try{
+      const response=await fetch('/api/annotations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
+        match:matchId, game:'lol', champion:memory.entity||'', text, tags:picked,
+        sentiment:picked.some(tag=>/不对|太啰嗦|别念/.test(tag))?'negative':picked.some(tag=>/很有用|夸得不错/.test(tag))?'positive':'neutral'
+      })});
+      if(!response.ok)throw new Error('保存失败');
+      const saved=await response.json();
+      data.notes=(data.notes||[]).concat(saved.entry||[]);
+      renderNotes(data.notes);
+      $('matchNoteText').value='';
+      selected.clear();
+      $('matchTags').querySelectorAll('button[data-tag]').forEach(btn=>btn.setAttribute('aria-pressed','false'));
+    }catch(error){alert('保存失败：'+(error.message||'未知'));}
+    finally{$('matchNoteSave').disabled=false;}
+  };
+
+  $('matchClose').onclick=()=>{page.hidden=true;};
+  page.onclick=event=>{if(event.target===page)page.hidden=true;};
 }
 
 async function refresh(){
