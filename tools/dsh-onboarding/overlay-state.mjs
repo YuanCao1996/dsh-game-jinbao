@@ -1354,8 +1354,6 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       // 开局问候 / 阵亡反应 / 结束语 / 长时间沉默兜底：每局固定几句人味。
       settleHumanMoments(state, Date.now(), { role: await currentPraiseRole(), clock: state.gameSeconds, ended: state.ended === true, win: state.matchWin ?? null });
       await flush();
-      // 事实过期（日志静默）时不再出装建议：实测对局结束后仍按旧快照推荐了 6 分钟。
-      if(!(Number.isFinite(state.at) && Date.now()-state.at <= 120000)) return state;
       if(!knowledge.loading)equipmentCoach.tick();
     } catch {} finally { scanning = false; }
   }
@@ -1373,8 +1371,6 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       source:team?'team-user-confirmed':timeoutDefault?'countdown-default-confirmed':'user-confirmed',confidence:'high',time:state.gameSeconds,
       ...(team&&round?.confirmationSource==='countdown-default-confirmed'?{replaces:[...round.confirmed]}:{})})};
     await appendFile(join(logs,'lol-user-confirmations.jsonl'),JSON.stringify(event)+'\n',{mode:0o600});
-    // 事实过期（日志静默）时不再出装建议：实测对局结束后仍按旧快照推荐了 6 分钟。
-    if(!(Number.isFinite(state.at) && Date.now()-state.at <= 120000)) return state;
     router.apply(event,'lol-user-confirmations.jsonl');equipmentCoach.invalidate();await flush();equipmentCoach.tick();return {confirmed:!dismiss};
   }
   return {
