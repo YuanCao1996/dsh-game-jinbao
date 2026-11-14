@@ -36,6 +36,11 @@ FRAME_EXTS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}
 
 
 def find_ffmpeg() -> str | None:
+    """找 ffmpeg：先看本仓库 bin/（随工具一起放，免装系统级），再看 PATH。"""
+    here = Path(__file__).resolve().parent
+    for candidate in (here / 'bin' / 'ffmpeg.exe', here / 'bin' / 'ffmpeg'):
+        if candidate.is_file():
+            return str(candidate)
     for name in ('ffmpeg', 'ffmpeg.exe'):
         path = shutil.which(name)
         if path:

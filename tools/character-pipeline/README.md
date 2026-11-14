@@ -59,6 +59,28 @@ assets/pet/static.png    ← 全局立绘（只画一张时放这里，最省事
 3. 生成规格：16:9 或 1:1、纯绿幕、人物位置固定、动作全程在画幅内
 4. 导出帧序列（或用我们的管线读 mp4，需要本机有 ffmpeg）
 
+## 视频输入（mp4）怎么用
+
+管线支持直接喂 mp4，但**需要本机有 ffmpeg**（读视频、按 fps 抽帧）。
+仓库里已经备了一键脚本，装到工具自己的 `bin/` 下，不污染系统 PATH：
+
+```powershell
+# 一次性，约 29MB 下载 / 81MB 落地（走 npmmirror，国内十几 MB/s）
+powershell -File tools\character-pipeline\fetch-ffmpeg.ps1
+
+# 之后管线会自动优先用 bin\ffmpeg.exe，其次才是 PATH 里的 ffmpeg
+```
+
+> 不要用官方 gyan.dev 直链（实测只有 40–50 KB/s，114MB 要下两小时）；
+> 脚本默认走的 `registry.npmmirror.com/-/binary/ffmpeg-static/` 是同一份 essentials 构建，实测 ~17 MB/s。
+
+没有 ffmpeg 也能干活：用剪映 / PR / PotPlayer 把视频**导出成 PNG 序列**，
+放进一个目录，再让管线读目录：
+
+```powershell
+& $py tools\character-pipeline\pipeline.py --input "D:\art\idle\frames" --name idle --out tools\desktop-release\assets\pet
+```
+
 ## 四、跑素材链（抠像 → 归一化 → 播放资源）
 
 ```powershell
@@ -99,6 +121,10 @@ assets/pet/idle/action.json        ← 帧数/fps/时长/体积
 # 跑管线
 & $py tools\character-pipeline\pipeline.py --input D:\tmp\frames --name idle --out tools\desktop-release\assets\pet
 
+# 视频输入这条路（打包成 mp4 再让管线解码，验证 ffmpeg 全链）
+& $py tools\character-pipeline\tests\make-test-mp4.py --out D:\tmp\test-green.mp4
+& $py tools\character-pipeline\pipeline.py --input D:\tmp\test-green.mp4 --name selftest --out D:\tmp\out
+
 # 状态映射回归
 powershell -File tools\desktop-release\tests\overlay-pet.test.ps1
 
@@ -110,7 +136,12 @@ powershell -File <安装目录>\tools\desktop-release\strategy-overlay.ps1 `
   -StateDir $env:TEMP\jinbao-pet-preview -PreviewPath D:\tmp\overlay.png -PreviewTab advice -SelfTest
 ```
 
-## 六、版权提醒
+## 六、素材来源留档
+
+每次换形象都往 [ORIGIN.md](ORIGIN.md) 追加一条：生成工具、时间、提示词、抠像参数、可商用判断。
+正式收费前按那份记录复核一遍条款。
+
+## 七、版权提醒
 
 - 只用**自己原创或已获授权**的角色，不要使用他人成品图（包括网上"看着合适"的图）
 - 参考风格可以（风格不受版权保护），但角色特征（发型/服装/配色组合）要保持差异

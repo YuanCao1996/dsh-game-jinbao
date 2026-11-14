@@ -1,0 +1,7 @@
+# 管线自己的临时产物与第三方二进制不进 git
+__pycache__/
+*.pyc
+bin/ffmpeg.exe
+bin/ffprobe.exe
+tests/out/
+.work/
