@@ -81,10 +81,31 @@ Check '回到窄条继续算在说' 'talk' (& $idleSnap)
 $script:activePlayback = $false
 $script:playbackPhase = 'idle'
 
+# 挂机睡觉：这条判定以前只写在没人调用的 Update-PetLayer 里，所以永远进不去
+$script:activePlayback = $false
+$script:displayMode = 'narrow'
+$script:petIdleSince = [DateTime]::Now
+Check '刚待机不睡' 'idle' (& $idleSnap)
+
+$script:petIdleSince = (Get-Date).AddMinutes(-11)
+Check '挂机 11 分钟睡着' 'sleep' (& $idleSnap)
+
+# 有播报在放就不算挂机，并且要把计时器重置
+$script:petIdleSince = (Get-Date).AddMinutes(-11)
+$script:activePlayback = $true
+$script:playbackPhase = 'linger'
+Reset-SpeechProbe
+Check '有话在放不睡' 'idle' (& $idleSnap)
+# 这个文件的 Check 只比对状态名，计时器得直接断言
+Get-PetState -Snapshot (& $idleSnap) | Out-Null
+if (([DateTime]::Now - $script:petIdleSince).TotalMinutes -ge 1) { $failures.Add('有话在放会重置计时') }
+$script:activePlayback = $false
+$script:petIdleSince = [DateTime]::Now
+
 Remove-Item -Recurse -Force $stateDir -ErrorAction SilentlyContinue
 
 if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1
 }
-Write-Output 'overlay-pet: 状态映射 20/20 通过'
+Write-Output 'overlay-pet: 状态映射 24/24 通过'

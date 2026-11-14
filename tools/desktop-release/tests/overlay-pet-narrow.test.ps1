@@ -75,10 +75,17 @@ Update-NarrowPet -Snapshot ([pscustomobject]@{ phase = 'InProgress' }) -Force
 Check '调大尺寸触发重新排版' ($script:metricsCalls -ge 1)
 Check '尺寸确实生效' ($script:narrowPetSize -eq 88)
 
+# 7) 跨局不能带着旧的挂机计时：大厅候场要把计时清零，否则新局一开就判成睡觉
+[IO.File]::WriteAllText($petFile, '{"enabled":true,"size":56}', [Text.UTF8Encoding]::new($false))
+$script:narrowPetConfigAt = [DateTime]::MinValue
+$script:petIdleSince = (Get-Date).AddMinutes(-30)
+Update-NarrowPet -Snapshot ([pscustomobject]@{ phase = 'Lobby' }) -Force
+Check '大厅候场会重置挂机计时' ((([DateTime]::Now - $script:petIdleSince).TotalMinutes -lt 1))
+
 Remove-Item -Recurse -Force $stateDir, $root -ErrorAction SilentlyContinue
 
 if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1
 }
-Write-Output 'overlay-pet: 收起形态形象 12/12 通过'
+Write-Output 'overlay-pet: 收起形态形象 13/13 通过'

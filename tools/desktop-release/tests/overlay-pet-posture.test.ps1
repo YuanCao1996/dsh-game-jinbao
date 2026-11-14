@@ -75,8 +75,22 @@ $afterStop = Get-Parts $image
 Check '停说话后旋转还在' ($null -ne $afterStop.Rotate)
 Check '停说话后呼吸恢复' ($script:petBreathing -eq $true)
 
+# 5) 胜利要跳两下：以前 win 和待机一模一样，赢了没有任何反馈
+Set-PetPosture -Control $image -State 'win'
+Check '胜利姿态不歪不淡' ((Get-Angle $parts.Rotate) -eq 0 -and $image.Opacity -eq 1)
+Start-PetCheer -Control $image
+Check '标记为庆祝中' ($script:petCheering -eq $true)
+$afterCheer = Get-Parts $image
+Check '跳动施加在位移上' ($afterCheer.Move.HasAnimatedProperties -eq $true)
+Check '放大施加在缩放上' ($afterCheer.Scale.HasAnimatedProperties -eq $true)
+Check '胜利时旋转仍在' ($null -ne $afterCheer.Rotate)
+
+Stop-PetCheer -Control $image
+Check '停庆祝后标记复位' ($script:petCheering -eq $false)
+Check '停庆祝后呼吸恢复' ($script:petBreathing -eq $true)
+
 if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1
 }
-Write-Output 'overlay-pet: 状态姿态 14/14 通过'
+Write-Output 'overlay-pet: 状态姿态 20/20 通过'

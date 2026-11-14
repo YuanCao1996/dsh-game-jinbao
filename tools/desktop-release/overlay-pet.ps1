@@ -17,6 +17,7 @@ $script:petControl = $null
 $script:petRoot = ''
 $script:petIdleSince = [DateTime]::Now
 $script:petEnabled = $true
+$script:petCheering = $false
 # 气泡里的帧动画（和全身那套 petTimer 分开：气泡只在窄条可见时才转）
 $script:narrowPetTimer = $null
 $script:narrowPetIndex = 0
@@ -282,20 +283,28 @@ function Get-PetState {
   $rows = @($Snapshot.agentActivity.rows)
   $working = @($rows | Where-Object { $_ -and ([string]$_.phase -eq 'running' -or [string]$_.phase -eq 'draft') })
   if ($working.Count) { return 'think' }
-  if ($phase -eq 'InProgress') { return 'idle' }
+  if ($phase -eq 'InProgress') {
+    # 挂机睡觉：判定放在这里，窄条才用得上。
+    # 之前这条逻辑只写在 Update-PetLayer 里，而那个函数全仓没人调用，
+    # 于是「睡觉」永远进不去——姿态表里那一行等于死代码。
+    $busy = $false
+    try { if ($script:activePlayback) { $busy = $true } } catch { }
+    if ($busy) {
+      $script:petIdleSince = [DateTime]::Now
+      return 'idle'
+    }
+    if (([DateTime]::Now - $script:petIdleSince).TotalMinutes -ge 10) { return 'sleep' }
+    return 'idle'
+  }
   return 'wait'
 }
 
 function Update-PetLayer {
   param($Snapshot)
   if (-not $script:petEnabled -or -not $script:petControl) { return }
+  # 挂机睡觉的判定已经进 Get-PetState（窄条和大框共用同一套），这里不再重复
   $desired = Get-PetState -Snapshot $Snapshot
-  if ($desired -eq 'idle') {
-    $rows = @($Snapshot.agentActivity.rows)
-    if (([DateTime]::Now - $script:petIdleSince).TotalMinutes -ge 10 -and -not $rows.Count) { $desired = 'sleep' }
-  } else {
-    $script:petIdleSince = [DateTime]::Now
-  }
+  if ($desired -ne 'idle' -and $desired -ne 'sleep') { $script:petIdleSince = [DateTime]::Now }
   if ($desired -eq $script:petState) { return }
   $frames = Load-PetAction -Root $script:petRoot -Name $desired
   if (-not $frames) {
@@ -447,6 +456,9 @@ function Update-NarrowPet {
   if (-not $script:narrowPetVisible) { return }
   $desired = Get-PetState -Snapshot $Snapshot
   if (-not $desired) { return }
+  # 只要不是待机/睡觉就把挂机计时清零：否则打完一局回到大厅再进新局，
+  # 旧的 10 分钟会立刻把它判成睡觉，新局一开始就趴着。
+  if ($desired -ne 'idle' -and $desired -ne 'sleep') { $script:petIdleSince = [DateTime]::Now }
   $frames = Get-NarrowAction -Root $script:petRoot -State $desired
   if (-not $frames) { return }
   if ($script:narrowPetState -eq $desired) {
@@ -461,6 +473,8 @@ function Update-NarrowPet {
   $script:narrowPetControl.Source = $frames[0]
   if ($frames.Count -gt 1) { Start-NarrowPetAnimation } else { Stop-NarrowPetAnimation }
   Set-PetPosture -Control $script:narrowPetControl -State $desired
+  # 结算胜利要有反应：赢了跳两下，离开胜利状态就停并回到呼吸
+  if ($desired -eq 'win') { Start-PetCheer -Control $script:narrowPetControl } else { Stop-PetCheer -Control $script:narrowPetControl }
   if ($desired -eq 'talk') { Start-PetTalk -Control $script:narrowPetControl } else { Stop-PetTalk -Control $script:narrowPetControl }
 }
 
@@ -503,6 +517,55 @@ function Set-PetPosture {
     }
     $Control.Opacity = [double]$entry.opacity
     $script:petPostureState = $State
+  } catch { }
+}
+
+# ── 胜利时的小动作 ───────────────────────────────────────────
+# 结算胜利以前和待机一模一样（姿态表里 win 就是 0°/1.0），赢了没有任何反馈。
+# 这里用三下轻快的上跳 + 轻微放大表示"赢了"，播完自动回到呼吸基线。
+function Start-PetCheer {
+  param($Control)
+  if (-not $Control) { return }
+  try {
+    $parts = Get-PetTransformGroup -Control $Control
+    if (-not $parts) { return }
+    $duration = [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(420))
+    $times = [System.Windows.Media.Animation.RepeatBehavior]::new([double]3)
+    $lift = New-Object System.Windows.Media.Animation.DoubleAnimation(0.0, -4.0, $duration)
+    $lift.AutoReverse = $true
+    $lift.RepeatBehavior = $times
+    $lift.EasingFunction = New-Object System.Windows.Media.Animation.SineEase
+    $pulse = New-Object System.Windows.Media.Animation.DoubleAnimation(1.0, 1.06, $duration)
+    $pulse.AutoReverse = $true
+    $pulse.RepeatBehavior = $times
+    $pulse.EasingFunction = New-Object System.Windows.Media.Animation.SineEase
+    # 跳完要回到呼吸，否则那条属性上的动画结束后形象会僵住
+    $lift.Add_Completed({
+      try {
+        $script:petCheering = $false
+        Start-PetBreathing -Control $Control
+      } catch { }
+    })
+    $parts.Move.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $lift)
+    $parts.Scale.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleXProperty, $pulse)
+    $parts.Scale.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleYProperty, $pulse)
+    $script:petCheering = $true
+  } catch { }
+}
+
+function Stop-PetCheer {
+  param($Control)
+  if (-not $Control) { return }
+  if (-not $script:petCheering) { return }
+  try {
+    $parts = Get-PetTransformGroup -Control $Control
+    if ($parts) {
+      $parts.Move.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $null)
+      $parts.Scale.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleXProperty, $null)
+      $parts.Scale.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleYProperty, $null)
+    }
+    $script:petCheering = $false
+    Start-PetBreathing -Control $Control
   } catch { }
 }
 
