@@ -295,7 +295,71 @@ function Update-NarrowPet {
   if (-not $desired) { return }
   $frames = Load-PetAction -Root $script:petRoot -Name $desired
   if (-not $frames) { return }
-  if ($script:narrowPetState -eq $desired) { return }
+  if ($script:narrowPetState -eq $desired) {
+    # 状态没变也要保证动画跟随（例如从 talk 回到 idle）
+    if ($desired -eq 'talk') { Start-PetTalk -Control $script:narrowPetControl } else { Stop-PetTalk -Control $script:narrowPetControl }
+    return
+  }
   $script:narrowPetState = $desired
   $script:narrowPetControl.Source = $frames[0]
+  if ($desired -eq 'talk') { Start-PetTalk -Control $script:narrowPetControl } else { Stop-PetTalk -Control $script:narrowPetControl }
+}
+
+# ── 说话时的细微动作 ─────────────────────────────────────────
+# 只有一张静态立绘时，"在说话"要看得出来：用点头 + 轻微竖向挤压代替张嘴。
+# 和呼吸共用一个 RenderTransformGroup（呼吸仍是基线，说话时叠加更快的一层）。
+function Start-PetTalk {
+  param($Control)
+  if (-not $Control) { return }
+  try {
+    if (-not $Control.RenderTransform -or $Control.RenderTransform -isnot [System.Windows.Media.TransformGroup]) {
+      $group = New-Object System.Windows.Media.TransformGroup
+      $scale = New-Object System.Windows.Media.ScaleTransform(1.0, 1.0)
+      $move = New-Object System.Windows.Media.TranslateTransform(0, 0)
+      $group.Children.Add($scale) | Out-Null
+      $group.Children.Add($move) | Out-Null
+      $Control.RenderTransform = $group
+      $Control.RenderTransformOrigin = New-Object System.Windows.Point(0.5, 1.0)
+    }
+    $group = [System.Windows.Media.TransformGroup]$Control.RenderTransform
+    $move = $null
+    $scale = $null
+    foreach ($child in $group.Children) {
+      if ($child -is [System.Windows.Media.TranslateTransform]) { $move = $child }
+      if ($child -is [System.Windows.Media.ScaleTransform]) { $scale = $child }
+    }
+    if (-not $move -or -not $scale) { return }
+    # 点头：向下 1.2px 再回位，0.5 秒一个来回
+    $nod = New-Object System.Windows.Media.Animation.DoubleAnimation(0.0, 1.2, ([System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(260))))
+    $nod.AutoReverse = $true
+    $nod.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+    $nod.EasingFunction = New-Object System.Windows.Media.Animation.SineEase
+    # 张嘴的近似：竖向轻微压缩 2%，和点头同频
+    $mouth = New-Object System.Windows.Media.Animation.DoubleAnimation(1.0, 0.98, ([System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(260))))
+    $mouth.AutoReverse = $true
+    $mouth.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+    $mouth.EasingFunction = New-Object System.Windows.Media.Animation.SineEase
+    $move.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $nod)
+    $scale.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleYProperty, $mouth)
+    $script:petTalking = $true
+  } catch { }
+}
+
+function Stop-PetTalk {
+  param($Control)
+  if (-not $Control) { return }
+  try {
+    if ($Control.RenderTransform -is [System.Windows.Media.TransformGroup]) {
+      $group = [System.Windows.Media.TransformGroup]$Control.RenderTransform
+      foreach ($child in $group.Children) {
+        if ($child -is [System.Windows.Media.TranslateTransform]) {
+          $child.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $null)
+        }
+        if ($child -is [System.Windows.Media.ScaleTransform]) {
+          $child.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleYProperty, $null)
+        }
+      }
+    }
+    $script:petTalking = $false
+  } catch { }
 }

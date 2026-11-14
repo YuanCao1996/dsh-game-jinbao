@@ -74,11 +74,62 @@ function Split-Subtitle([string]$value,[double]$width){
  }
  if($line){$lines.Add($line)};return $lines.ToArray()
 }
+
+# 打字机效果：当前这句逐字出现，读完再整句高亮。
+# 只用在字幕形态（真·人物说话的场景）：跑马灯是横向滚动，逐字出现会和滚动打架。
+function Get-TypingText([string]$text, [int]$count) {
+  if (-not $text) { return '' }
+  $total = $text.Length
+  if ($count -ge $total) { return $text }
+  if ($count -le 0) { return '' }
+  return $text.Substring(0, $count)
+}
+
+$script:typingTimer = $null
+$script:typingControl = $null
+$script:typingText = ''
+$script:typingIndex = 0
+
+function Stop-Typing {
+  if ($script:typingTimer) { $script:typingTimer.Stop(); $script:typingTimer = $null }
+  $script:typingControl = $null
+  $script:typingText = ''
+  $script:typingIndex = 0
+}
+
+function Show-TypedText {
+  param($Control, [string]$Text, [int]$IntervalMs = 26)
+  if (-not $Control) { return }
+  Stop-Typing
+  if (-not $Text) { $Control.Text = ''; return }
+  # 太短的句子直接出，别让人等
+  if ($Text.Length -le 3) { Set-HighlightedText $Control $Text; return }
+  $script:typingControl = $Control
+  $script:typingText = $Text
+  $script:typingIndex = 0
+  $Control.Text = ''
+  $script:typingTimer = New-Object Windows.Threading.DispatcherTimer
+  $script:typingTimer.Interval = [TimeSpan]::FromMilliseconds([Math]::Max(12, $IntervalMs))
+  $script:typingTimer.Add_Tick({
+    if (-not $script:typingControl) { Stop-Typing; return }
+    $script:typingIndex += 1
+    $script:typingControl.Text = Get-TypingText $script:typingText $script:typingIndex
+    if ($script:typingIndex -ge $script:typingText.Length) {
+      $finished = $script:typingControl
+      $whole = $script:typingText
+      Stop-Typing
+      Set-HighlightedText $finished $whole
+    }
+  })
+  $script:typingTimer.Start()
+}
+
 function Push-Subtitle([string]$line,[bool]$animate=$true){
  $characters=0;$elements=[Globalization.StringInfo]::GetTextElementEnumerator($line);while($elements.MoveNext()){$characters++}
   # 句号/问号结尾多停一会儿，逗号处略停，读起来更像说话。
  $tailBonus=if($line -match '[。！？]$'){600}elseif($line -match '[，；：]$'){250}else{0}
  $script:subtitleBaseHold=[Math]::Max(900,[Math]::Min(4200,950+$characters*75+$tailBonus))
+ Stop-Typing
  $script:subtitleRows.Add($line);while($script:subtitleRows.Count -gt 3){$script:subtitleRows.RemoveAt(0)}
  $height=$script:subtitleRowHeight;$duration=if($script:playbackAccelerated){120}else{240}
  $names=@('OutgoingSubtitle','PreviousSubtitle','NarrowText');$count=$script:subtitleRows.Count
@@ -88,7 +139,9 @@ function Push-Subtitle([string]$line,[bool]$animate=$true){
   if($index -lt 0){$view.Text='';$view.Tag=$null;continue}
   # 字幕模式只显示两行：最旧那行（Outgoing）留空，视线上只有上一句和当前句。
   if($i -eq 0 -and $script:subtitleMode){$view.Text='';$view.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$view.Opacity=0;continue}
-  Set-HighlightedText $view $script:subtitleRows[$index]
+  $rowText=$script:subtitleRows[$index]
+  # 字幕形态用打字机逐字出现；跑马灯是横向滚动，保持整句。
+  if($script:subtitleMode -and !$SelfTest -and $i -eq 2){Show-TypedText -Control $view -Text $rowText -IntervalMs 26}else{Set-HighlightedText $view $rowText}
   $view.Width=(Get-NarrowWidth);$view.TextAlignment=if($script:narrowPetVisible){'Left'}else{'Center'}
   [Windows.Controls.Canvas]::SetTop($view,($i-1)*$height);[Windows.Controls.Canvas]::SetLeft($view,0)
   $view.Opacity=if($i -eq 0){0}else{1}
