@@ -104,3 +104,54 @@ test('换对局后记忆重置', () => {
   assert.equal(state.humanMoments.match, 'm#2');
   assert.deepEqual(state.humanMoments.emitted, {});
 });
+
+test('jinbao 的台词共 40 句，且全部带着事实槽位或短语气口', async () => {
+  const mod = await import('../human-moments.mjs');
+  const text = await (await import('node:fs/promises')).readFile(new URL('../human-moments.mjs', import.meta.url), 'utf8');
+  const block = text.slice(text.indexOf('  jinbao: {'), text.indexOf('  liurufeng: {'));
+  const lines = [...block.matchAll(/'([^']+)'/g)].map(m => m[1]);
+  assert.equal(lines.length, 40, 'jinbao 应为 40 句，实际 ' + lines.length);
+  const sample = { champion: '安妮', level: 8, opponent: '劫', minute: 10, kills: 3, deaths: 2 };
+  for (const line of lines) {
+    // 带槽位的按“填进真实值之后”的长度算，模板本身的字符数没有意义
+    const rendered = line.includes('{') ? mod.renderMoment(line, sample) : line;
+    assert.ok(rendered, '槽位未填: ' + line);
+    assert.ok(rendered.length <= 12, '过长: ' + rendered + ' (' + rendered.length + '字)');
+    assert.ok(!/[。！？]$/.test(line), '不要句末标点: ' + line);
+  }
+  assert.ok(lines.some(l => l.includes('{champion}')), '缺少英雄槽位');
+  assert.ok(lines.some(l => l.includes('{level}')), '缺少等级槽位');
+  assert.ok(lines.some(l => l.includes('{opponent}')), '缺少对手槽位');
+  assert.ok(lines.some(l => l.includes('{minute}')), '缺少分钟槽位');
+  assert.ok(lines.some(l => l.includes('{kills}')), '缺少人头槽位');
+  assert.equal(typeof mod.renderMoment, 'function');
+});
+
+test('事实槽位：有值就替换，缺值就放弃这句而不是硬编', async () => {
+  const { renderMoment, momentFacts } = await import('../human-moments.mjs');
+  const facts = momentFacts({ match: 'm', gameSeconds: 600, me: { level: 8, k: 3 }, enemies: [{ champion: '锐雯' }] });
+  assert.equal(renderMoment('{level}级被抓，亏一点', facts), '8级被抓，亏一点');
+  assert.equal(renderMoment('又是{opponent}？记住他', facts), '又是锐雯？记住他');
+  assert.equal(renderMoment('{minute}分钟了，稳住', facts), '10分钟了，稳住');
+  assert.equal(renderMoment('拿下！{kills}个人头呢', facts), '拿下！3个人头呢');
+  assert.equal(renderMoment('又是{opponent}？记住他', momentFacts({ match: 'm', me: {} })), '', '缺事实时返回空串');
+});
+
+test('同一局内不重复同一句，用尽后才会重来', async () => {
+  const { settleHumanMoments, resetHumanMoments } = await import('../human-moments.mjs');
+  const state = { match: 'm#1', gameSeconds: 30, me: { dead: false, level: 5 }, enemies: [{ champion: '劫' }], broadcasts: [] };
+  const seen = [];
+  let now = Date.now();
+  // 反复阵亡：每次间隔足够，且每次先复活
+  for (let i = 0; i < 3; i += 1) {
+    state.me.dead = true;
+    if (settleHumanMoments(state, now, { role: 'jinbao', clock: state.gameSeconds })) seen.push(state.broadcasts.at(-1).text);
+    state.me.dead = false;
+    now += 60_000; state.gameSeconds += 60;
+    settleHumanMoments(state, now, { role: 'jinbao', clock: state.gameSeconds });
+    now += 1000;
+  }
+  const deathLines = seen.filter(Boolean);
+  assert.equal(new Set(deathLines).size, deathLines.length, '阵亡台词重复了: ' + JSON.stringify(deathLines));
+  resetHumanMoments(state);
+});

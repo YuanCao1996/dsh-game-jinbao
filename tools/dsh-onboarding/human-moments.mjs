@@ -16,13 +16,14 @@
 
 const VOICES = {
   jinbao: {
-    opening: ['开局了，先把线站住。', '来了，这局慢慢打。', '开局，先别急。'],
-    firstDeath: ['先送一个，别慌。', '一血没了，稳住。', '开场交出去一次，不亏。'],
-    death: ['又是我先倒……', '这波换得不亏。', '没事，等我回来。', '这波他们交了技能，值。', '走位急了点，改。', '换掉一个，不亏。'],
-    endWin: ['这把赢了，稳。', '赢了，收工。', '拿下，打得不错。'],
-    endNeutral: ['这把结束了。', '打完了，辛苦。'],
-    endLoss: ['这把输了，但刚才那波是真的漂亮。', '输了，下一把赢回来。', '没拿下，我们复盘一下。'],
-    idle: ['我一直在看，有事喊我。', '我盯着呢，别慌。'],
+    // 可爱队友感：短、软、不指挥；带事实槽位，取不到就换一句而不是硬编。
+    opening: ['来啦～这局我陪你', '开局咯，先摸线权', '{champion}这局稳着来', '别急，慢慢打', '我在这儿，开吧', '开局咯，先发育'],
+    firstDeath: ['第一次而已，我还在', '{level}级被抓，亏一点', '被抓啦？不怪你', '别慌，复活就回来', '这波他们人多，算了'],
+    death: ['哎哟…这波怪我提醒晚了', '又是{opponent}？记住他', '他们技能交完了，赚的', '倒一次不亏，别急', '这波换得值，真的', '{minute}分钟了，稳住', '死就死吧，回来继续', '我数着呢，他们也没赚'],
+    endWin: ['赢啦～这波团开得好', '拿下！{kills}个人头呢', '稳的，收工', '漂亮，这把没什么可挑的', '赢啦，累不累', '赢了！下把继续'],
+    endNeutral: ['打完啦，歇会儿', '这局结束，等下一把', '打完了，手酸不酸', '结束咯，我还在'],
+    endLoss: ['输了…中期那波太急了', '没拿下，别自责', '这局亏在{minute}分钟那波', '输就输了，下把赢回来', '可惜，其实打得不错', '没事，我陪你再来'],
+    idle: ['我盯着呢，你先发育', '还在看，有事喊我', '我在，别慌', '安静发育，我守着你', '没动静？慢慢来'],
   },
   liurufeng: {
     opening: ['开局。按计划走。', '开始，先看线权。', '这一局，稳着来。'],
@@ -61,17 +62,69 @@ export const IDLE_AFTER_MS = 8 * 60_000;     // 8 分钟没说话 → 我还在
 export const MIN_GAP_MS = 25_000;            // 两句人味之间至少 25 秒
 export const TACTICAL_GUARD_MS = 15_000;     // 最近 15 秒有战术播报 → 不插话
 
-const pickOf = (list, pick) => {
-  const index = Number.isInteger(pick) ? ((pick % list.length) + list.length) % list.length : 0;
-  return list[index] ?? '';
-};
+const MOMENT_SLOTS = /\{([a-zA-Z]+)\}/g;
+
+// 事实槽位：取不到就留空，由选择器换一句，绝不编造。
+export function momentFacts(state, extra = {}) {
+  const me = (state && state.me) || {};
+  const enemies = Array.isArray(state && state.enemies) ? state.enemies : [];
+  const number = value => (Number.isFinite(Number(value)) ? Number(value) : null);
+  const seconds = number(state && state.gameSeconds);
+  return Object.assign({
+    champion: String((state && state.selfChampion) || me.champion || ''),
+    level: number(me.level),
+    minute: seconds === null ? null : Math.floor(seconds / 60),
+    kills: number(me.k),
+    deaths: number(me.d),
+    opponent: String((enemies[0] && enemies[0].champion) || ''),
+  }, extra);
+}
+
+export function renderMoment(template, facts = {}) {
+  let missing = false;
+  const text = String(template || '').replace(MOMENT_SLOTS, (_, key) => {
+    const value = facts[key];
+    if (value === null || value === undefined || value === '') { missing = true; return ''; }
+    return String(value);
+  });
+  return missing ? '' : text;
+}
+
+// 本局同一条不重复：用尽后重置，避免一局听到两句一样的。
+function chooseMoment(pool, memory, kind, facts) {
+  if (!Array.isArray(pool) || !pool.length) return '';
+  const used = (memory.used || (memory.used = {}))[kind] || (memory.used[kind] = []);
+  const start = Number((memory.cursor || {})[kind] || 0);
+  const take = skipUsed => {
+    for (let step = 0; step < pool.length; step += 1) {
+      const index = (start + step) % pool.length;
+      const template = pool[index];
+      if (skipUsed && used.includes(template)) continue;
+      const text = renderMoment(template, facts);
+      if (!text) continue;
+      memory.cursor = Object.assign({}, memory.cursor, { [kind]: index + 1 });
+      return { text, template };
+    }
+    return null;
+  };
+  let picked = take(true);
+  if (!picked) { memory.used[kind] = []; picked = take(false); }
+  if (!picked) return '';
+  memory.used[kind].push(picked.template);
+  if (memory.used[kind].length >= pool.length) memory.used[kind] = [];
+  return picked.text;
+}
 
 function fresh(state, key) {
-  const memory = state.humanMoments ?? (state.humanMoments = { match: state.match ?? '', emitted: {} });
-  if (memory.match !== (state.match ?? '')) {
-    state.humanMoments = { match: state.match ?? '', emitted: {}, deaths: 0, lastDeathAt: 0, lastAt: 0 };
-    return state.humanMoments;
+  let memory = state.humanMoments;
+  if (!memory || memory.match !== (state.match ?? '')) {
+    memory = state.humanMoments = { match: state.match ?? '', emitted: {}, used: {}, cursor: {}, deaths: 0, lastDeathAt: 0, lastAt: 0 };
+    return memory;
   }
+  // 旧版本写下的记忆缺计数：补默认值，否则阵亡判定会因 undefined 永远不成立。
+  if (!Number.isFinite(Number(memory.deaths))) memory.deaths = 0;
+  if (!Number.isFinite(Number(memory.lastDeathAt))) memory.lastDeathAt = 0;
+  if (!Number.isFinite(Number(memory.lastAt))) memory.lastAt = 0;
   return memory;
 }
 
@@ -91,10 +144,11 @@ function push(state, text, now, extra = {}) {
 }
 
 // 由扫描循环调用：state 是本局状态，clock 是游戏内秒数。
-export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', clock = null, ended = false, win = null } = {}) {
+export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', clock = null, ended = false, win = null, facts = null } = {}) {
   if (!state || !state.match) return false;
   const memory = fresh(state);
   const voice = VOICES[role] ?? VOICES.jinbao;
+  const slots = momentFacts(state, facts || {});
   const seconds = Number(clock);
   const lastAt = Number(memory.lastAt) || 0;
 
@@ -108,7 +162,7 @@ export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', c
   // 1) 结束语优先：对局结束的那一刻，别被阵亡/沉默抢先
   if (ended && !memory.emitted.ended) {
     const endVoice = win === true ? voice.endWin : win === false ? voice.endLoss : (voice.endNeutral ?? voice.endLoss);
-    return emit('ended', pickOf(endVoice ?? voice.endLoss, memory.emitted.endedPick ?? 0));
+    return emit('ended', chooseMoment(endVoice ?? voice.endLoss, memory, 'ended', slots));
   }
 
   // 战术建议刚说过话 → 这一轮不插嘴
@@ -116,7 +170,7 @@ export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', c
 
   // 2) 开局问候：进对局 3 秒后，一局一次
   if (!memory.emitted.opening && Number.isFinite(seconds) && seconds >= OPENING_MIN_CLOCK && !ended) {
-    return emit('opening', pickOf(voice.opening, 0));
+    return emit('opening', chooseMoment(voice.opening, memory, 'opening', slots));
   }
 
   // 3) 阵亡反应：最多 3 次、间隔 ≥45 秒
@@ -129,7 +183,7 @@ export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', c
       // 首次阵亡用单独一套台词，避免每次送一血都说「又是我先倒」。
       const firstOfMatch = memory.deaths === 1;
       const pool = firstOfMatch && voice.firstDeath?.length ? voice.firstDeath : voice.death;
-      return emit('death', pickOf(pool, memory.deaths - 1));
+      return emit('death', chooseMoment(pool, memory, firstOfMatch ? 'firstDeath' : 'death', slots));
     }
   } else if (state.me?.dead !== true) {
     memory.lastDeadSeen = false;
@@ -137,12 +191,12 @@ export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', c
 
   // 4) 长时间沉默：8 分钟没说过话且这局说过话 → 我还在（一局一次）
   if (!memory.emitted.idle && lastAt > 0 && now - lastAt >= IDLE_AFTER_MS && !ended) {
-    return emit('idle', pickOf(voice.idle, 0));
+    return emit('idle', chooseMoment(voice.idle, memory, 'idle', slots));
   }
   return false;
 }
 
 export function resetHumanMoments(state) {
   if (!state) return;
-  state.humanMoments = { match: state.match ?? '', emitted: {}, deaths: 0, lastDeathAt: 0, lastAt: 0 };
+  state.humanMoments = { match: state.match ?? '', emitted: {}, used: {}, cursor: {}, deaths: 0, lastDeathAt: 0, lastAt: 0 };
 }
