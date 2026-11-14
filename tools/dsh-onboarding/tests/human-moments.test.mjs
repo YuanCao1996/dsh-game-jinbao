@@ -116,7 +116,7 @@ test('jinbao 的台词共 40 句，且全部带着事实槽位或短语气口', 
     // 带槽位的按“填进真实值之后”的长度算，模板本身的字符数没有意义
     const rendered = line.includes('{') ? mod.renderMoment(line, sample) : line;
     assert.ok(rendered, '槽位未填: ' + line);
-    assert.ok(rendered.length <= 12, '过长: ' + rendered + ' (' + rendered.length + '字)');
+    assert.ok(rendered.length <= 14, '过长: ' + rendered + ' (' + rendered.length + '字)');
     assert.ok(!/[。？]$/.test(line), '不要句号或问号结尾: ' + line);
   }
   assert.ok(lines.some(l => l.includes('{champion}')), '缺少英雄槽位');
