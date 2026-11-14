@@ -119,3 +119,15 @@ test('offline logs populate all factual pages without model traffic; split UTF8 
  assert.equal(service.view().gameTime,'09:21');assert.match(service.view().equipment,/焚天/);
  assert.equal(JSON.parse(await readFile(join(dir,'overlay-state.json'),'utf8')).gameTime,'09:21');
 });
+
+test('确认海克斯后立刻有一句承接，重复确认不刷屏', () => {
+  const s = initialOverlayState();
+  s.game = 'lol'; s.me.champion = '卡兹克';
+  applyOverlayEvent(s, { game: 'lol', t: 1000, kind: 'augment_picked', who: 'self', name: '珠光护手' }, 'm-ack');
+  const ack = (s.broadcasts ?? []).find(b => b.augmentAck);
+  assert.ok(ack, '确认后应立刻有一条承接');
+  assert.match(ack.text, /珠光护手/);
+  assert.equal(ack.priority, 2);
+  applyOverlayEvent(s, { game: 'lol', t: 4000, kind: 'augment_picked', who: 'self', name: '珠光护手' }, 'm-ack');
+  assert.equal((s.broadcasts ?? []).filter(b => b.augmentAck).length, 1, '同一张 1 分钟内不重复');
+});
