@@ -1,24 +1,24 @@
 {
   "name": "idle",
-  "frames": 1,
+  "frames": 24,
   "fps": 12.0,
   "size": 192,
   "baseline": 0.94,
-  "durationMs": 83,
-  "loopDelta": null,
+  "durationMs": 2000,
+  "loopDelta": 0.43,
   "focus": "full",
   "crop": {
     "union": [
-      506,
+      56,
       46,
       824,
       702
     ],
-    "perFrameJitter": false
+    "perFrameJitter": true
   },
   "source": {
-    "start": 6.25,
-    "duration": 0.5,
+    "start": null,
+    "duration": null,
     "masks": [
       [
         1057,
@@ -29,7 +29,7 @@
     ]
   },
   "bytes": {
-    "frames": 22795,
-    "apng": 22795
+    "frames": 475566,
+    "apng": 462357
   }
 }
