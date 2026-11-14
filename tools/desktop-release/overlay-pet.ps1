@@ -238,7 +238,9 @@ function Get-PetState {
   if (-not $speaking) {
     try {
       # 只认 playing：linger 是「字已经打完、在等阅读时间」，这时候嘴该停。
-      if ($script:activePlayback -and [string]$script:playbackPhase -eq 'playing') { $speaking = $true }
+      # 还要求当前就在窄条形态：切到大框时播放时钟是停的，playbackPhase 会一直冻在
+      # playing（实测停顿 45 秒还是 playing），不判形态的话展开再收起就会一直张嘴。
+      if ($script:displayMode -eq 'narrow' -and $script:activePlayback -and [string]$script:playbackPhase -eq 'playing') { $speaking = $true }
     } catch { }
   }
   if ($speaking) { return 'talk' }

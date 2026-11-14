@@ -59,6 +59,7 @@ Check '坏状态文件不崩' 'idle' (& $idleSnap)
 $script:narrowPetStateDir = $null
 $script:activePlayback = $true
 $script:playbackPhase = 'playing'
+$script:displayMode = 'narrow'
 Reset-SpeechProbe
 Check '字幕出字中' 'talk' (& $idleSnap)
 
@@ -66,6 +67,17 @@ Check '字幕出字中' 'talk' (& $idleSnap)
 $script:playbackPhase = 'linger'
 Reset-SpeechProbe
 Check '等待阅读时不张口' 'idle' (& $idleSnap)
+
+# 切到大框后播放时钟是停的，playbackPhase 会一直冻在 playing（实测停顿 45 秒仍为 playing）。
+# 不判形态的话，展开再收起就会一直张嘴。
+$script:playbackPhase = 'playing'
+$script:displayMode = 'large'
+Reset-SpeechProbe
+Check '大框里暂停不算在说' 'idle' (& $idleSnap)
+$script:displayMode = 'narrow'
+Reset-SpeechProbe
+Check '回到窄条继续算在说' 'talk' (& $idleSnap)
+
 $script:activePlayback = $false
 $script:playbackPhase = 'idle'
 
@@ -75,4 +87,4 @@ if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1
 }
-Write-Output 'overlay-pet: 状态映射 18/18 通过'
+Write-Output 'overlay-pet: 状态映射 20/20 通过'
