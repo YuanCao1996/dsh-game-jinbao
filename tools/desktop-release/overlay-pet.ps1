@@ -232,11 +232,14 @@ function Get-PetState {
   }
   if ($Snapshot.dead -eq $true) { return 'dead' }
   if ($phase -eq 'ChampSelect') { return 'pick' }
-  # 说话：只有真的在出声（TTS）或真的在出字（字幕推进）才算
+  # 说话：只有真的在出声（TTS）或真的在出字（字幕正在推进）才算
   $speaking = $false
   try { $speaking = Get-PetSpeechActive } catch { $speaking = $false }
   if (-not $speaking) {
-    try { if ($script:activePlayback) { $speaking = $true } } catch { }
+    try {
+      # 只认 playing：linger 是「字已经打完、在等阅读时间」，这时候嘴该停。
+      if ($script:activePlayback -and [string]$script:playbackPhase -eq 'playing') { $speaking = $true }
+    } catch { }
   }
   if ($speaking) { return 'talk' }
   $playback = @($Snapshot.playback)

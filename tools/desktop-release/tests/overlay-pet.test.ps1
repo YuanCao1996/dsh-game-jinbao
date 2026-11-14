@@ -58,9 +58,16 @@ Check '坏状态文件不崩' 'idle' (& $idleSnap)
 # 字幕正在推进时也算在说（出字与口型要同步）
 $script:narrowPetStateDir = $null
 $script:activePlayback = $true
+$script:playbackPhase = 'playing'
 Reset-SpeechProbe
-Check '字幕推进中' 'talk' (& $idleSnap)
+Check '字幕出字中' 'talk' (& $idleSnap)
+
+# 字已经打完、只是在等阅读时间（linger）：嘴要停，否则就是"没在说话还在动口型"
+$script:playbackPhase = 'linger'
+Reset-SpeechProbe
+Check '等待阅读时不张口' 'idle' (& $idleSnap)
 $script:activePlayback = $false
+$script:playbackPhase = 'idle'
 
 Remove-Item -Recurse -Force $stateDir -ErrorAction SilentlyContinue
 
@@ -68,4 +75,4 @@ if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1
 }
-Write-Output 'overlay-pet: 状态映射 17/17 通过'
+Write-Output 'overlay-pet: 状态映射 18/18 通过'
