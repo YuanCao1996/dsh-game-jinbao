@@ -92,7 +92,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <TextBlock x:Name="TitleText" Text="金宝 · 游戏教练" Foreground="#F1F5F9" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="2,0,8,0" TextTrimming="CharacterEllipsis"/>
      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
-      <Image x:Name="PetImage" Width="30" Height="30" Margin="0,0,5,0" VerticalAlignment="Center" SnapsToDevicePixels="True" Visibility="Collapsed" RenderOptions.BitmapScalingMode="HighQuality"/>
+      <Image x:Name="PetImage" Width="34" Height="34" Margin="0,0,6,0" VerticalAlignment="Center" SnapsToDevicePixels="True" Visibility="Collapsed" RenderOptions.BitmapScalingMode="HighQuality"/>
       <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#4B5563" VerticalAlignment="Center"/>
       <TextBlock x:Name="StatusText" Text="等待对局" Foreground="#94A3B8" FontSize="11" VerticalAlignment="Center" Margin="5,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="140" ToolTip="采集与模型状态"/>
      </StackPanel>
@@ -1168,10 +1168,10 @@ try{
     # 单行刷新 + 学习行短暂优先：最近学到的经验不能被紧随其后的工具调用顶掉。
     $nowMs=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $toolRow=[pscustomobject]@{id='t1';topic='主动提醒';clock='06:12';label='看看这局';phase='running';at=$nowMs}
-    $learnRow=[pscustomobject]@{id='n1';topic='记点经验';clock='';label='我记下了一条规律：对面双坦先补重伤';phase='done';at=$nowMs-1000}
+    $learnRow=[pscustomobject]@{id='n1';topic='我记点经验';clock='';label='我记下了一条规律：对面双坦先补重伤';phase='done';at=$nowMs-1000}
     $picked=@(Select-AgentActivityRow @($learnRow,$toolRow) 5000)
-    $script:testResult.stickyLearningRow=($picked.Count -eq 1) -and ([string]$picked[0].topic -eq '记点经验')
-    $oldLearn=[pscustomobject]@{id='n2';topic='记点经验';clock='';label='旧的学习行';phase='done';at=$nowMs-9000}
+    $script:testResult.stickyLearningRow=($picked.Count -eq 1) -and ([string]$picked[0].topic -eq '我记点经验')
+    $oldLearn=[pscustomobject]@{id='n2';topic='我记点经验';clock='';label='旧的学习行';phase='done';at=$nowMs-9000}
     $pickedOld=@(Select-AgentActivityRow @($oldLearn,$toolRow) 5000)
     $script:testResult.stickyLearningExpires=($pickedOld.Count -ge 1) -and ([string]$pickedOld[-1].topic -eq '主动提醒')
     $onlyTool=@(Select-AgentActivityRow @($toolRow) 5000)

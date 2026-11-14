@@ -3,9 +3,9 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 
-const tools={get_current_match_state:'看看这局',get_lineup_context:'对下阵容',get_recent_match_events:'翻翻刚才',query_match_events:'翻本局记录',query_current_match_events:'翻本局记录',search_local_knowledge:'查查资料',site_query:'查查资料',search_game_guides:'网上找找',web_search:'网上找找',web_fetch:'读一下原文',inspect_latest_screen:'看一眼画面',get_user_memory:'想想你的习惯',manage_user_memory:'记下你的偏好',set_observation_plan:'调下观察'};
-const topics={chat:'陪你聊',equipment:'看装备',advice:'主动提醒',learn:'记点经验',praise:'夸你两句'};
-const clock=value=>Number.isFinite(value)?String(Math.floor(value/60)).padStart(2,'0')+':'+String(Math.floor(value%60)).padStart(2,'0'):'等待对局';
+const tools={get_current_match_state:'呃我瞅下对局',get_lineup_context:'我瞄下阵容',get_recent_match_events:'我翻下刚才',query_match_events:'我翻翻本局记录',query_current_match_events:'我翻翻本局记录',search_local_knowledge:'我查下资料',site_query:'我查下资料',search_game_guides:'我上网找找',web_search:'我上网找找',web_fetch:'我读下原文',inspect_latest_screen:'我瞅瞅画面',get_user_memory:'我想想你的习惯',manage_user_memory:'我记下你的偏好',set_observation_plan:'我调下观察'};
+const topics={chat:'陪你聊',equipment:'我看出装',advice:'我提醒你',learn:'我记点经验',praise:'我夸你两句'};
+const clock=value=>Number.isFinite(value)?String(Math.floor(value/60)).padStart(2,'0')+':'+String(Math.floor(value%60)).padStart(2,'0'):'等你开局';
 const safeId=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,80}$/.test(value);
 export function sanitizeActivityText(value,sensitive=[]){
  let text=String(value??'').slice(0,6000).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'');
@@ -89,37 +89,37 @@ export async function createAgentActivity({stateDir,getView=()=>null,now=Date.no
     const channel=event.channel??'control';if(event.seq<=(task.seq[channel]??0))return;task.seq[channel]=event.seq;
    }
    const type=event.event,id=task.id;
-   if(type==='task_queued')row(id,task,'等待执行','queued');
-   else if(type==='task_waiting_handoff')row(id,task,'前一句还在说，稍等','queued');
-   else if(type==='task_started')row(id,task,'我在看这局','running');
+   if(type==='task_queued')row(id,task,'排队中，稍等','queued');
+   else if(type==='task_waiting_handoff')row(id,task,'稍等，前一句还没说完','queued');
+   else if(type==='task_started')row(id,task,'呃，我看下这局','running');
    else if(type==='cancellation_wait')row(id,task,'先接你这个问题','queued');
    else if(type==='tool_start'){
     const index=Number.isSafeInteger(event.index)?event.index:++task.tools;task.lastTool=index;
-    row(id+':tool:'+index,task,tools[event.name]??'翻一下资料','running');
+    row(id+':tool:'+index,task,tools[event.name]??'我翻下资料','running');
    }else if(type==='tool_end'){
     const index=Number.isSafeInteger(event.index)?event.index:task.lastTool;
-    if(index!=null)row(id+':tool:'+index,task,tools[event.name]??'翻一下资料',event.success===false?'unavailable':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null});
+    if(index!=null)row(id+':tool:'+index,task,tools[event.name]??'我翻下资料',event.success===false?'unavailable':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null});
    }else if(type==='web_search_result'){
     const empty=['no_usable_results','rss_no_usable_results'].includes(event.reason);
-    const label=event.status==='ok'?'资料找到了':empty?'这个模式没查到':event.reason==='rate_limited'?'攻略搜索服务暂时限流':'攻略搜索暂时不可用';
+    const label=event.status==='ok'?'找到了，我看看':empty?'这个模式我没查到':event.reason==='rate_limited'?'攻略那边有点忙':'攻略那边连不上';
     row(id+':search-summary',task,label,event.status==='ok'?'done':'unavailable');
-   }else if(type==='model_start')row(id+':model:'+Number(event.request_index??0),task,'模型正在分析','running');
-   else if(type==='model_end')row(id+':model:'+Number(event.request_index??0),task,event.status===429?'云端限流，稍后自动重试':event.status>=400?'模型请求失败':'本步模型分析结束',event.status===429?'queued':event.status>=400?'failed':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null,...(Number.isFinite(Number(event.status))?{status:Number(event.status)}:{})});
-   else if(type==='compaction')row(id+':compact',task,'整理本局上下文','running');
-   else if(type==='rate_limited')row(id+':wait',task,'请求受限，等待恢复','queued');
-   else if(type==='connection_retry')row(id+':connection',task,'连接中断，正在重试','queued');
-   else if(type==='connection_restored')row(id+':connection',task,'连接已恢复，继续接收','done');
+   }else if(type==='model_start')row(id+':model:'+Number(event.request_index??0),task,'我想一想','running');
+   else if(type==='model_end')row(id+':model:'+Number(event.request_index??0),task,event.status===429?'云端有点忙，稍后再试':event.status>=400?'模型那边出错了':'这一步想好了',event.status===429?'queued':event.status>=400?'failed':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null,...(Number.isFinite(Number(event.status))?{status:Number(event.status)}:{})});
+   else if(type==='compaction')row(id+':compact',task,'我理一下上下文','running');
+   else if(type==='rate_limited')row(id+':wait',task,'云端忙，等一下','queued');
+   else if(type==='connection_retry')row(id+':connection',task,'网断了，我重连','queued');
+   else if(type==='connection_restored')row(id+':connection',task,'连回来了，继续','done');
    else if(type==='public_text'&&typeof event.text==='string'){
     // Only explicit assistant text is accepted. Raw reasoning/tool arguments
     // never enter this store. Hold unfinished clauses before redaction/display.
     task.draft=((event.reset?'':task.draft)+event.text.slice(0,3600)).slice(0,3600);
     const end=Math.max(task.draft.lastIndexOf('。'),task.draft.lastIndexOf('！'),task.draft.lastIndexOf('？'),task.draft.lastIndexOf('\n'));
-    if(end>=0)row(id+':draft',task,'公开回答草稿 · 尚未完成校验','draft',{text:task.draft.slice(0,end+1)});
+    if(end>=0)row(id+':draft',task,'话还没说完…','draft',{text:task.draft.slice(0,end+1)});
     else if(event.reset){const length=rows.length;rows=rows.filter(entry=>entry.id!==id+':draft');if(rows.length!==length)revision++;}
    }else if(['task_completed','task_failed','task_cancelled','task_stale'].includes(type)){
     task.terminal=true;task.draft='';rows=rows.filter(entry=>entry.id!==id+':draft');
     for(const entry of rows)if(entry.task===id&&['running','queued'].includes(entry.phase))entry.phase=type==='task_completed'?'done':'cancelled';
-    row(id,task,({task_completed:'本次分析完成',task_failed:'分析失败，可稍后重试',task_cancelled:'任务已中断',task_stale:'对局已变化，取消旧任务'})[type],type==='task_completed'?'done':type==='task_failed'?'failed':'cancelled');
+    row(id,task,({task_completed:'我说完了',task_failed:'这回没看成',task_cancelled:'先不看了',task_stale:'对局变了，重来'})[type],type==='task_completed'?'done':type==='task_failed'?'failed':'cancelled');
    }
   },
   snapshot(state){

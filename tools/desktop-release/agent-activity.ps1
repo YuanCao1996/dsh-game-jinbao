@@ -4,7 +4,7 @@
 function Select-AgentActivityRow($rows,[int]$stickyMs=5000){
  $all=@($rows|Where-Object {$_ -and $_.id})
  if(!$all.Count){return @()}
- $learn=$all | Where-Object {[string]$_.topic -eq '记点经验'} | Select-Object -Last 1
+ $learn=$all | Where-Object {[string]$_.topic -eq '我记点经验'} | Select-Object -Last 1
  if($learn -and $null -ne $learn.at){
   try{$age=([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())-[double]$learn.at;if($age -ge 0 -and $age -lt $stickyMs){return @($learn)}}catch{}
  }
@@ -71,7 +71,7 @@ function Update-AgentActivity {
    $line=$script:activityNodes[$id]
    $phase=switch([string]$row.phase){'running'{'进行中'}'queued'{'等待'}'done'{'完成'}'failed'{'失败'}'unavailable'{'不可用'}'cancelled'{'已取消'}'draft'{'草稿'}default{''}}
    $duration=if($null -ne $row.elapsedMs){' · '+([Math]::Round([double]$row.elapsedMs/1000,1))+'秒'}else{''}
-   $learn=([string]$row.topic -eq '记点经验')
+   $learn=([string]$row.topic -eq '我记点经验')
    $line.ToolTip=([string]$row.clock)+' · '+([string]$row.topic)+' · '+([string]$row.label)+' · '+$phase+$duration
    $line.Text=if($learn){'✔ '+([string]$row.label)}else{([string]$row.clock)+'  '+([string]$row.label)+$(if($row.task -eq 'events'){''}else{' · '+$phase+$duration})}
    # row.text is deliberately not rendered: it is what made each entry several lines.

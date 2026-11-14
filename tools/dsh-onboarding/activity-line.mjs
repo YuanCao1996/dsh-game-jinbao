@@ -19,7 +19,7 @@ export function activityLine(base,state,now=Date.now()){
  if(q.seen.size>1000)q.seen=new Set([...q.seen].slice(-600));
  if(!q.current||now>=q.until){q.current=q.pending.shift()??null;q.until=now+4000;}
  const steps=base.rows??[];
- const learn=steps.find(e=>e.topic==='记点经验'&&Number.isFinite(e.at)&&now-e.at>=0&&now-e.at<5000);
+ const learn=steps.find(e=>e.topic==='我记点经验'&&Number.isFinite(e.at)&&now-e.at>=0&&now-e.at<5000);
  const step=steps.find(e=>['running','queued'].includes(e.phase))??steps[0];
  const row=q.current??learn??step;
  return {...base,revision:JSON.stringify([base.revision,row?.id,row?.label,row?.phase,row?.elapsedMs]),rows:row?[row]:[]};
