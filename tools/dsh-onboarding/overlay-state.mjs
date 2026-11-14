@@ -43,18 +43,6 @@ const keyEventLabels = {
   InhibKilled:'水晶被摧毁',InhibRespawningSoon:'水晶即将重生',InhibRespawned:'水晶已重生',
   DragonKill:'小龙被击败',BaronKill:'大龙被击败',HeraldKill:'峡谷先锋被击败',
 };
-// 海克斯确认后立刻给一句反馈：模型要十几秒到几分钟才给出玩法/出装，
-// 这段空白里玩家不知道系统有没有收到。本地先承诺一句，模型分析随后覆盖它。
-function ackAugment(state,name,at){
- const text='选中'+String(name).slice(0,24)+'，我算算怎么围绕它打';
- const last=Number((state.augmentAck??{}).at||0);
- if((state.augmentAck??{}).name===name&&at-last<60000)return false;
- if(last>0&&at-last<1500)return false;
- state.augmentAck={name,at};
- state.broadcasts=[...(state.broadcasts??[]).filter(b=>b&&b.text!==text),{at,text,priority:2,augmentAck:true,expiresAt:at+12000}].sort((a,b)=>a.at-b.at).slice(-12);
- return true;
-}
-
 export function clock(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return '等待对局';
   const n = Math.floor(seconds);
@@ -229,11 +217,9 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     }
   }
   if (event.kind === 'augment_picked' && event.who === 'self' && (event.augment ?? event.name)) {
-    ackAugment(state, String(event.augment ?? event.name), at);
     recordChoice(state, { kind: 'augment', name: String(event.augment ?? event.name), at });
   }
   if (event.kind === 'augment_mutate' && event.who === 'self' && event.champion && event.champion === state.me?.champion && event.augment) {
-    ackAugment(state, String(event.augment), at);
     recordChoice(state, { kind: 'augment', name: String(event.augment), at });
   }
   // 主播模式：观众弹幕进时间线，带 origin=viewer 以便和玩家自己的提问区分开。
@@ -260,7 +246,6 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   }
   if (event.kind === 'augment_capture_status') { state.augmentCaptureAvailable=event.available===true; state.augmentCaptureReason=text(event.reason); }
   if(event.kind==='augment_picked'&&event.source==='team-user-confirmed'&&Array.isArray(event.replaces)){
-    if(event.augment)ackAugment(state,String(event.augment),at);
     const round=state.augmentRounds.find(row=>row.id===event.roll),name=event.augment??event.name;
     if(round?.confirmationSource==='countdown-default-confirmed'&&round.options.includes(name)){
       const removed=round.confirmed.filter(value=>event.replaces.includes(value));
