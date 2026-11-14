@@ -79,6 +79,9 @@ export function equipmentContext(state){
 
 export function createEquipmentCoach({getState,agentChat,save,onAdvice=()=>{},canRequest=()=>true,now=Date.now,debounceMs=2000,cooldownMs=30000,openingRetryMs=15000}){
   let pending='',since=0,lastAt=-Infinity,lastDone='',busy=false,closed=false,retryAt=0,lastConfirmed='';
+   // 对局是否还活着要看游戏时间有没有推进：state.at 只要采集器还在写快照就是新鲜的，
+   // 实测对局结束后 at 仍每分钟更新、gameSeconds 却冻在 08:19。
+   let lastClock=null,lastClockAt=0;
   // 阵亡与开局都是"一次性事件"，不是"事实又变了"：它们各自只发一次，不走购买那次
   // 的防抖与冷却，否则玩家阵亡时正好撞上冷却就永远收不到提醒。
   let lastMatch='',opening={match:'',done:false,retryAt:0};
@@ -94,6 +97,9 @@ export function createEquipmentCoach({getState,agentChat,save,onAdvice=()=>{},ca
   return {
     tick(){
       const state=getState();
+      const clockNow=now();
+      if(state.gameSeconds!==lastClock){lastClock=state.gameSeconds;lastClockAt=clockNow;}
+      if(Number.isFinite(state.gameSeconds)&&clockNow-lastClockAt>120000)return;
       if(closed||typeof agentChat!=='function'||!state.match||!state.me.champion||state.ended||state.phase==='ChampSelect'||now()-state.at>30000)return;
       if(state.match!==lastMatch){lastMatch=state.match;opening={match:state.match,done:false,retryAt:0};}
       // 开局加载完成、双方阵容都拿到了，给一份六件完整装备规划（每局一次）。
