@@ -39,6 +39,20 @@ export async function buildPreview({root,out,runtime=process.execPath}) {
   ...(await readdir(resolve(root,'tools/dsh-onboarding/exploration-icons')).catch(()=>[]))
     .filter(name=>/\.(jpg|png)$/i.test(name))
     .map(name=>'tools/dsh-onboarding/exploration-icons/'+name),
+  // 形象层：脚本 + 每个状态的帧序列（用户重画后只要按目录丢文件即可）
+  'tools/desktop-release/overlay-pet.ps1',
+  ...(await (async () => {
+    const out = [];
+    const petRoot = 'tools/desktop-release/assets/pet';
+    let states = [];
+    try { states = await readdir(resolve(root, petRoot)); } catch { return out; }
+    for (const state of states) {
+      let frames = [];
+      try { frames = await readdir(resolve(root, petRoot, state, 'frames')); } catch { continue; }
+      for (const frame of frames.filter(name => /\.png$/i.test(name))) out.push(petRoot + '/' + state + '/frames/' + frame);
+    }
+    return out;
+  })()),
   'tools/team-room/page.html','tools/team-room/page.css','tools/team-room/page.mjs',
   'tools/dsh-coach-server/capture-game.ps1','tools/lol-companion/capture-augments.ps1','tools/lol-companion/augment-names.json',
 // Spawned as its own process by the collector on every augment offer, so the

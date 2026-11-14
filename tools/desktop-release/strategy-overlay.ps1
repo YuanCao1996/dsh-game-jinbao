@@ -92,6 +92,7 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <TextBlock x:Name="TitleText" Text="金宝 · 游戏教练" Foreground="#F1F5F9" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="2,0,8,0" TextTrimming="CharacterEllipsis"/>
      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+      <Image x:Name="PetImage" Width="30" Height="30" Margin="0,0,5,0" VerticalAlignment="Center" SnapsToDevicePixels="True" Visibility="Collapsed" RenderOptions.BitmapScalingMode="HighQuality"/>
       <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#4B5563" VerticalAlignment="Center"/>
       <TextBlock x:Name="StatusText" Text="等待对局" Foreground="#94A3B8" FontSize="11" VerticalAlignment="Center" Margin="5,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="140" ToolTip="采集与模型状态"/>
      </StackPanel>
@@ -186,7 +187,7 @@ foreach($name in @('MainBorder','OpacitySlider','OpacityText','Expanded','Header
 foreach($name in @('RichContent','ComposerPlaceholder','ModeButton','LatestMessageButton','ChatStatusText')){$controls[$name]=$window.FindName($name)}
 $script:scrollPositions=@{};$script:scrollFollow=@{}
  # 布局改造新增的控件也必须显式注册，否则运行时拿到的是 $null（状态点会静默不更新）。
-foreach($name in @('StatusDot','StatusText','ComposerActions')){$controls[$name]=$window.FindName($name)}
+foreach($name in @('StatusDot','StatusText','ComposerActions','PetImage')){$controls[$name]=$window.FindName($name)}
 $controls.PlayersTable=$window.FindName('PlayersTable');$controls.LeaderboardTable=$window.FindName('LeaderboardTable')
 $controls.UpdateText=$window.FindName('UpdateText')
 foreach($name in @('ResizeGrip','AppearancePanel','FontSlider','FontText')){$controls[$name]=$window.FindName($name)}
@@ -626,6 +627,7 @@ function Update-State {
   $changed=(!$script:snapshot -or !$script:renderedTab -or [string]$next.($script:tab) -ne [string]$script:snapshot.($script:tab))
   $enteredSelection=$next.phase -eq 'ChampSelect' -and (!$script:snapshot -or $script:snapshot.phase -ne 'ChampSelect')
   $script:snapshot=$next
+ try{Update-PetLayer -Snapshot $next}catch{}
   foreach($button in $controls.Tabs.Children){$button.Visibility=if($next.game -eq 'generic' -and $button.Tag -in @('augments','players')){'Collapsed'}else{'Visible'}}
   if($next.game -eq 'generic' -and $script:tab -in @('augments','players')){Set-Tab 'advice'}
   $confirmation=$next.confirmation
@@ -936,6 +938,8 @@ $window.Add_Closed({$script:closing=$true;$timer.Stop();$pointerTimer.Stop();if(
 . (Join-Path $PSScriptRoot 'overlay-modes.ps1')
 . (Join-Path $PSScriptRoot 'overlay-ui.ps1')
 . (Join-Path $PSScriptRoot 'agent-activity.ps1')
+. (Join-Path $PSScriptRoot 'overlay-pet.ps1')
+Initialize-PetLayer -Control $controls.PetImage | Out-Null
 Set-Tab $PreviewTab;Update-State
 try{
  if($PreviewPath){
