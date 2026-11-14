@@ -178,11 +178,13 @@ try{
  // fresh login, and the failure was swallowed by a bare catch. The renewal now runs on
  // a background timer, is attempted once past renewAfter even if already expired, and
  // records its outcome so the failure can be surfaced instead of staying silent.
- let cloudRenew={state:'idle',at:0,status:null};
+ let cloudRenew={state:'idle',at:0,status:null,failures:0};
+ // 续期结果落盘，重启后仍能提示“需要重新登录”，而不是每次重启都忘记失败过。
+ try{const saved=JSON.parse(await readFile(join(stateDir,'cloud-renew.json'),'utf8'));if(saved&&Number.isFinite(saved.failures))cloudRenew={...cloudRenew,...saved};}catch{}
  async function renewCloudSession({force=false}={}){
   if(cloudRenew.state==='expired'&&!force)return cloudRenew;
   const token=await resolve('cloud');
-  if(!token){cloudRenew={state:'absent',at:Date.now(),status:null};return cloudRenew;}
+  if(!token){cloudRenew={state:'absent',at:Date.now(),status:null,failures:0};return cloudRenew;}
   let lifetime=null;
   try{lifetime=JSON.parse(await readFile(join(stateDir,'cloud-login.json'),'utf8'));}catch{}
   const now=Date.now();
@@ -195,13 +197,13 @@ try{
     if(current!==token)return;
     await acceptCloud(await remote('/desktop/auth/session/renew',current,{}));
    });
-   cloudRenew={state:'renewed',at:Date.now(),status:200};
+   cloudRenew={state:'renewed',at:Date.now(),status:200,failures:0};
    await writeFile(join(stateDir,'cloud-renew.json'),JSON.stringify(cloudRenew),{mode:0o600}).catch(()=>{});
   }catch(error){
    const status=Number.isFinite(error?.status)?error.status:null;
    // 401/403 is the server's final answer: this token can never be renewed again and
    // only a fresh login recovers, so stop spending attempts on it.
-   cloudRenew={state:status===401||status===403?'expired':'failed',at:Date.now(),status};
+   cloudRenew={state:status===401||status===403?'expired':'failed',at:Date.now(),status,failures:(Number(cloudRenew.failures)||0)+1};
    await writeFile(join(stateDir,'cloud-renew.json'),JSON.stringify(cloudRenew),{mode:0o600}).catch(()=>{});
   }
   return cloudRenew;
@@ -417,7 +419,7 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
    if(req.url==='/api/login-lifetime'&&req.method==='GET'){
     let lifetime=null;try{lifetime=JSON.parse(await readFile(join(stateDir,'cloud-login.json'),'utf8'));}catch{}
     const expiresAt=lifetime&&Number.isFinite(Number(lifetime.expiresAt))?Number(lifetime.expiresAt):null;
-    send(res,200,{expiresAt,remainingMs:expiresAt?Math.max(0,expiresAt-Date.now()):null,state:cloudRenew.state});
+    const failures=Number(cloudRenew.failures)||0;send(res,200,{expiresAt,remainingMs:expiresAt?Math.max(0,expiresAt-Date.now()):null,state:cloudRenew.state,failures,reauthRequired:failures>=2&&cloudRenew.state==='expired'});
     return;
    }
    if(req.url==='/api/exploration/suggestion'&&req.method==='GET'){const view=overlay.view();send(res,200,{suggestion:currentHeroSuggestion(view),modeSuggestion:currentModeSuggestion(view)});return;}

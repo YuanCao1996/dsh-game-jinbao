@@ -278,7 +278,7 @@ function renderLifetime(logged){
   if(!data||!Number.isFinite(data.remainingMs)){node.hidden=true;return}
   const hours=Math.max(0,Math.round(data.remainingMs/3600000));
   node.hidden=false;
-  const renewFailed=data.state==='expired'&&hours>0;node.textContent=renewFailed?`自动续期失败：当前登录仍可用（约剩 ${hours>=48?Math.floor(hours/24)+' 天':hours+' 小时'}），到期后需要重新登录`:data.state==='expired'?'登录已失效，请重新登录。':hours>=48?`登录有效期剩余 ${Math.floor(hours/24)} 天`:`登录有效期剩余 ${hours} 小时，重启应用会自动续期`;
+  const renewFailed=data.state==='expired'&&hours>0;if(data.reauthRequired){node.textContent=`自动续期连续失败 ${data.failures} 次，请重新登录（当前登录仍可用约 ${hours>=48?Math.floor(hours/24)+' 天':hours+' 小时'}）`;node.className='warn';return;}node.textContent=renewFailed?`自动续期失败：当前登录仍可用（约剩 ${hours>=48?Math.floor(hours/24)+' 天':hours+' 小时'}），到期后需要重新登录`:data.state==='expired'?'登录已失效，请重新登录。':hours>=48?`登录有效期剩余 ${Math.floor(hours/24)} 天`:`登录有效期剩余 ${hours} 小时，重启应用会自动续期`;
   node.className=renewFailed?'warn':hours<24||data.state==='expired'?'warn':'';
  }).catch(()=>{node.hidden=true});
 }
