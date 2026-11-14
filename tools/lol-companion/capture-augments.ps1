@@ -1,4 +1,4 @@
-param([switch]$CheckOnly,[string]$ImagePath,[switch]$Worker,[string]$StateDir=$env:JINBAO_STATE_DIR,[ValidateSet('full','titles')][string]$Focus='full')
+﻿param([switch]$CheckOnly,[string]$ImagePath,[switch]$Worker,[string]$StateDir=$env:JINBAO_STATE_DIR,[ValidateSet('full','titles')][string]$Focus='full')
 $ErrorActionPreference='Stop'
 $OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 if($Worker){
