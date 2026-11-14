@@ -92,7 +92,6 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <TextBlock x:Name="TitleText" Text="金宝 · 游戏教练" Foreground="#F1F5F9" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="2,0,8,0" TextTrimming="CharacterEllipsis"/>
      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
-      <Image x:Name="PetImage" Width="34" Height="34" Margin="0,0,6,0" VerticalAlignment="Center" SnapsToDevicePixels="True" Visibility="Collapsed" RenderOptions.BitmapScalingMode="HighQuality"/>
       <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#4B5563" VerticalAlignment="Center"/>
       <TextBlock x:Name="StatusText" Text="等待对局" Foreground="#94A3B8" FontSize="11" VerticalAlignment="Center" Margin="5,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="140" ToolTip="采集与模型状态"/>
      </StackPanel>
@@ -159,11 +158,15 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
     </StackPanel>
    </Grid>
    <Grid x:Name="NarrowPanel" Visibility="Collapsed" Background="#01000000">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-    <Canvas x:Name="NarrowCanvas" ClipToBounds="True" Margin="0,2,4,0"><TextBlock x:Name="OutgoingSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="PreviousSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="NarrowText" Style="{StaticResource SubtitleText}" FontSize="14"/></Canvas>
-    <Button x:Name="NarrowExpand" Grid.Column="1" Content="▣" ToolTip="展开大框 · Ctrl+Alt+↑" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
-    <Button x:Name="NarrowMenu" Grid.Column="2" Content="⋯" ToolTip="显示模式" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
-    <Button x:Name="NarrowClose" Grid.Column="3" Content="×" ToolTip="退出悬浮窗" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+<StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0,0,0">
+<Image x:Name="NarrowPetImage" Width="44" Height="44" VerticalAlignment="Center" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="HighQuality" Visibility="Collapsed"/>
+<Path x:Name="NarrowPetTail" Fill="#F21B2129" Stroke="#2C3540" StrokeThickness="1" Data="M 0,0 L 7,4 L 0,8 Z" VerticalAlignment="Center" Margin="1,0,-1,0" Visibility="Collapsed"/>
+</StackPanel>
+    <Border x:Name="NarrowBubble" Grid.Column="1" CornerRadius="10" Background="#F21B2129" BorderBrush="#2C3540" BorderThickness="1" Padding="8,2" Margin="0,1,4,1"><Grid><Canvas x:Name="NarrowCanvas" ClipToBounds="True" Margin="0,2,4,0"><TextBlock x:Name="OutgoingSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="PreviousSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="NarrowText" Style="{StaticResource SubtitleText}" FontSize="14"/></Canvas></Grid></Border>
+    <Button x:Name="NarrowExpand" Grid.Column="2" Content="▣" ToolTip="展开大框 · Ctrl+Alt+↑" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
+    <Button x:Name="NarrowMenu" Grid.Column="3" Content="⋯" ToolTip="显示模式" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
+    <Button x:Name="NarrowClose" Grid.Column="4" Content="×" ToolTip="退出悬浮窗" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
    </Grid>
    <Thumb x:Name="ResizeGrip" Width="26" Height="26" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-8,-8" Cursor="SizeNWSE" ToolTip="拖动调整窗口大小，会记住你的尺寸">
     <Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="#01000000"><Path Data="M 7,22 L 22,7 M 14,22 L 22,14 M 21,22 L 22,21" Stroke="#B39A71" StrokeThickness="1.5"/></Grid></ControlTemplate></Thumb.Template>
@@ -187,7 +190,8 @@ foreach($name in @('MainBorder','OpacitySlider','OpacityText','Expanded','Header
 foreach($name in @('RichContent','ComposerPlaceholder','ModeButton','LatestMessageButton','ChatStatusText')){$controls[$name]=$window.FindName($name)}
 $script:scrollPositions=@{};$script:scrollFollow=@{}
  # 布局改造新增的控件也必须显式注册，否则运行时拿到的是 $null（状态点会静默不更新）。
-foreach($name in @('StatusDot','StatusText','ComposerActions','PetImage')){$controls[$name]=$window.FindName($name)}
+foreach($name in @('StatusDot','StatusText','ComposerActions')){$controls[$name]=$window.FindName($name)}
+foreach($name in @('NarrowPetImage','NarrowPetTail','NarrowBubble')){$controls[$name]=$window.FindName($name)}
 $controls.PlayersTable=$window.FindName('PlayersTable');$controls.LeaderboardTable=$window.FindName('LeaderboardTable')
 $controls.UpdateText=$window.FindName('UpdateText')
 foreach($name in @('ResizeGrip','AppearancePanel','FontSlider','FontText')){$controls[$name]=$window.FindName($name)}
@@ -627,7 +631,7 @@ function Update-State {
   $changed=(!$script:snapshot -or !$script:renderedTab -or [string]$next.($script:tab) -ne [string]$script:snapshot.($script:tab))
   $enteredSelection=$next.phase -eq 'ChampSelect' -and (!$script:snapshot -or $script:snapshot.phase -ne 'ChampSelect')
   $script:snapshot=$next
- try{Update-PetLayer -Snapshot $next}catch{}
+
   foreach($button in $controls.Tabs.Children){$button.Visibility=if($next.game -eq 'generic' -and $button.Tag -in @('augments','players')){'Collapsed'}else{'Visible'}}
   if($next.game -eq 'generic' -and $script:tab -in @('augments','players')){Set-Tab 'advice'}
   $confirmation=$next.confirmation
@@ -921,7 +925,7 @@ $window.Add_SourceInitialized({
  }
 })
 $timer=New-Object Windows.Threading.DispatcherTimer;$timer.Interval=[TimeSpan]::FromMilliseconds(250)
-$timer.Add_Tick({Update-State;Update-OverlayPlayback})
+$timer.Add_Tick({Update-State;Update-OverlayPlayback;try{Update-NarrowPet -Snapshot $script:snapshot}catch{}})
 $pointerTimer=New-Object Windows.Threading.DispatcherTimer;$pointerTimer.Interval=[TimeSpan]::FromMilliseconds(40)
 $pointerTimer.Add_Tick({Pointer-Tick})
 $script:exitApproved=$false;$script:testExitChoice=$true;$script:exitConfirmations=0
@@ -939,7 +943,11 @@ $window.Add_Closed({$script:closing=$true;$timer.Stop();$pointerTimer.Stop();if(
 . (Join-Path $PSScriptRoot 'overlay-ui.ps1')
 . (Join-Path $PSScriptRoot 'agent-activity.ps1')
 . (Join-Path $PSScriptRoot 'overlay-pet.ps1')
-Initialize-PetLayer -Control $controls.PetImage | Out-Null
+# 直接查一次名字：控件注册表在某些启动顺序下会拿到 $null，这里兜底解析并记录诊断。
+$narrowPetImage=if($controls.NarrowPetImage){$controls.NarrowPetImage}else{$window.FindName('NarrowPetImage')}
+$narrowPetTail=if($controls.NarrowPetTail){$controls.NarrowPetTail}else{$window.FindName('NarrowPetTail')}
+try{[IO.File]::AppendAllText((Join-Path $StateDir 'pet-diag.jsonl'), (@{stage='init-call';image=[bool]$narrowPetImage;tail=[bool]$narrowPetTail} | ConvertTo-Json -Compress) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))}catch{}
+Initialize-NarrowPet -Image $narrowPetImage -Tail $narrowPetTail -StateDir $StateDir | Out-Null
 Set-Tab $PreviewTab;Update-State
 try{
  if($PreviewPath){

@@ -21,7 +21,7 @@ function Get-NarrowWidth {
   $width=0
   try{$width=[double]$controls.NarrowCanvas.ActualWidth}catch{}
   if($width -lt 160){try{$window.UpdateLayout()}catch{};try{$width=[double]$controls.NarrowCanvas.ActualWidth}catch{}}
-  if($width -lt 160){try{$width=[double]$window.Width-40}catch{$width=0}}
+  if($width -lt 160){$pad=40;if($script:narrowPetVisible){$pad+=$script:narrowPetSize+14};try{$width=[double]$window.Width-$pad}catch{$width=0}}
   return [Math]::Max(160,$width)
 }
 function Set-NarrowMetrics {
@@ -89,7 +89,7 @@ function Push-Subtitle([string]$line,[bool]$animate=$true){
   # 字幕模式只显示两行：最旧那行（Outgoing）留空，视线上只有上一句和当前句。
   if($i -eq 0 -and $script:subtitleMode){$view.Text='';$view.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$view.Opacity=0;continue}
   Set-HighlightedText $view $script:subtitleRows[$index]
-  $view.Width=(Get-NarrowWidth);$view.TextAlignment='Center'
+  $view.Width=(Get-NarrowWidth);$view.TextAlignment=if($script:narrowPetVisible){'Left'}else{'Center'}
   [Windows.Controls.Canvas]::SetTop($view,($i-1)*$height);[Windows.Controls.Canvas]::SetLeft($view,0)
   $view.Opacity=if($i -eq 0){0}else{1}
   if($animate -and !$SelfTest){
@@ -183,7 +183,7 @@ function Playback-Tick {
  if(!$script:activePlayback){
   if($script:awaitingPlayback -and !$script:collapsed){
    Clear-PlaybackRows
-   $controls.NarrowText.Width=(Get-NarrowWidth);$controls.NarrowText.TextAlignment='Center'
+   $controls.NarrowText.Width=(Get-NarrowWidth);$controls.NarrowText.TextAlignment=if($script:narrowPetVisible){'Left'}else{'Center'}
    [Windows.Controls.Canvas]::SetTop($controls.NarrowText,0);[Windows.Controls.Canvas]::SetLeft($controls.NarrowText,0)
    # 没有新播报时保留上一条消息，不显示「等待新的对局建议…」占位。
    $modeClock.Stop();return

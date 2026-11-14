@@ -439,7 +439,20 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
     send(res,200,{memory,broadcasts,shots,notes,tags:ANNOTATION_TAGS});return;
    }
    // 高光截图：列表 + 开关
-   if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{enabled:highlightSettings.enabled,count:(await highlights.list()).length});return;}
+   // 形象层：收起形态旁边的人物形象（默认开启，大小 28~96）
+if(detailUrl.pathname==='/api/pet'&&req.method==='GET'){
+ const petFile=join(stateDir,'pet.json');
+ let pet={enabled:true,size:44};
+ try{const saved=JSON.parse(await readFile(petFile,'utf8'));if(typeof saved?.enabled==='boolean')pet.enabled=saved.enabled;if(Number.isFinite(Number(saved?.size)))pet.size=Math.min(96,Math.max(28,Number(saved.size)));}catch{}
+ send(res,200,pet);return;
+}
+if(detailUrl.pathname==='/api/pet'&&req.method==='POST'){
+ const value=await body(req,1024);
+ const pet={enabled:value.enabled!==false,size:Number.isFinite(Number(value.size))?Math.min(96,Math.max(28,Math.round(Number(value.size)))):44};
+ await writeFile(join(stateDir,'pet.json'),JSON.stringify(pet),{mode:0o600});
+ send(res,200,{ok:true,...pet});return;
+}
+if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{enabled:highlightSettings.enabled,count:(await highlights.list()).length});return;}
    if(detailUrl.pathname==='/api/highlights'&&req.method==='POST'){const value=await body(req,1024);highlightSettings.enabled=value.enabled===true;await writeFile(join(stateDir,'highlights.json'),JSON.stringify({enabled:highlightSettings.enabled}),{mode:0o600});send(res,200,{ok:true,enabled:highlightSettings.enabled});return;}
    // 批注：追加与查询
    if(detailUrl.pathname==='/api/annotations'&&req.method==='POST'){const value=await body(req,4096);const entry=await annotations.add(value);send(res,200,{ok:true,entry});return;}

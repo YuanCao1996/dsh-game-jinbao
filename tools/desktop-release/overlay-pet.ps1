@@ -207,3 +207,95 @@ function Update-PetLayer {
 function Stop-PetLayer {
   if ($script:petTimer) { $script:petTimer.Stop(); $script:petTimer = $null }
 }
+
+# ── 收起形态（字幕/跑马灯）里的形象 ─────────────────────────────
+# 需求：形象只在收起后出现，站在文字气泡左边当"说话的人"；
+# 网页设置页可开关与调大小（配置写在 <StateDir>/pet.json）。
+
+$script:narrowPetVisible = $false
+$script:narrowPetSize = 44
+$script:narrowPetConfigAt = [DateTime]::MinValue
+
+function Get-PetSettings {
+  param([string]$StateDir)
+  $settings = @{ enabled = $true; size = 44 }
+  if (-not $StateDir) { return $settings }
+  $file = Join-Path $StateDir 'pet.json'
+  try {
+    if (Test-Path $file) {
+      $raw = [IO.File]::ReadAllText($file, [Text.Encoding]::UTF8) | ConvertFrom-Json
+      if ($null -ne $raw.enabled) { $settings.enabled = ($raw.enabled -eq $true) }
+      if ($null -ne $raw.size) {
+        $size = [int]$raw.size
+        if ($size -ge 28 -and $size -le 96) { $settings.size = $size }
+      }
+    }
+  } catch { }
+  return $settings
+}
+
+function Initialize-NarrowPet {
+  param($Image, $Tail, [string]$StateDir)
+  $script:narrowPetStateDir = $StateDir
+  if (-not $Image) { Write-PetDiag 'init-no-image'; return $false }
+  $script:narrowPetControl = $Image
+  $script:narrowPetTail = $Tail
+  $script:narrowPetStateDir = $StateDir
+  $root = Get-PetRoot -BaseDir $null
+  $script:petRoot = $root
+  $frames = Load-PetAction -Root $root -Name 'narrow'
+  if (-not $frames) { $frames = Load-PetAction -Root $root -Name 'icon' }
+  if (-not $frames) { $frames = Load-PetAction -Root $root -Name 'idle' }
+  if (-not $frames) { $Image.Visibility = 'Collapsed'; return $false }
+  $script:narrowPetFrames = $frames
+  $Image.Source = $frames[0]
+  $Image.Visibility = 'Collapsed'
+  if ($Tail) { $Tail.Visibility = 'Collapsed' }
+  Start-PetBreathing -Control $Image
+  return $true
+}
+
+# 每次快照刷新时调用：读配置（5 秒节流）→ 显示/隐藏 → 换动作
+function Write-PetDiag {
+  param([string]$Stage, [hashtable]$Data = @{})
+  try {
+    if (-not $script:narrowPetStateDir) { return }
+    $line = @{ at = (Get-Date).ToString('HH:mm:ss'); stage = $Stage } + $Data | ConvertTo-Json -Compress
+    [IO.File]::AppendAllText((Join-Path $script:narrowPetStateDir 'pet-diag.jsonl'), $line + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+  } catch { }
+}
+
+function Update-NarrowPet {
+  param($Snapshot, [switch]$Force)
+  if (-not $script:narrowPetControl) { Write-PetDiag 'no-control'; return }
+  $now = [DateTime]::Now
+  $elapsed = 999.0
+  try { $elapsed = ($now - $script:narrowPetConfigAt).TotalSeconds } catch { $elapsed = 999.0 }
+  if ($Force -or $elapsed -ge 5) {
+    $script:narrowPetConfigAt = $now
+    $settings = Get-PetSettings -StateDir $script:narrowPetStateDir
+    $enabled = [bool]$settings.enabled
+    $size = [int]$settings.size
+    if ($size -ne $script:narrowPetSize) {
+      $script:narrowPetSize = $size
+      try { $script:narrowPetControl.Width = $size; $script:narrowPetControl.Height = $size } catch { }
+    }
+    if ($enabled -ne $script:narrowPetVisible) {
+      $script:narrowPetVisible = $enabled
+      try {
+        $script:narrowPetControl.Visibility = if ($enabled) { 'Visible' } else { 'Collapsed' }
+        if ($script:narrowPetTail) { $script:narrowPetTail.Visibility = if ($enabled) { 'Visible' } else { 'Collapsed' } }
+        Write-PetDiag 'visibility' @{ enabled = $enabled; size = $size; source = [bool]$script:narrowPetControl.Source; tail = [bool]$script:narrowPetTail }
+      } catch { }
+    }
+  }
+  if (-not $script:narrowPetVisible) { return }
+  if (-not $script:narrowPetFrames -or $script:narrowPetFrames.Count -le 1) { return }
+  $desired = Get-PetState -Snapshot $Snapshot
+  if (-not $desired) { return }
+  $frames = Load-PetAction -Root $script:petRoot -Name $desired
+  if (-not $frames) { return }
+  if ($script:narrowPetState -eq $desired) { return }
+  $script:narrowPetState = $desired
+  $script:narrowPetControl.Source = $frames[0]
+}
