@@ -4,7 +4,7 @@ $script:narrowWidth=300.0;
 $script:collapseStyle='ball'
 $script:managedSpeech=$false
 try{$voiceStatus=[IO.File]::ReadAllText((Join-Path $StateDir 'speech-status.json'))|ConvertFrom-Json;$script:managedSpeech=$voiceStatus.supported -and ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()-$voiceStatus.at -lt 15000) -and $voiceStatus.state -ne 'stopped'}catch{}
-$script:displayMode='large';$script:subtitleMode=$true;$script:speakEnabled=$false;$script:unread=0
+$script:displayMode='large';$script:subtitleMode=$true;$script:speakEnabled=$false;$script:unread=0;$script:clickThrough=$true;$script:narrowLastClickAt=0.0
 $script:playbackMatch='';$script:seenPlayback=New-Object 'Collections.Generic.HashSet[string]'
 $script:seenPlaybackOrder=New-Object 'Collections.Generic.Queue[string]'
 $script:playbackQueue=New-Object 'Collections.Generic.List[object]';$script:activePlayback=$null
@@ -53,6 +53,7 @@ function Watch-DisplaySettings {
    if($script:displayMode -eq 'narrow'){Set-NarrowMetrics;Update-OverlaySurface $true}
   }
   if($null -ne $saved.speech -and ([bool]$saved.speech) -ne $script:speakEnabled){$script:speakEnabled=[bool]$saved.speech}
+if($null -ne $saved.clickThrough -and ([bool]$saved.clickThrough) -ne $script:clickThrough){$script:clickThrough=[bool]$saved.clickThrough;Update-OverlaySurface $true}
  }catch{}
 }
 function Set-DisplayMode([string]$mode){
@@ -185,6 +186,10 @@ $controls.NarrowPanel.Add_PreviewMouseLeftButtonDown({param($s,$e) Start-Drag $s
 # 窄条整条可点：点一下展开成大框（拖动仍然是移动窗口）。
 $controls.NarrowPanel.Add_MouseLeftButtonUp({param($s,$e)
  if($script:moved){return}
+ # 双击才展开：单击只记时间，打游戏时误触不会把窄条点开。
+ $now=[DateTime]::UtcNow.Ticks/10000
+ if(($now-$script:narrowLastClickAt) -ge 500){$script:narrowLastClickAt=$now;return}
+ $script:narrowLastClickAt=0.0
  $script:narrowResume=$true
  Set-DisplayMode 'large'
  $script:displayMode='narrow';Save-DisplayMode;$script:displayMode='large'

@@ -557,19 +557,20 @@ if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{ena
    if(req.url==='/api/overlay'&&req.method==='GET'){send(res,200,overlay.view());return;}
    // 显示设置：网页设置页读写，悬浮窗监听文件变化即时生效。
    if(req.url==='/api/display'&&req.method==='GET'){
-    let value={mode:'large',subtitle:true,speech:false,width:300};
+    let value={mode:'large',subtitle:true,speech:false,width:300,clickThrough:true};
     try{value=JSON.parse(await readFile(join(stateDir,'overlay-display.json'),'utf8'));}catch{}
     send(res,200,value);return;
    }
    if(req.url==='/api/display'&&req.method==='POST'){
     if(!String(req.headers['content-type']).startsWith('application/json'))throw error(400);
     const input=await body(req,1024);
-    const allowed=new Set(['mode','subtitle','speech','width','collapseStyle']);
+    const allowed=new Set(['mode','subtitle','speech','width','collapseStyle','clickThrough']);
     if(Object.keys(input).some((key)=>!allowed.has(key)))throw error(400);
     if(input.mode!==undefined&&!['large','narrow','silent'].includes(input.mode))throw error(400);
     if(input.subtitle!==undefined&&typeof input.subtitle!=='boolean')throw error(400);
     if(input.speech!==undefined&&typeof input.speech!=='boolean')throw error(400);
     if(input.width!==undefined&&!(Number.isInteger(input.width)&&input.width>=220&&input.width<=900))throw error(400);
+if(input.clickThrough!==undefined&&typeof input.clickThrough!=='boolean')throw error(400);
     let current={mode:'large',subtitle:true,speech:false,width:300};
     try{current=JSON.parse(await readFile(join(stateDir,'overlay-display.json'),'utf8'));}catch{}
     const next={...current,...input,widthVersion:2};

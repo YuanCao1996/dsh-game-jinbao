@@ -234,7 +234,7 @@ if(!$SelfTest){
 }
 function Set-PointerMode([bool]$hotzone){
  if($script:windowHandle -eq [IntPtr]::Zero){return}
- $through=!($script:interactiveMode -or $hotzone -or $script:dragging -or [Windows.Input.Mouse]::Captured)
+ $through=if($script:clickThrough){!($script:interactiveMode -or $hotzone -or $script:dragging -or [Windows.Input.Mouse]::Captured)}else{$false}
  # 悬停在窗口上时也要能接收点击：否则只能靠 Ctrl+Alt+J 进交互模式，热键一失效就彻底点不动。
  $focusable=($script:interactiveMode -or $hotzone) -and !$script:collapsed
  if($script:lastThrough -ne $through -or $script:lastFocusable -ne $focusable){
@@ -278,7 +278,7 @@ function Set-Collapsed([bool]$on,[switch]$PreserveMode){
    $controls.MainBorder.CornerRadius='12';$controls.MainBorder.Padding='8,6';$controls.MainBorder.BorderThickness=0
    # 收起成字幕条时如果当前没有内容，补一行占位，避免整条透明看起来像消失。
    try{
-    if(-not ([string]$controls.NarrowText.Text).Trim()){Set-HighlightedText $controls.NarrowText '金宝待命中 · 点这里展开';$controls.NarrowText.Foreground='#9CAABA'}
+    if(-not ([string]$controls.NarrowText.Text).Trim()){Set-HighlightedText $controls.NarrowText '金宝待命中 · 双击展开';$controls.NarrowText.Foreground='#9CAABA'}
     $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null)
     $controls.NarrowCanvas.Opacity=1
     $controls.NarrowPanel.Visibility='Visible'
@@ -802,8 +802,12 @@ function Start-Drag($sender,$eventArgs){
  $script:dragging=$true;$script:moved=$false;$script:bubbleDrag=($sender -eq $controls.Bubble)
  $eventArgs.Handled=$true;Set-PointerMode $true
 }
-$controls.Header.Add_MouseLeftButtonDown({param($sender,$eventArgs) Start-Drag $sender $eventArgs})
-$controls.Bubble.Add_MouseLeftButtonDown({param($sender,$eventArgs) Start-Drag $sender $eventArgs})
+$controls.Header.Add_MouseLeftButtonDown({param($sender,$eventArgs)
+ if($eventArgs.ClickCount -eq 2){Set-Collapsed $true;return}
+ Start-Drag $sender $eventArgs})
+$controls.Bubble.Add_MouseLeftButtonDown({param($sender,$eventArgs)
+ if($eventArgs.ClickCount -eq 2){$script:narrowResume=$true;Set-DisplayMode 'large';Set-Collapsed $false;return}
+ Start-Drag $sender $eventArgs})
 $controls.Bubble.Add_MouseEnter({if($script:collapsed){$controls.BubbleBall.BorderBrush='#FF9F2F'}})
 $controls.Bubble.Add_MouseLeave({if($script:collapsed){$controls.BubbleBall.BorderBrush='#2E3742'}})
 function Update-Drag([double]$x,[double]$y,[bool]$pressed){
