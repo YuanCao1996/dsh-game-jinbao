@@ -9,6 +9,8 @@ export function activityLine(base,state,now=Date.now()){
  const events=[...(state.events??[]),...(state.activityEvents??[])];
  for(const e of events){
   if(!kinds.has(e.kind)||!e.text)continue;
+ // 击杀不进动态行（普通击杀没有决策价值，只会刷屏）。
+ if(e.kind==='kill'||e.kind==='ChampionKill')continue;
   if(e.kind==='augment_mutate'&&/归属未确认|归属不明/.test(e.text))continue;
   const key=e.key??JSON.stringify([e.kind,e.time,e.text]);
   if(q.seen.has(key))continue;q.seen.add(key);

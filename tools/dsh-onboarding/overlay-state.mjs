@@ -277,7 +277,8 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   // Raw kill announcements are display-only; do not change coaching/history policy.
   const announcements=event.kind==='chat_events'?list(event.events):event.kind==='event'?[{...event,kind:event.name}]:[event];
   for(const item of announcements){
-    const labels={kill:'发生击杀',ChampionKill:'发生击杀',death:'英雄阵亡',ace:'团灭',tower:'防御塔被摧毁',turret:'防御塔被摧毁',Ace:'团灭',TurretKilled:'防御塔被摧毁'};
+    // 击杀不进智能体动态：一局几十次「发生击杀」，除了刷屏没有信息量（用户要求）。
+ const labels={death:'英雄阵亡',ace:'团灭',tower:'防御塔被摧毁',turret:'防御塔被摧毁',Ace:'团灭',TurretKilled:'防御塔被摧毁'};
     if(!labels[item?.kind])continue;
     const key=JSON.stringify([item.kind,item.id??'',item.time??event.time??at,item.killer??'',item.victim??'']);
     if(!state.activityEvents.some(e=>e.key===key))state.activityEvents.push({key,kind:item.kind,time:typeof item.time==='string'?item.time:clock(Number(item.time??state.gameSeconds)),text:labels[item.kind]});
