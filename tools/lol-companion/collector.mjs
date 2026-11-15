@@ -160,7 +160,7 @@ const captureTimer=setInterval(async()=>{
    observer.observe(frame);
    if(frame.focus!=='titles')ultimateObserver.observe(frame,lastLiveState,hudAssets.key());
    const diagnostic=observer.status();
-   void captureReport({available:frame.available===true,foreground:frame.foreground===true,panelOccluded:frame.panelOccluded===true,focus:frame.focus,recognized:diagnostic.recognized,knownSlots:diagnostic.knownSlots,reason:diagnostic.reason??frame.reason,captureBackend:frame.captureBackend,elapsedMs:Date.now()-captureStarted,ageMs:Number.isFinite(frame.capturedAt)?Date.now()-frame.capturedAt:undefined});
+   void captureReport({available:frame.available===true,foreground:frame.foreground===true,panelOccluded:frame.panelOccluded===true,focus:frame.focus,chatLines:Number(frame.chatLines??0),recognized:diagnostic.recognized,knownSlots:diagnostic.knownSlots,reason:diagnostic.reason??frame.reason,captureBackend:frame.captureBackend,elapsedMs:Date.now()-captureStarted,ageMs:Number.isFinite(frame.capturedAt)?Date.now()-frame.capturedAt:undefined});
    const captureStatus=JSON.stringify([frame.available,frame.foreground===true,diagnostic.reason??frame.reason??'',diagnostic.recognized,diagnostic.method]);
    if(captureStatus!==lastCaptureAvailable){lastCaptureAvailable=captureStatus;log.append({kind:'augment_capture_status',available:frame.ocrAvailable??frame.available,foreground:frame.foreground===true,reason:frame.reason??'',...diagnostic,captureBackend:frame.captureBackend,timings:frame.timings});}
    if(!frame.available)nextCaptureAt=Date.now()+60000;

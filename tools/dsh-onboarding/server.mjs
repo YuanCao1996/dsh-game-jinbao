@@ -549,7 +549,14 @@ if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{ena
    const result=await experienceStore.applyMdEdit({kind:parsed.kind,player:PLAYER_ID,mdText:parsed.mdText,by:parsed.by,reason:parsed.reason});
    send(res,200,result);return;
   }
-  if(req.url==='/api/diagnostics'&&req.method==='GET'){send(res,200,diagnostics?.status()??{recording:false,supported:false});return;}
+  // 聊天框是否展开：截图脚本每次会回报聊天区 OCR 读到的行数，这里给出人话结论。
+ if(req.url==='/api/chat-status'&&req.method==='GET'){
+  let value={};try{value=JSON.parse(await readFile(join(stateDir,'augment-diagnostics.json'),'utf8'));}catch{}
+  const at=Number(value.at)||0,age=Date.now()-at;
+  send(res,200,{available:Number(value.chatLines)>0,chatLines:Number(value.chatLines)||0,fresh:age>=0&&age<120000,age,at:at||null});
+  return;
+ }
+ if(req.url==='/api/diagnostics'&&req.method==='GET'){send(res,200,diagnostics?.status()??{recording:false,supported:false});return;}
    if(req.url==='/api/diagnostics/mark'&&req.method==='POST'&&diagnostics){const value=await body(req,1024);send(res,200,diagnostics.mark(value.kind));return;}
    if(req.url==='/api/diagnostics/export'&&req.method==='GET'&&diagnostics){res.setHeader('Content-Disposition','attachment; filename="jinbao-diagnostics.json"');send(res,200,await diagnostics.export());return;}
    const memoryPage=/^\/api\/memory\/(lol|wzry|generic)$/.exec(req.url);

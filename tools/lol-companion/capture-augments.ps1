@@ -314,7 +314,7 @@ public static class JinbaoChatSignature {
   }
   $chatMs=$captureWatch.ElapsedMilliseconds-$chatStart
  }finally{if($inputBitmap){$inputBitmap.Dispose()};$inputStream.Dispose()}
- @{available=$true;ocrAvailable=$true;foreground=$true;capturedAt=$capturedAt;allyHud=$allyHud;focus=$Focus;captureBackend=$captureBackend;timings=@{captureMs=$pixelMs;hudMs=$hudMs;ocrMs=$captureWatch.ElapsedMilliseconds-$pixelMs-$hudMs;chatMs=$chatMs;totalMs=$captureWatch.ElapsedMilliseconds};width=$frame.width;height=$frame.height;lines=$frame.lines;chatLineCount=@($chatLines).Count;chatError=$chatError;chatDebug=$chatDebug;chatReuse=$chatReuse;chatSigMs=$chatSigMs;chatMergeMs=$chatMergeMs;titleReuse=$titleReuse;titleSigMs=$titleSigMs;titleLines=$titleLines;method=$(if($Focus -eq 'titles'){'card-strip-fast'}else{'full-and-card-strip+chat'});cardLayout='stacked-title-regions'} | ConvertTo-Json -Depth 6 -Compress
+ @{available=$true;ocrAvailable=$true;foreground=$true;capturedAt=$capturedAt;allyHud=$allyHud;focus=$Focus;captureBackend=$captureBackend;chatLines=@($chatLines).Count;timings=@{captureMs=$pixelMs;hudMs=$hudMs;ocrMs=$captureWatch.ElapsedMilliseconds-$pixelMs-$hudMs;chatMs=$chatMs;totalMs=$captureWatch.ElapsedMilliseconds};width=$frame.width;height=$frame.height;lines=$frame.lines;chatLineCount=@($chatLines).Count;chatError=$chatError;chatDebug=$chatDebug;chatReuse=$chatReuse;chatSigMs=$chatSigMs;chatMergeMs=$chatMergeMs;titleReuse=$titleReuse;titleSigMs=$titleSigMs;titleLines=$titleLines;method=$(if($Focus -eq 'titles'){'card-strip-fast'}else{'full-and-card-strip+chat'});cardLayout='stacked-title-regions'} | ConvertTo-Json -Depth 6 -Compress
 
 }catch{
  if($engineReady){Write-Output '{"available":true,"foreground":false,"reason":"capture_failed"}'}
