@@ -123,6 +123,9 @@ export function correctMessage(message, { clock = null, players = [], champions 
     if (!next.champion) return null;
   }
   if (next.kind === 'team_chat') {
+    // 看不出是谁说的、也不是「名字：内容」句式，多半是 HUD/加载页文字，直接丢。
+    const shape = String(next.content ?? next.text ?? '');
+    if (!next.speaker && !/[：:]/.test(shape)) return null;
     // 打字内容不改（改了就篡改玩家原话），但说话人尽量纠正。
     if (next.speaker) next.speaker = snapName(next.speaker, players, maxDistance) ?? next.speaker;
     const content = String(next.content ?? '').trim();
