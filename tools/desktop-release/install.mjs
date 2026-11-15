@@ -22,7 +22,9 @@ installCoachPreset(doc, all);
 const targets=[
 {id:'jinbao-onboarding',name:'dsh-onboarding',config:{port:3084,stateDir:state}},
 {id:'site-assistant',name:'dsh-game-services',config:{mode:'remote',serviceBaseUrl:'https://api.jinbaoai.top',tokenEnv:'JINBAO_SERVICE_TOKEN'}},
-{id:'coach-server',name:'dsh-coach-server',config:{port:3081,provider:'jinbao-local',model:'jinbao-strategy',watchDir:join(state,'logs'),broadcastFile:join(state,'logs','coach_broadcasts.jsonl'),diagLogFile:join(state,'coach-server.log'),sessionCwd:state,coachPreset:COACH_PRESET,defaultGame:'wzry',visionEnabled:true,watchEnabled:true,liveTimeoutMs:120000}}
+{id:'coach-server',name:'dsh-coach-server',config:{port:3081,provider:'jinbao-local',model:'jinbao-strategy',watchDir:join(state,'logs'),broadcastFile:join(state,'logs','coach_broadcasts.jsonl'),diagLogFile:join(state,'coach-server.log'),sessionCwd:state,coachPreset:COACH_PRESET,defaultGame:'wzry',visionEnabled:true,watchEnabled:true,liveTimeoutMs:120000,
+ // 目标驱动模式之前只存在于手工配置里，安装器一覆盖就没了。这里带上默认值（关）保住它。
+ goalCoach:{enabled:false,maxGoalRounds:24,roundGapMs:20000}}}
 ];
 for(const target of targets){
  const found=all.filter(n=>n?.get?.('id')===target.id);if(found.length>1)throw Error('Duplicate plugin id: '+target.id);
