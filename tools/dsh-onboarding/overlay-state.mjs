@@ -159,6 +159,9 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   // PreEndOfGame 同样代表对局已结束：有些局不发 GameEnd 事件，只走加载页，
   // 只认 EndOfGame 会让这类对局既没有结束语、也不写进回忆。
   if (event.kind === 'phase') { state.phase = text(event.phase); if (event.phase === 'EndOfGame' || event.phase === 'PreEndOfGame') state.ended = true; }
+ // GameEnd 事件同样是对局结束：只等 phase 会漏（实测 20:36:12 有 GameEnd，20:36:40 视图仍是
+ // InProgress/ended=false，于是装备教练在赛后 3 分钟还发了一条出装建议）。
+ if (event.kind === 'event' && event.name === 'GameEnd') state.ended = true;
   if (event.kind === 'game_start') {
     state.gameSeconds = Number.isFinite(event.gameTime) ? event.gameTime : state.gameSeconds;
     state.me = {...state.me,...event.me};
