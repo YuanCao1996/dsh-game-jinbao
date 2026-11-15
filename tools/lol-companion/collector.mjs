@@ -14,6 +14,7 @@ import {createItemCatalogue} from './item-policy.mjs';
 import {createHudAssets} from './hud-assets.mjs';
 import {createAllyUltimateObserver} from './ally-ultimates.mjs';
 import {shouldEndOnSilence,silenceEndEvents,SILENCE_END_MS} from './silence.mjs';
+import {clockGlitch,startsNewMatch} from './match-clock.mjs';
 import { homedir } from 'node:os';
 import { join,dirname } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -192,7 +193,9 @@ while(running){
     player.items=(player.items??[]).map(enrichItem);
    }
    const time=all.gameData.gameTime;
-   if(nextMatch||gameTime===null||time<gameTime){
+   // 读数瞬断会把时钟打回 0：不能当新对局（实测 20:32 那局在 13:48 被拆成两个 match）。
+   if(clockGlitch(time,gameTime)){if(!silenceEnded)lastDataAt=Date.now();await sleep(1000);continue;}
+   if(startsNewMatch({time,previous:gameTime,nextMatch,sinceLastDataMs:Date.now()-lastDataAt})){
     nextMatch=false;lastDataAt=Date.now();silenceEnded=false;log=createEventLog(folder,'live-'+Date.now());lastEvent=-1;observer.reset();chatObserver.reset();ultimateObserver.reset();hudAssets.reset();captureSchedule.reset();captureGeneration++;lastCaptureAvailable=null;nextCaptureAt=0;
     log.append({kind:'game_start',me:state.me??{},queue:state.mode,gameTime:state.gameTime,allies:state.allies,enemies:state.enemies});
    }
