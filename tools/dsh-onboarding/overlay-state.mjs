@@ -277,6 +277,17 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   // Raw kill announcements are display-only; do not change coaching/history policy.
   const announcements=event.kind==='chat_events'?list(event.events):event.kind==='event'?[{...event,kind:event.name}]:[event];
   for(const item of announcements){
+    // 队友或自己的聊天/信号：进聊天时间线（origin=team），不当作关键事件。
+    if(item?.kind==='team_chat'){
+     const text=String(item.text??'').trim();
+     if(text){state.chat.push({role:'user',origin:'team',displayName:String(item.speaker??'').slice(0,24)||'队友',champion:String(item.champion??'').slice(0,24),text,at,self:item.self===true});if(state.chat.length>400)state.chat=state.chat.slice(-300);}
+     continue;
+    }
+    if(item?.kind==='ping'){
+     state.chat.push({role:'user',origin:'team',displayName:String(item.champion??'').slice(0,24)||'队友',champion:String(item.champion??'').slice(0,24),text:'点了信号',at,self:item.self===true,ping:true});
+     if(state.chat.length>400)state.chat=state.chat.slice(-300);
+     continue;
+    }
     // 击杀不进智能体动态：一局几十次「发生击杀」，除了刷屏没有信息量（用户要求）。
  const labels={death:'英雄阵亡',ace:'团灭',tower:'防御塔被摧毁',turret:'防御塔被摧毁',Ace:'团灭',TurretKilled:'防御塔被摧毁'};
     if(!labels[item?.kind])continue;

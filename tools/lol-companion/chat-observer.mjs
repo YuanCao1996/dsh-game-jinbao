@@ -42,7 +42,7 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
         },
       });
       for(const message of messages){
-        if(!['purchase','augment_mutate','augment_picked_chat'].includes(message.kind))continue;
+        if(!['purchase','augment_mutate','augment_picked_chat','team_chat','ping'].includes(message.kind))continue;
         // Chat attribution must read the raw line. The in-game format is
         // "玩家名（英雄）已质变了…", so stripping the bracketed prefix before looking
         // for the champion loses the owner, and when the augment itself is bracketed
@@ -58,7 +58,23 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
         const explicit=championsInText(beforeVerb).at(-1);
         const champion=explicit??message.champion??(selfSubject&&ownName?ownName:null);
         const time=message.time??null;
-        const names=message.kind==='purchase'?[message.item??null]:message.augments??[message.augment];
+        // 队友/自己的聊天与信号：解析器已经分出说话人，直接上报，不参与海克斯归属推断。
+ if(message.kind==='team_chat'||message.kind==='ping'){
+  const chatText=message.kind==='ping'?'点了信号':String(message.content??'').trim().slice(0,160);
+  if(!chatText)continue;
+  const chatKey=message.kind+'|'+chatText;
+  const chatAt=now();
+  const chatLast=seen.get(chatKey);
+  // 同一句话会在连续几帧里被重复读到；30 秒内只报一次。
+  if(chatLast!==undefined&&chatAt-chatLast<30000)continue;
+  seen.set(chatKey,chatAt);
+  const speaker=message.speaker??null;
+  const selfName=String(state.me?.riotId??state.me?.summonerName??'').trim();
+  const self=!!speaker&&!!selfName&&normalized(speaker)===normalized(selfName);
+  emit({kind:'chat_events',gameTime:state.gameTime,events:[{kind:message.kind,time:message.time??null,speaker,text:chatText,champion:message.champion??null,self}]});
+  continue;
+ }
+ const names=message.kind==='purchase'?[message.item??null]:message.augments??[message.augment];
         // The parser already proved the verb was there; re-testing the joined line used to
         // disagree whenever OCR split the verb across boxes, which silently downgraded
         // every such record to low confidence and dropped it from the owned list.
