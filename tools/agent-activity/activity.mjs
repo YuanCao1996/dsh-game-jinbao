@@ -101,7 +101,7 @@ export async function createAgentActivity({stateDir,getView=()=>null,now=Date.no
     if(index!=null)row(id+':tool:'+index,task,tools[event.name]??'我翻下资料',event.success===false?'unavailable':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null});
    }else if(type==='web_search_result'){
     const empty=['no_usable_results','rss_no_usable_results'].includes(event.reason);
-    const label=event.status==='ok'?'找到了，我看看':empty?'这个模式我没查到':event.reason==='rate_limited'?'攻略那边有点忙':'攻略那边连不上';
+    const label=event.status==='ok'?'嘿嘿，找到了':empty?'啊这，没查到这模式':event.reason==='rate_limited'?'攻略那边有点忙':'哎呦，攻略连不上';
     row(id+':search-summary',task,label,event.status==='ok'?'done':'unavailable');
    }else if(type==='model_start')row(id+':model:'+Number(event.request_index??0),task,'我想一想','running');
    else if(type==='model_end')row(id+':model:'+Number(event.request_index??0),task,event.status===429?'云端有点忙，稍后再试':event.status>=400?'模型那边出错了':'这一步想好了',event.status===429?'queued':event.status>=400?'failed':'done',{elapsedMs:Number.isFinite(event.elapsed_ms)?Math.max(0,Math.min(300000,event.elapsed_ms)):null,...(Number.isFinite(Number(event.status))?{status:Number(event.status)}:{})});
