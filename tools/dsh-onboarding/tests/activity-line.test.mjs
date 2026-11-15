@@ -28,3 +28,14 @@ test('equipment, ace, towers and augment announcements all reach the single slot
  }
  assert.equal(activityLine(base,s,24100).rows[0].id,'tool');
 });
+
+test('聊天进动态行但 8 秒内只出一条，不会刷屏', () => {
+  const state = { match: 'chat', events: [
+    { key: 'c1', kind: 'chat', time: '05:30', text: '诺天暗淡：中路来一下' },
+    { key: 'c2', kind: 'chat', time: '05:31', text: '大宝：别追等我' },
+  ] };
+  const first = activityLine(base, state, 100);
+  assert.equal(first.rows[0].label, '诺天暗淡：中路来一下');
+  const second = activityLine(base, state, 1000);
+  assert.notEqual(second.rows[0].label, '大宝：别追等我', '8 秒内的第二条不该插队');
+});

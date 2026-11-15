@@ -280,12 +280,23 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     // 队友或自己的聊天/信号：进聊天时间线（origin=team），不当作关键事件。
     if(item?.kind==='team_chat'){
      const text=String(item.text??'').trim();
-     if(text){state.chat.push({role:'user',origin:'team',hidden:true,displayName:String(item.speaker??'').slice(0,24)||'队友',champion:String(item.champion??'').slice(0,24),text,at,self:item.self===true});if(state.chat.length>400)state.chat=state.chat.slice(-300);}
+     if(text){
+      const speaker=String(item.speaker??'').slice(0,24)||'队友';
+      const who=item.self===true?'你':speaker;
+      state.chat.push({role:'user',origin:'team',hidden:true,displayName:speaker,champion:String(item.champion??'').slice(0,24),text,at,self:item.self===true});
+      if(state.chat.length>400)state.chat=state.chat.slice(-300);
+      // 有价值的一条：进智能体动态（刷屏由 activity-line 的节流控制）。
+      state.activityEvents.push({key:'chat:'+at+':'+text,kind:'chat',time:clock(Number(state.gameSeconds)),text:who+'：'+text});
+      state.activityEvents=state.activityEvents.slice(-30);
+     }
      continue;
     }
     if(item?.kind==='ping'){
-     state.chat.push({role:'user',origin:'team',hidden:true,displayName:String(item.champion??'').slice(0,24)||'队友',champion:String(item.champion??'').slice(0,24),text:'点了信号',at,self:item.self===true,ping:true});
+     const pingName=String(item.champion??'').slice(0,24)||(item.self===true?'你':'队友');
+     state.chat.push({role:'user',origin:'team',hidden:true,displayName:pingName,champion:String(item.champion??'').slice(0,24),text:'点了信号',at,self:item.self===true,ping:true});
      if(state.chat.length>400)state.chat=state.chat.slice(-300);
+     state.activityEvents.push({key:'ping:'+at+':'+pingName,kind:'chat',time:clock(Number(state.gameSeconds)),text:pingName+' 点了信号'});
+     state.activityEvents=state.activityEvents.slice(-30);
      continue;
     }
     // 击杀不进智能体动态：一局几十次「发生击杀」，除了刷屏没有信息量（用户要求）。

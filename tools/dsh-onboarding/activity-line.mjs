@@ -1,7 +1,9 @@
 // Presentation queue only. Never requests a model, replays an event twice, or leaks raw OCR.
 import {createHash} from 'node:crypto';
 const queues=new WeakMap();
-const kinds=new Set(['Ace','TurretKilled','InhibKilled','InhibRespawningSoon','InhibRespawned','DragonKill','BaronKill','HeraldKill','Multikill','Death','ChampionKill','kill','death','ace','tower','turret','augment_offer','augment_picked','augment_picked_chat','inventory','augment_mutate','purchase']);
+// 识别到的队聊/信号也进动态行；节流见下方 lastChatAt。
+const CHAT_KINDS=new Set(['chat']);
+const kinds=new Set(['chat','Ace','TurretKilled','InhibKilled','InhibRespawningSoon','InhibRespawned','DragonKill','BaronKill','HeraldKill','Multikill','Death','ChampionKill','kill','death','ace','tower','turret','augment_offer','augment_picked','augment_picked_chat','inventory','augment_mutate','purchase']);
 export function activityLine(base,state,now=Date.now()){
  if(!base.enabled)return {...base,rows:[]};
  let q=queues.get(state);
@@ -13,7 +15,14 @@ export function activityLine(base,state,now=Date.now()){
  if(e.kind==='kill'||e.kind==='ChampionKill')continue;
   if(e.kind==='augment_mutate'&&/归属未确认|归属不明/.test(e.text))continue;
   const key=e.key??JSON.stringify([e.kind,e.time,e.text]);
-  if(q.seen.has(key))continue;q.seen.add(key);
+  if(q.seen.has(key))continue;
+ if(CHAT_KINDS.has(e.kind)){
+  // 聊天类两档节流：距上一条不足 8 秒直接不排队；排队里最多留两条，避免顶掉工具进度。
+  if(q.lastChatAt&&now-Number(q.lastChatAt)<8000)continue;
+  if(q.pending.filter(row=>CHAT_KINDS.has(row.kind)).length>=2)continue;
+  q.lastChatAt=now;
+ }
+ q.seen.add(key);
   q.pending.push({id:'event-'+createHash('sha256').update(String(key)).digest('hex').slice(0,20),task:'events',topic:'本局事件',kind:e.kind,clock:e.time??'',label:String(e.text).replace(/\s+/g,' ').slice(0,180),phase:'done',expires:now+24000});
  }
  // Bound bursts: newest six announcements, one readable slot per four seconds.

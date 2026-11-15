@@ -46,3 +46,21 @@ test('识别到的队聊只进教练上下文，不上悬浮窗', () => {
   assert.equal(team.length, 2, '数据仍要留给教练上下文');
   assert.ok(team.every(row => row.hidden === true));
 });
+
+test('识别到的队聊和信号进智能体动态，但节流', () => {
+  const state = initialOverlayState();
+  state.game = 'lol'; state.match = 'm1'; state.matchStartedAt = 1; state.at = Date.now(); state.gameSeconds = 330;
+  applyOverlayEvent(state, {
+    game: 'lol', match: 'm1', kind: 'chat_events', at: Date.now(),
+    events: [
+      { kind: 'team_chat', speaker: '诺天暗淡', text: '中路来一下', time: '05:30' },
+      { kind: 'team_chat', speaker: '我', text: '等我两波', time: '05:31', self: true },
+      { kind: 'ping', champion: '法外狂徒', time: '05:32' },
+    ],
+  }, 'live.jsonl');
+  const rows = state.activityEvents.filter(row => row.kind === 'chat');
+  assert.equal(rows.length, 3);
+  assert.match(rows[0].text, /诺天暗淡：中路来一下/);
+  assert.match(rows[1].text, /^你：等我两波/, '自己说的话用「你」');
+  assert.match(rows[2].text, /点了信号/);
+});
