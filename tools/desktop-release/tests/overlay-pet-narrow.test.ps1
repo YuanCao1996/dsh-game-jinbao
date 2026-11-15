@@ -82,10 +82,31 @@ $script:petIdleSince = (Get-Date).AddMinutes(-30)
 Update-NarrowPet -Snapshot ([pscustomobject]@{ phase = 'Lobby' }) -Force
 Check '大厅候场会重置挂机计时' ((([DateTime]::Now - $script:petIdleSince).TotalMinutes -lt 1))
 
+# 8) 开关形象要触发重排：条子高度跟着可见性走，不然 72/88 会被裁掉一截
+$script:narrowPetSize = 88          # 先假装当前就是 88，避免尺寸变化干扰这个断言
+[IO.File]::WriteAllText($petFile, '{"enabled":true,"size":88}', [Text.UTF8Encoding]::new($false))
+$script:narrowPetVisible = $true
+$script:narrowPetConfigAt = [DateTime]::MinValue
+$script:metricsCalls = 0
+Update-NarrowPet -Snapshot ([pscustomobject]@{ phase = 'InProgress' }) -Force
+Check '配置没变不重排' ($script:metricsCalls -eq 0)
+
+[IO.File]::WriteAllText($petFile, '{"enabled":false,"size":88}', [Text.UTF8Encoding]::new($false))
+$script:narrowPetConfigAt = [DateTime]::MinValue
+$script:metricsCalls = 0
+Update-NarrowPet -Snapshot ([pscustomobject]@{ phase = 'InProgress' }) -Force
+Check '关掉形象触发重排' ($script:metricsCalls -ge 1)
+
+[IO.File]::WriteAllText($petFile, '{"enabled":true,"size":88}', [Text.UTF8Encoding]::new($false))
+$script:narrowPetConfigAt = [DateTime]::MinValue
+$script:metricsCalls = 0
+Update-NarrowPet -Snapshot ([pscustomobject]@{ phase = 'InProgress' }) -Force
+Check '打开形象触发重排' ($script:metricsCalls -ge 1)
+
 Remove-Item -Recurse -Force $stateDir, $root -ErrorAction SilentlyContinue
 
 if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1
 }
-Write-Output 'overlay-pet: 收起形态形象 13/13 通过'
+Write-Output 'overlay-pet: 收起形态形象 16/16 通过'

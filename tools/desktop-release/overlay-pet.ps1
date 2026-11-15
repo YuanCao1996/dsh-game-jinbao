@@ -451,6 +451,9 @@ function Update-NarrowPet {
         if ($script:narrowPetTail) { $script:narrowPetTail.Visibility = if ($enabled) { 'Visible' } else { 'Collapsed' } }
         Write-PetDiag 'visibility' @{ enabled = $enabled; size = $size; source = [bool]$script:narrowPetControl.Source; tail = [bool]$script:narrowPetTail }
       } catch { }
+      # 条子高度要跟着形象可见性走：打开开关那一刻如果尺寸已经是 72/88，
+      # 不重排就会被裁掉一截（高度只在 size 变化时重算，这里漏了一次）。
+      try { if ($script:displayMode -eq 'narrow') { Set-NarrowMetrics } } catch { }
     }
   }
   if (-not $script:narrowPetVisible) { return }

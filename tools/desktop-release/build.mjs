@@ -13,8 +13,18 @@ for(const name of ['dsh-onboarding','dsh-game-services','dsh-coach-server','desk
  const from=join(root,'tools',name);
  await cp(from,join(out,'tools',name),{recursive:true,filter:p=>!relative(from,p).split(/[\\/]/).some(part=>part==='tests'||part.includes('.bak'))&&!p.endsWith('build.mjs')&&!p.endsWith('update-metadata.mjs')});
 }
-mkdirSync(join(out,'tools','lol-companion'),{recursive:true});
-for(const name of ['collector.mjs','collector-state.mjs','champ-select.mjs','chat.mjs','chat-observer.mjs','player-stats.mjs','lockfile.mjs','lcu.mjs','live.mjs','eventlog.mjs','augment-observer.mjs','capture-worker.mjs','capture-schedule.mjs','augment-names.json','capture-augments.ps1'])copyFileSync(join(root,'tools/lol-companion',name),join(out,'tools/lol-companion',name));
+// lol-companion / team-room / shared 是 install.mjs 要装进 DSH profiles 的插件，
+// 必须整目录带 package.json 一起打；以前按硬编码清单挑文件，结果：
+//   1) 这三个目录没有 package.json，install.mjs 的「Missing release plugin」必然抛错（0.1.55 就装不上）
+//   2) 清单是旧的，danmaku-bridge / item-policy / partner-index / viewer-reply 这几个新模块全漏了
+for(const name of ['lol-companion','team-room','shared']){
+ const from=join(root,'tools',name);
+ await cp(from,join(out,'tools',name),{recursive:true,filter:p=>!relative(from,p).split(/[\\/]/).some(part=>part==='tests'||part.includes('.bak'))});
+}
+// install.mjs 还会从 tools/cloud-desktop 取这两个无副作用的小工具塞进 profiles，
+// 少了它们装到一半就 ENOENT（实测卡在这里）。整目录不打，只带这两个文件。
+mkdirSync(join(out,'tools','cloud-desktop'),{recursive:true});
+for(const name of ['user-memory.mjs','shutdown.mjs'])copyFileSync(join(root,'tools/cloud-desktop',name),join(out,'tools/cloud-desktop',name));
 const req=createRequire(join(root,'package.json')),packages=new Set();
 function walk(dir,includeModules=false){return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?(e.name==='node_modules'&&!includeModules?[]:walk(join(dir,e.name),includeModules)):[join(dir,e.name)]);}
 async function bundle(name){
