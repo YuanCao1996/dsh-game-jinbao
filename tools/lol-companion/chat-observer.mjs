@@ -1,4 +1,5 @@
 ﻿import {parseChat,AUGMENT_VERB_RE} from './chat.mjs';
+import {correctMessage} from './chat-correct.mjs';
 const normalized=value=>String(value??'').replace(/[\s:：!！·•,，。.]/g,'').toLowerCase();
 function lookup(map,value){
   if(value.startsWith('~fix~'))return null;
@@ -41,7 +42,17 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
           return hits.filter(([key])=>!hits.some(([other])=>other!==key&&other.includes(key))).map(([,row])=>row.name);
         },
       });
-      for(const message of messages){
+      // OCR 结果先校验/纠错：时间前缀坏的、名字对不上本局名单的、乱码太多的，直接丢。
+ const rosterPlayers=[state.me,...(state.allies??[]),...(state.enemies??[])]
+  .flatMap(p=>[p?.riotId,p?.summonerName,p?.champion])
+  .filter(name=>typeof name==='string'&&name.trim());
+ const messages2=messages.map(message=>correctMessage(message,{
+  clock:Number(state.gameSeconds),
+  players:[...new Set(rosterPlayers)],
+  champions:[...new Set([...aliases.values()])],
+  augments:[...augments.values()].map(row=>row.name),
+ })).filter(Boolean);
+ for(const message of messages2){
         if(!['purchase','augment_mutate','augment_picked_chat','team_chat','ping'].includes(message.kind))continue;
         // Chat attribution must read the raw line. The in-game format is
         // "玩家名（英雄）已质变了…", so stripping the bracketed prefix before looking
