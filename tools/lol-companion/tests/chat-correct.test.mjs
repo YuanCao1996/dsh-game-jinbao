@@ -53,3 +53,21 @@ test('编辑距离基本正确', () => {
   assert.equal(editDistance('皮城执法官', '皮城执法宫'), 1);
   assert.equal(editDistance('abc', 'abc'), 0);
 });
+
+test('整行文本里的名字也能纠回来（解析前修）', async () => {
+  const { snapInText } = await import('../chat-correct.mjs');
+  const line = '05:27 OB大魔玉(法外狂徒)击杀了MISSI(皮城执法宫)完成了一次三杀!';
+  const fixed = snapInText(snapInText(line, ['OB大魔王'], 1), ['法外狂徒', '皮城执法官'], 2);
+  assert.match(fixed, /OB大魔王/);
+  assert.match(fixed, /法外狂徒/);
+  assert.match(fixed, /皮城执法官/);
+  assert.equal(fixed.length, line.length, '替换必须等长，不能破坏时间前缀');
+});
+
+test('购买公告里的装备名会纠错，认不出就丢', async () => {
+  const items = ['凡性的提醒', '黑色切割者', '玛莫提乌斯之噬'];
+  const fixed = correctMessage({ kind: 'purchase', time: '05:30', item: '凡性的提酲', champion: '皮城执法宫' }, { ...ctx, items });
+  assert.equal(fixed.item, '凡性的提醒');
+  assert.equal(fixed.champion, '皮城执法官');
+  assert.equal(correctMessage({ kind: 'purchase', time: '05:30', item: '完全不存在的装备' }, { ...ctx, items }), null);
+});

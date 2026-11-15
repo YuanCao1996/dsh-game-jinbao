@@ -37,7 +37,8 @@ export function snapName(value, pool = [], maxDistance = 2) {
     if (distance < bestScore) { bestScore = distance; best = candidate; }
   }
   // 名字越长容忍度越低：两个字的名字错一个字就不该硬认。
-  const limit = Math.min(maxDistance, Math.max(1, Math.floor(raw.length / 3)));
+  // 长名字错两个字仍然认得出（「奥瑞利安·索尔」「凡性的提醒」）；短名字只容一个。
+  const limit = Math.min(maxDistance, raw.length >= 5 ? 2 : 1);
   return best && bestScore <= limit ? best : null;
 }
 
@@ -60,7 +61,39 @@ export function garbageRatio(text) {
  * 校验并纠正一条解析结果。
  * @returns 纠正后的消息，或 null（不可信，丢弃）
  */
-export function correctMessage(message, { clock = null, players = [], champions = [], augments = [], maxDistance = 2 } = {}) {
+/**
+ * 在整行文本里把"像某个名字"的片段替换成规范名。
+ *
+ * 为什么要在解析前做：OCR 把「皮城执法官」认成「皮城执法宫」时，解析器连"这是谁"都认不出，
+ * 这一行会直接变成 other 被丢掉；只有先把名字修对，后面的结构化解析才有机会命中。
+ *
+ * 只对候选名单做窗口比对，不碰句子结构；替换后长度不变（名字等长），不会破坏时间前缀。
+ */
+export function snapInText(text, pool = [], maxDistance = 2) {
+  const value = String(text ?? '');
+  if (!value || !pool.length) return value;
+  const chars = Array.from(value);
+  let out = value;
+  for (const name of pool) {
+    const target = Array.from(String(name));
+    const length = target.length;
+    if (length < 2 || !name) continue;
+    if (out.includes(name)) continue;                 // 已经对上了就别动
+    for (let start = 0; start + length <= chars.length; start += 1) {
+      const window = chars.slice(start, start + length).join('');
+      if (!window.trim()) continue;
+      if (editDistance(window, name) <= Math.min(maxDistance, length >= 5 ? 2 : 1)) {
+        // 按字符位置替换，保证长度不变
+        for (let i = 0; i < length; i += 1) chars[start + i] = target[i];
+        out = chars.join('');
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+export function correctMessage(message, { clock = null, players = [], champions = [], augments = [], items = [], maxDistance = 2 } = {}) {
   if (!message || typeof message !== 'object') return null;
   const time = String(message.time ?? '');
   if (time) {
@@ -95,6 +128,18 @@ export function correctMessage(message, { clock = null, players = [], champions 
     const content = String(next.content ?? '').trim();
     if (!content || garbageRatio(content) > 0.3) return null;
     next.content = content;
+  }
+  // 装备名：购买公告里的物品名同样容易被 OCR 认错（「凡性的提酲」）。
+  if (next.kind === 'purchase' && next.item) {
+    next.item = snapName(next.item, items, maxDistance) ?? null;
+    if (!next.item) return null;                 // 认不出是哪件装备，这条没有价值
+  }
+  // 英雄名统一再吸附一次（击杀/终结行里的括号内英雄名）。
+  for (const key of ['champion', 'speakerChampion']) {
+    if (next[key]) next[key] = snapName(next[key], champions, maxDistance) ?? next[key];
+  }
+  if (Array.isArray(next.champions)) {
+    next.champions = next.champions.map((name) => snapName(name, champions, maxDistance) ?? name);
   }
   if (Array.isArray(next.augments)) {
     next.augments = next.augments.map((name) => snapName(name, augments, 1) ?? name);

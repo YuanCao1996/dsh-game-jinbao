@@ -1,5 +1,5 @@
 ﻿import {parseChat,AUGMENT_VERB_RE} from './chat.mjs';
-import {correctMessage} from './chat-correct.mjs';
+import {correctMessage,snapInText} from './chat-correct.mjs';
 const normalized=value=>String(value??'').replace(/[\s:：!！·•,，。.]/g,'').toLowerCase();
 function lookup(map,value){
   if(value.startsWith('~fix~'))return null;
@@ -30,7 +30,16 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
         return [...new Set(hits.sort((a,b)=>a.at-b.at).map(h=>h.name))];
       };
       const lines=(frame.lines??[]).filter(line=>Array.isArray(line.box)).map(line=>({...line,text:String(line.text??'').replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g,'$1').replace(/(\d)\s*[:：]\s*(\d)/g,'$1:$2')}));
-      const messages=parseChat(lines,{width:frame.width,height:frame.height,
+      // 解析前先把整行里的名字纠回来：OCR 认错一个字的英雄名会让整行变成 other 被丢掉。
+ const rosterNames=[...new Set([state.me,...(state.allies??[]),...(state.enemies??[])]
+  .flatMap(p=>[p?.riotId,p?.summonerName]).filter(name=>typeof name==='string'&&name.trim()))];
+ const championNames=[...new Set([...aliases.values()])];
+ const fixedLines=lines.map(line=>{
+  const text=String(line.text??'');
+  if(!text)return line;
+  return {...line,text:snapInText(snapInText(text,rosterNames,1),championNames,2)};
+ });
+ const messages=parseChat(fixedLines,{width:frame.width,height:frame.height,
         championsInText,isChampion:value=>aliases.has(normalized(value)),championFix:value=>aliases.get(normalized(value))??null,
         augmentLookup:value=>lookup(augments,value),itemLookup:value=>lookup(itemMap,value),
         augmentsInText:value=>{
@@ -51,6 +60,7 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
   players:[...new Set(rosterPlayers)],
   champions:[...new Set([...aliases.values()])],
   augments:[...augments.values()].map(row=>row.name),
+  items:[...itemMap.values()].map(row=>row.name).filter(Boolean),
  })).filter(Boolean);
  for(const message of messages2){
         if(!['purchase','augment_mutate','augment_picked_chat','team_chat','ping'].includes(message.kind))continue;
