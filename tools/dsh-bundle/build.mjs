@@ -71,8 +71,13 @@ await cp(join(root, 'tools/desktop-release/assets/pet/icon.png'), join(out, 'ico
 const pkg = {
   name: BUNDLE,
   version: VERSION,
-  private: true,
+  // 发布到 registry 需要它是公共包；本地 link 安装时这个字段不影响
   type: 'module',
+  license: 'SEE LICENSE IN LICENSE',
+  repository: { type: 'git', url: 'https://github.com/YuanCao1996/dsh-game-jinbao' },
+  engines: { node: '>=22' },
+  keywords: ['dsh-plugin', 'dsh-bundle', 'league-of-legends', 'coach'],
+  publishConfig: { access: 'public' },
   description: '金宝 · 英雄联盟桌面教练（插件版）：对战局势分析、出装与海克斯建议、悬浮窗形象',
   exports: {
     './onboarding': './lib/dsh-onboarding/plugin.mjs',
@@ -89,7 +94,9 @@ const pkg = {
   },
   dsh: { bundle: { patch: './cordis.patch.yml' } },
 };
-pkg.files = ['lib', 'locale', 'docs', 'icon.png', 'cordis.patch.yml', 'package.json', 'README.md'];
+// npm 打包白名单：只要运行时需要的东西（本地 link 安装时这个字段不生效，
+// 但发布后由它决定谁能进 tarball，少一项就等于装出来缺文件）
+pkg.files = ['lib', 'locale', 'docs', 'icon.png', 'cordis.patch.yml', 'README.md'];
 
 await writeFile(join(out, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
 
