@@ -8,6 +8,8 @@ import { promisify } from 'node:util';
 export const UPDATE_FEED = 'https://api.jinbaoai.top/downloads/dsh/latest.json';
 export const STANDALONE_FEED = 'https://api.jinbaoai.top/downloads/jinbao/latest.json';
 const MAX_ARCHIVE = 160 * 1024 * 1024;
+// 下载停流超过这个时间就当断线，重连续传（旧实现要等 15 分钟总超时才报错）。
+const STALL_MS = 30000;
 const MAX_EXPANDED = 300 * 1024 * 1024;
 const exec = promisify(execFile);
 const moduleDir = fileURLToPath(new URL('.', import.meta.url));
@@ -151,15 +153,47 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
         phase='downloading';
         await status({state:'downloading',version:release.version,currentVersion,downloadedBytes:0,totalBytes:release.bytes,percent:0,notes:release.notes,message:'正在后台下载新版 '+release.version});
         const downloadSignal=AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(15*60*1000)]);
-        const download = await fetchImpl(release.url,{redirect:'error',signal:downloadSignal});
-        if (!download.ok || !download.body) throw Error('Update download failed');
         archive=join(updates,'download-'+randomUUID()+'.zip');
-        const file=await open(archive,'wx'); let count=0,lastProgress=0; const started=now();const hash=createHash('sha256');
+        const started=now();let count=0,lastProgress=0;let hash=createHash('sha256');
+        const file=await open(archive,'w');
         try {
-          for await (const chunk of download.body) {
-            count+=chunk.length;if(count>release.bytes)throw Error('Update size mismatch');
-            hash.update(chunk);await file.writeFile(chunk);
-            if(now()-lastProgress>=500||count===release.bytes){lastProgress=now();await status({state:'downloading',version:release.version,currentVersion,notes:release.notes,downloadedBytes:count,totalBytes:release.bytes,percent:Math.floor(count/release.bytes*100),bytesPerSecond:Math.round(count/Math.max(.001,(now()-started)/1000)),message:'正在后台下载新版 '+release.version+' · '+Math.floor(count/release.bytes*100)+'%'});}
+          // 断点续传 + 停流重连：发布包 48MB、服务器对外约 420KB/s，纯等待就要两分钟；
+          // 连接被掐断时旧实现会一直挂着直到 15 分钟总超时，用户看到的就是「卡在一半」。
+          let attempt=0,lastError=null;
+          while(count<release.bytes){
+            attempt+=1;
+            const controller=new AbortController();
+            let stallTimer=null;
+            const armStall=()=>{clearTimeout(stallTimer);stallTimer=setTimeout(()=>controller.abort(),STALL_MS);};
+            try{
+              armStall();
+              const download=await fetchImpl(release.url,{redirect:'error',
+                signal:AbortSignal.any([downloadSignal,controller.signal]),
+                ...(count?{headers:{Range:'bytes='+count+'-'}}:{})});
+              if(download.status===416)break;
+              if(!download.ok||!download.body)throw Error('Update download failed');
+              if(count>0&&download.status===200){await file.truncate(0);count=0;hash=createHash('sha256');}
+              for await (const chunk of download.body){
+                armStall();
+                const at=count;
+                count+=chunk.length;if(count>release.bytes)throw Error('Update size mismatch');
+                hash.update(chunk);await file.write(chunk,0,chunk.length,at);
+                if(now()-lastProgress>=500||count===release.bytes){
+                  lastProgress=now();
+                  const speed=Math.round(count/Math.max(.001,(now()-started)/1000));
+                  await status({state:'downloading',version:release.version,currentVersion,notes:release.notes,
+                    downloadedBytes:count,totalBytes:release.bytes,
+                    percent:Math.min(100,Math.floor(count/release.bytes*100)),
+                    bytesPerSecond:speed,
+                    etaMs:speed>0?Math.round((release.bytes-count)/speed*1000):null,
+                    message:'正在后台下载新版 '+release.version+' · '+Math.floor(count/release.bytes*100)+'%'});
+                }
+              }
+            }catch(error){lastError=error;}
+            finally{clearTimeout(stallTimer);}
+            if(count>=release.bytes)break;
+            if(attempt>=3)throw lastError??Error('Update download interrupted');
+            await new Promise(resolve=>setTimeout(resolve,1000));
           }
         } finally { await file.close(); }
         phase='verifying';

@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {generateKeyPairSync,sign,createHash}from'node:crypto';import {mkdtemp,mkdir,writeFile,readFile,cp,rm}from'node:fs/promises';import{join}from'node:path';import{tmpdir}from'node:os';
+import {generateKeyPairSync,sign,createHash}from'node:crypto';import {mkdtemp,mkdir,writeFile,readFile,cp,rm}from'node:fs/promises';import{join,dirname}from'node:path';import{tmpdir}from'node:os';
 import{createUpdater,verifyRelease}from'../../jinbao-launcher/update.mjs';import{createStandaloneUpdates}from'../updates.mjs';
 import{runEntry}from'../entry.mjs';import{EventEmitter}from'node:events';
 const digest=b=>createHash('sha256').update(b).digest('hex');
@@ -38,4 +38,55 @@ test('standalone entry falls back after an executable startup error before ready
  try{await mkdir(root);await mkdir(candidate);await mkdir(stateDir);await writeFile(join(candidate,'manifest.json'),JSON.stringify({version:'0.2.1'}));
  const code=await runEntry({root,stateDir,updater:{resolve:async()=>candidate},startupTimeoutMs:1000,spawnImpl:executable=>{const child=new EventEmitter();child.kill=()=>{};starts.push(executable);setImmediate(()=>{if(starts.length===1)child.emit('error',Error('fixture executable unavailable'));else{child.emit('message',{action:'ready'});child.emit('exit',0);}});return child;}});assert.equal(code,0);assert.equal(starts.length,2);assert.ok(starts[1].startsWith(root));assert.equal(JSON.parse(await readFile(join(stateDir,'updates/result.json'))).state,'rollback');
  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('下载中断后按 Range 续传，不会卡到 15 分钟超时', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'jinbao-resume-'));
+  try {
+    const root = join(dir, 'old'), stateDir = join(dir, 'state'), next = join(dir, 'new');
+    await mkdir(root); await mkdir(stateDir); await mkdir(next);
+    await writeFile(join(root, 'manifest.json'), JSON.stringify({ version: '0.2.0', runtime: 'standalone', files: [] }));
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+    const archive = Buffer.from('1234567890abcdef'.repeat(4));
+    const contents = [
+      ['runtime/node.exe', 'MZ'],
+      ['start-preview.vbs', 'Rem'],
+      ['tools/cloud-desktop/entry.mjs', 'export {}'],
+      ['tools/cloud-desktop/main.mjs', 'export {}'],
+      ['tools/jinbao-launcher/update.mjs', 'export {}'],
+    ];
+    const files = [];
+    for (const [path, text] of contents) {
+      const bytes = Buffer.from(text);
+      await mkdir(dirname(join(next, path)), { recursive: true });
+      await writeFile(join(next, path), bytes);
+      files.push({ path, bytes: bytes.length, sha256: digest(bytes) });
+    }
+    const manifest = Buffer.from(JSON.stringify({ version: '0.2.1', runtime: 'standalone', files }));
+    await writeFile(join(next, 'manifest.json'), manifest);
+    const release = { runtime: 'standalone', version: '0.2.1',
+      url: 'https://api.jinbaoai.top/downloads/jinbao/v0.2.1/jinbao-desktop-windows.zip',
+      bytes: archive.length, sha256: digest(archive), manifestSha256: digest(manifest) };
+    const payload = Buffer.from(JSON.stringify(release));
+    const envelope = { payload: payload.toString('base64'), signature: sign(null, payload, privateKey).toString('base64') };
+    let zipCalls = 0; const ranges = [];
+    const fetchImpl = async (url, options = {}) => {
+      if (String(url).includes('latest.json')) return Response.json(envelope);
+      zipCalls += 1;
+      ranges.push(options.headers?.Range ?? null);
+      const from = options.headers?.Range ? Number(/bytes=(\d+)-/.exec(options.headers.Range)[1]) : 0;
+      if (zipCalls === 1) {
+        const half = archive.subarray(0, 32);
+        return new Response(new ReadableStream({ start(c) { c.enqueue(half); setTimeout(() => c.error(Error('network stalled')), 10); } }), { status: 200 });
+      }
+      return new Response(archive.subarray(from), { status: from ? 206 : 200 });
+    };
+    const updater = createUpdater({ root, stateDir, channel: 'standalone', publicKey,
+      extract: (_archive, destination) => cp(next, destination, { recursive: true }), fetchImpl });
+    await updater.check();
+    assert.equal(zipCalls, 2, '断流后应重连一次，而不是挂到超时');
+    assert.equal(ranges[1], 'bytes=32-', '重连必须带 Range 续传');
+    const prepared = await updater.prepared();
+    assert.equal(prepared.release.version, '0.2.1');
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
