@@ -48,8 +48,10 @@ export function createOverlayLauncher({
       child = proc;
       onLog({ event: 'started', pid: proc.pid ?? null, script: startScript });
       if (typeof proc.once === 'function') {
-        proc.once('exit', (code) => { child = null; onLog({ event: 'exit', code }); });
-        proc.once('error', (error) => { child = null; onLog({ event: 'error', code: error?.code ?? null }); });
+        // 注意：start-overlay.ps1 本身是个短命脚本 —— 它 Start-Process 出真正的悬浮窗就退出了。
+        // 所以这里记 launcher-exit（code 0 表示脚本正常跑完），不代表悬浮窗挂了。
+        proc.once('exit', (code) => { child = null; onLog({ event: 'launcher-exit', code }); });
+        proc.once('error', (error) => { child = null; onLog({ event: 'launcher-error', code: error?.code ?? null }); });
       }
       return true;
     } catch (error) {

@@ -65,10 +65,18 @@ for(const name of ['dsh-game-services','dsh-onboarding','dsh-coach-server','lol-
  if(!existsSync(join(from,'package.json')))throw Error('Missing release plugin: '+name);
  await cp(from,to,{recursive:true,filter:p=>!relative(from,p).split(/[\\/]/).some(part=>part==='tests'||part.includes('.bak'))});
 }
-// cloud-desktop is the standalone app; the host reuses only these two side-effect
-// free helpers, so copy them instead of dragging standalone-only modules along.
-mkdirSync(join(profiles,'node_modules','cloud-desktop'),{recursive:true});
-for(const name of ['user-memory.mjs','shutdown.mjs'])copyFileSync(join(source,'cloud-desktop',name),join(profiles,'node_modules','cloud-desktop',name));
+// cloud-desktop 是独立版应用；插件只借它的无副作用小工具。
+// ⚠ 这里过去按两个文件名硬编码（user-memory / shutdown），结果插件陆续加了
+// advice-text（overlay-state）与 native-modules（team-room），安装器没跟上 →
+// 装完 dsh-onboarding 直接 ERR_MODULE_NOT_FOUND，整个插件不加载。
+// 改成把 cloud-desktop 下所有 .mjs 一起带上，避免再次漂移。
+{
+ const cloudTools=join(source,'cloud-desktop'),cloudDest=join(profiles,'node_modules','cloud-desktop');
+ mkdirSync(cloudDest,{recursive:true});
+ for(const entry of readdirSync(cloudTools,{withFileTypes:true})){
+  if(entry.isFile()&&entry.name.endsWith('.mjs'))copyFileSync(join(cloudTools,entry.name),join(cloudDest,entry.name));
+ }
+}
 // 悬浮窗：插件线没有别的入口会拉起它（只有独立版 main.mjs 和启动器 start.ps1），
 // 所以把 desktop-release 与 jinbao-launcher 装进 profiles 且保持同级——
 // start-overlay.ps1 会 dot-source ..\jinbao-launcher\legacy-overlay.ps1。
