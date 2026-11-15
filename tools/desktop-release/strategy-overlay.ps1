@@ -163,9 +163,9 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0,0,0">
 <Image x:Name="NarrowPetImage" Width="56" Height="56" VerticalAlignment="Center" SnapsToDevicePixels="True" RenderOptions.BitmapScalingMode="HighQuality" Visibility="Collapsed"/>
-<Path x:Name="NarrowPetTail" Fill="#F21B2129" Stroke="#2C3540" StrokeThickness="1" Data="M 0,0 L 7,4 L 0,8 Z" VerticalAlignment="Center" Margin="1,0,-1,0" Visibility="Collapsed"/>
+<Path x:Name="NarrowPetTail" Fill="#731B2129" Stroke="#2C3540" StrokeThickness="1" Data="M 0,0 L 7,4 L 0,8 Z" VerticalAlignment="Center" Margin="1,0,-1,0" Visibility="Collapsed"/>
 </StackPanel>
-    <Border x:Name="NarrowBubble" Grid.Column="1" CornerRadius="10" Background="#F21B2129" BorderBrush="#2C3540" BorderThickness="1" Padding="8,2" Margin="0,1,4,1"><Grid><Canvas x:Name="NarrowCanvas" ClipToBounds="True" Margin="0,2,4,0"><TextBlock x:Name="OutgoingSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="PreviousSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="NarrowText" Style="{StaticResource SubtitleText}" FontSize="14"/></Canvas></Grid></Border>
+    <Border x:Name="NarrowBubble" Grid.Column="1" CornerRadius="10" Background="#731B2129" BorderBrush="#3A2C3540" BorderThickness="1" Padding="8,2" Margin="0,1,4,1"><Grid><Canvas x:Name="NarrowCanvas" ClipToBounds="True" Margin="0,2,4,0"><TextBlock x:Name="OutgoingSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="PreviousSubtitle" Style="{StaticResource SubtitleText}"/><TextBlock x:Name="NarrowText" Style="{StaticResource SubtitleText}" FontSize="14"/></Canvas></Grid></Border>
     <Button x:Name="NarrowExpand" Grid.Column="2" Content="▣" ToolTip="展开大框 · Ctrl+Alt+↑" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
     <Button x:Name="NarrowMenu" Grid.Column="3" Content="⋯" ToolTip="显示模式" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
     <Button x:Name="NarrowClose" Grid.Column="4" Content="×" ToolTip="退出悬浮窗" Visibility="Collapsed" Padding="5,0" VerticalAlignment="Center" Height="28"/>
@@ -327,6 +327,14 @@ function Set-BackgroundOpacity {
  $percent=[Math]::Round($controls.OpacitySlider.Value)
  $color=[Windows.Media.Color]::FromArgb([byte][Math]::Round(255*$percent/100),16,21,27)
  $controls.MainBorder.Background=if($script:collapsed -or ($script:displayMode -eq 'narrow' -and $script:subtitleMode)){[Windows.Media.Brushes]::Transparent}else{New-Object Windows.Media.SolidColorBrush($color)}
+ # 收起后的窄条/字幕条过去写死 #F21B2129（95% 黑），压在游戏画面上就是一道黑条。
+ # 改成跟随透明度滑块，但最多 45%：看得见游戏，也不至于让白字糊在亮场景里。
+ try{
+  $narrowAlpha=[byte][Math]::Round(255*[Math]::Min(0.45,$percent/100.0))
+  $narrowBrush=New-Object Windows.Media.SolidColorBrush ([Windows.Media.Color]::FromArgb($narrowAlpha,27,33,41))
+  if($controls.NarrowBubble){$controls.NarrowBubble.Background=$narrowBrush}
+  if($controls.NarrowPetTail){$controls.NarrowPetTail.Fill=$narrowBrush}
+ }catch{}
  $controls.OpacityText.Text=([string]$percent)+'%'
  if(Get-Command Update-OverlaySurface -ErrorAction SilentlyContinue){Update-OverlaySurface}
 }
