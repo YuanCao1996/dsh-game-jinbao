@@ -136,6 +136,7 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     if(state.match!==match||state.phase!=='ChampSelect')Object.assign(state,initialOverlayState(),{match,matchStartedAt:at,game:event.game,at});
     state.phase='ChampSelect';state.me=event.me??{};state.allies=list(event.allies);state.enemies=list(event.enemies);state.bench=list(event.bench);state.gameSeconds=null;
   }
+  if(['state','game_start','champ_select','phase'].includes(event.kind))state.gameplayAt=at;
   const mode=normalizeLolMode(event.mode??event.queue??event.state?.mode);
   if(state.game==='lol'&&mode)state.mode=mode;
   if(event.kind==='chat_events'){

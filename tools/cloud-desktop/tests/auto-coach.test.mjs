@@ -1,4 +1,10 @@
 import test from'node:test';import assert from'node:assert/strict';import{createCloudCoach}from'../auto-coach.mjs';
+test('fresh OCR/status timestamps do not make frozen gameplay facts fresh',async()=>{
+ let calls=0;const time=1000000;
+ const current={game:'lol',match:'stale',at:time,gameplayAt:time-121000,gameSeconds:500,me:{champion:'安妮',level:10},allies:[],enemies:[],ownedAugments:['质变：棱彩阶']};
+ const coach=createCloudCoach({view:()=>({game:'lol',match:'stale',updatedAt:time}),getContext:async()=>({current}),now:()=>time,agent:{ask:async()=>{calls++;return '不应生成';}},publish:async()=>{throw Error('stale publish');}});
+ await coach.tick();assert.equal(calls,0);coach.close();
+});
 test('ranking a concurrent offer does not consume a newly confirmed augment playbook',async()=>{
  let time=10000;const entries=[];
  const current={game:'lol',match:'one',phase:'InProgress',gameSeconds:180,me:{champion:'安妮',level:6,items:[]},allies:[],enemies:[],offers:[],ownedAugments:['旧强化']};
