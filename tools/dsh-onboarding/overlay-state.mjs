@@ -914,6 +914,16 @@ const playerRows = players.map(p => {
   };
 }
 
+// 启动时是否该跳过这个日志的历史内容。
+// 实测事故（2026-11-15 19:21）：应用重启后从 0 偏移重放了 11-14 23:12 那局 2.37MB 的
+// 对局日志，旧对局被当成"正在打"，悬浮窗把开播语和结束语又播了一遍，游戏时钟永远停在 08:19。
+// 规则：首次见到、且最后写入已经超过 5 分钟的文件，只跟新写入的内容，不重放历史。
+export const STALE_LOG_MS = 5 * 60 * 1000;
+export function skipStaleHistory({ size, mtimeMs, now = Date.now(), maxAgeMs = STALE_LOG_MS } = {}) {
+  if (!Number.isFinite(size) || size <= 0) return false;
+  if (!Number.isFinite(mtimeMs)) return false;
+  return now - mtimeMs > maxAgeMs;
+}
 export async function createOverlayService({ stateDir, agentChat, agentImage, search, pollMs = 500, equipmentDebounceMs=2000, equipmentCooldownMs=30000, equipmentOpeningRetryMs=15000, knowledgeRetryMs=15000,activity,canAutoRequest,experience=null,praiseCloudGraceMs=30000 }) {
   search=createKnowledgeSearch(search);
   const logs = join(stateDir, 'logs'), output = join(stateDir, 'overlay-state.json');
@@ -1246,6 +1256,8 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
         const path = join(logs, file), info = await stat(path);
         let offset = offsets.get(file) ?? 0;
         const first = !offsets.has(file);
+        // 旧对局日志不重放：只跟启动之后的写入。
+        if (first && skipStaleHistory({ size: info.size, mtimeMs: info.mtimeMs })) offset = info.size;
         if (info.size < offset) offset = 0;
         if (info.size <= offset) continue;
         const f = await open(path, 'r');
