@@ -280,11 +280,11 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     // 队友或自己的聊天/信号：进聊天时间线（origin=team），不当作关键事件。
     if(item?.kind==='team_chat'){
      const text=String(item.text??'').trim();
-     if(text){state.chat.push({role:'user',origin:'team',displayName:String(item.speaker??'').slice(0,24)||'队友',champion:String(item.champion??'').slice(0,24),text,at,self:item.self===true});if(state.chat.length>400)state.chat=state.chat.slice(-300);}
+     if(text){state.chat.push({role:'user',origin:'team',hidden:true,displayName:String(item.speaker??'').slice(0,24)||'队友',champion:String(item.champion??'').slice(0,24),text,at,self:item.self===true});if(state.chat.length>400)state.chat=state.chat.slice(-300);}
      continue;
     }
     if(item?.kind==='ping'){
-     state.chat.push({role:'user',origin:'team',displayName:String(item.champion??'').slice(0,24)||'队友',champion:String(item.champion??'').slice(0,24),text:'点了信号',at,self:item.self===true,ping:true});
+     state.chat.push({role:'user',origin:'team',hidden:true,displayName:String(item.champion??'').slice(0,24)||'队友',champion:String(item.champion??'').slice(0,24),text:'点了信号',at,self:item.self===true,ping:true});
      if(state.chat.length>400)state.chat=state.chat.slice(-300);
      continue;
     }
@@ -891,11 +891,11 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
     // ignore that event?" is answerable from the UI instead of from logs. Held-back rows
     // are called out rather than silently hidden.
     events: (()=>{const {rows,heldBack}=eventWindow(state.events);const body=rows.map(e=>`${e.time} ${e.text}`).join('\n');return (body||'等待关键事件：装备购买、海克斯选择、团灭和重要目标。')+(heldBack?`\n（更早 ${heldBack} 条未进入智能体上下文，可在聊天中要求查询）`:'');})(),
-    chat: state.chat.slice(-12).map(r => `${r.role === 'user' ? '我' : '教练'}：${r.text}`).join('\n\n') || '输入问题，与教练讨论当前对局。',
+    chat: state.chat.filter(r => !r.hidden).slice(-12).map(r => `${r.role === 'user' ? '我' : '教练'}：${r.text}`).join('\n\n') || '输入问题，与教练讨论当前对局。',
    // The battle page is one conversation: advice the coach published and the turns the
    // player exchanged are merged into a single chronological stream, oldest first.
    thread: (() => {
-    const turns = state.chat.map(r => ({ role: r.role, origin: r.origin ?? '', text: r.text, failed: r.failed === true, at: Number(r.at) || 0, kind: 'chat' }));
+    const turns = state.chat.filter(r => !r.hidden).map(r => ({ role: r.role, origin: r.origin ?? '', text: r.text, failed: r.failed === true, at: Number(r.at) || 0, kind: 'chat' }));
     const spoken = state.broadcasts.map(b => ({ role: 'assistant', origin: 'coach', text: b.text, at: Number(b.at) || 0, kind: b.topic === 'praise' ? 'praise' : 'advice', dimension: b.dimension ?? '', stage: b.stage ?? '' }));
     // 原海克斯页/胜率页的内容以同一条时间线出现，玩家不用切页就能看到。
     // table/footer 透传给渲染层：阵容这类内容排成四列表格，比拼一行文字整齐得多。
@@ -928,7 +928,7 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
    })(),
    // Events are too long to list here; the page keeps only the newest line and updates it.
    eventTicker: (() => { const last = state.events.at(-1); return last ? `${last.time ?? ''} ${last.text ?? ''}`.trim() : ''; })(),
-    chatRows: state.chat.slice(-40).map(r => ({role:r.role,origin:r.origin??'',text:r.text,at:r.at,failed:r.failed===true})),
+    chatRows: state.chat.filter(r => !r.hidden).slice(-40).map(r => ({role:r.role,origin:r.origin??'',text:r.text,at:r.at,failed:r.failed===true})),
     suggestedQuestion: suggestOverlayQuestion(state),
     // 经验库给出的历史段落（已带标题与实际字节预算）；教练消息里包含整份 context，
     // 因此把它放进视图就等于放进提示词，无需再改消息构造。
