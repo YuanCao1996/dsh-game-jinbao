@@ -157,3 +157,23 @@ test('同一局内不重复同一句，用尽后才会重来', async () => {
   assert.equal(new Set(deathLines).size, deathLines.length, '阵亡台词重复了: ' + JSON.stringify(deathLines));
   resetHumanMoments(state);
 });
+
+test('叹词按场景出现：失误用哎呦/啊这，好事用哇塞/嘿嘿/嘻嘻，且每句最多一个', async () => {
+  const fs = await import('node:fs/promises');
+  const text = await fs.readFile(new URL('../human-moments.mjs', import.meta.url), 'utf8');
+  const block = text.slice(text.indexOf('  jinbao: {'), text.indexOf('  liurufeng: {'));
+  const INTERJ = ['哎呦', '啊哈', '嘿嘿', '嘻嘻', '哇塞', '天呐', '啊这', '哎呀'];
+  const lines = [...block.matchAll(/'([^']+)'/g)].map(m => m[1]);
+  const withInterj = lines.filter(l => INTERJ.some(w => l.includes(w)));
+  assert.ok(withInterj.length >= 5, '叹词太少: ' + withInterj.length);
+  for (const line of withInterj) {
+    const hits = INTERJ.filter(w => line.includes(w)).length;
+    assert.equal(hits, 1, '一句里堆了多个叹词: ' + line);
+  }
+  // 失误/失利场景要有叹词，避免所有语气都靠感叹号
+  const setback = lines.filter(l => /倒了|输了|丧气|怪/.test(l));
+  assert.ok(setback.some(l => ['哎呦', '啊这', '天呐', '哎呀'].some(w => l.includes(w))), '失误场景缺少叹词');
+  // 好消息场景要有偷笑/惊叹
+  const good = lines.filter(l => /赢|拿下|上分/.test(l));
+  assert.ok(good.some(l => ['哇塞', '嘿嘿', '嘻嘻'].some(w => l.includes(w))), '好消息场景缺少叹词');
+});
