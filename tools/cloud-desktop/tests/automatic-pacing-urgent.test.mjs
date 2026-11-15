@@ -28,3 +28,20 @@ test('a manual request is never gated',async()=>{
  const pacing=createAutomaticPacing({busy:()=>true,intervalMs:60000});
  assert.equal(await pacing.run({topic:'chat',priority:'manual'},async()=>'answer'),'answer');
 });
+
+test('urgent 也豁免每主题间隔（20:25 六连拒的根因）',async()=>{
+ const now=()=>t; let t=1000;
+ const pacing=createAutomaticPacing({busy:()=>false,intervalMs:60000,now});
+ assert.equal(await pacing.run({topic:'advice',automatic:true},async()=>'first'),'first');
+ t+=1000;
+ await assert.rejects(pacing.run({topic:'advice',automatic:true},async()=>'second'),e=>e.code==='auto_deferred','间隔内普通回合仍要被挡');
+ assert.equal(await pacing.run({topic:'advice',automatic:true,urgent:true},async()=>'third'),'third','急事不能被 60 秒间隔挡住');
+});
+
+test('urgent 仍然不能并行',async()=>{
+ let release; const pacing=createAutomaticPacing({busy:()=>false,intervalMs:0});
+ const first=pacing.run({topic:'advice',automatic:true,urgent:true},()=>new Promise(r=>{release=r;}));
+ await new Promise(r=>setTimeout(r,10));
+ await assert.rejects(pacing.run({topic:'advice',automatic:true,urgent:true},async()=>'x'),e=>e.code==='auto_deferred');
+ release('a'); assert.equal(await first,'a');
+});

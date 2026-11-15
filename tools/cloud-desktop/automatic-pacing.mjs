@@ -16,7 +16,9 @@ export function createAutomaticPacing({now=Date.now,busy=()=>false,intervalMs=60
 // advice in a four-match log), so an urgent request may pass a busy queue while still
 // waiting for the in-flight turn and the per-topic window.
 const allowed=request=>!active&&(request?.urgent===true||!busy());
- const openFor=request=>now()>=(nextAt.get(topicOf(request))??-Infinity);
+ // urgent 连每主题间隔也要豁免：实测 20:25 连续 6 次团战窗口全被 60 秒间隔挡在门外，
+// 等间隔过去窗口早关了。urgent 仍受单飞约束（同一时刻只跑一个回合）。
+const openFor=request=>request?.urgent===true||now()>=(nextAt.get(topicOf(request))??-Infinity);
  const status=()=>({active,nextAt:[...nextAt.values()].reduce((max,value)=>Math.max(max,value),-Infinity),intervalMs,topics:Object.fromEntries(nextAt)});
  return {canRequest:()=>allowed(),status,
   async run(request,execute){

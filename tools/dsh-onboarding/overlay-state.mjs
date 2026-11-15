@@ -651,8 +651,9 @@ const playerRows = players.map(p => {
         text:full?'双方阵容 · 十人胜率':'我方阵容 · 选人中'+'（敌方未知）',
         table:{head:['阵营','英雄','胜率','强度'],rows:tableRows,me:cell(me.champion)},
         // 十人齐且有全部胜率才给双方加权；没齐时只报我方，不出现「敌方 待补齐」。
-        footer:full?(ratesComplete?teamWinRates:'加权样本 · 我方 '+(alliesRated>=5?weighted('友'):'待统计')):'',
-        brief:full?(ratesComplete?('阵容 · '+(teamWinRates||'')):('阵容 · 我方 '+(alliesRated>=5?weighted('友'):'待统计'))).slice(0,90):'阵容 · 我方 '+allyNames.length+' 人已就位',
+        // 数据不全时宁可不写：以前会显示「我方 待统计」，加载页播报就照念了这句话。
+footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 '+weighted('友'):'')):'',
+        brief:full?(ratesComplete?('阵容 · '+(teamWinRates||'')):(alliesRated>=5?'阵容 · 我方 '+weighted('友'):'')).slice(0,90):'阵容 · 我方 '+allyNames.length+' 人已就位',
       });
     }
     // 3.5) 选人阶段的阵容分析（独立一条消息）：定位分布、缺什么、我该干什么。

@@ -19,6 +19,8 @@ function coordinationEdge(side,previous){
 }
 export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>true,canRequest=()=>true,now=Date.now,trace=()=>{},publish=entry=>appendFile(join(stateDir,'logs/coach_broadcasts.jsonl'),JSON.stringify(entry)+'\n',{mode:0o600}),publishStatus=async value=>{if(!stateDir)return;const file=join(stateDir,'coach-status.json');await writeFile(file+'.tmp',JSON.stringify(value),{mode:0o600});await rename(file+'.tmp',file);}}){
  let busy=false,closed=false,match='',store={},offers='',owned='',ownedCount=0,selection='',retryAt=0;
+// 本局第几次阵亡：第一次不播报（用户要求），之后的正常出建议。
+let deathTurns=0;
  // 配合窗口的边沿基线，以及"被吞掉的窗口"待补发队列（只保留一个，最新的优先）。
  let sideBaseline=null,pendingCoordination=null;
  let lastDead=false,deadMatch='';
@@ -100,7 +102,7 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
   if(busy||agent.busy?.()){note(v,'skip','busy');return;}
   if(!enabled()){note(v,'skip','disabled');return;}
   if(!live(v)){note(v,'skip','no_live_match');return;}
-  if(match!==v.game+':'+v.match){match=v.game+':'+v.match;store={};offers='';owned='';ownedCount=0;selection='';retryAt=0;praiseTries.clear();sideBaseline=null;pendingCoordination=null;}
+  if(match!==v.game+':'+v.match){match=v.game+':'+v.match;store={};offers='';owned='';ownedCount=0;selection='';retryAt=0;deathTurns=0;praiseTries.clear();sideBaseline=null;pendingCoordination=null;}
   if(now()<retryAt){note(v,'skip','retry_backoff',{retryAt});return;}
   // A confirmation is the player's explicit request for guidance. The view carries only
   // the count, so this stays the cheap guard: while nothing new is confirmed the turn is
@@ -111,6 +113,7 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
   // can no longer shop. Only the alive->dead edge bypasses the gate.
   if(v.match!==deadMatch){deadMatch=v.match;lastDead=v.dead===true;}
   const dyingNow=v.dead===true,deathEdge=dyingNow&&!lastDead;lastDead=dyingNow;
+ if(deathEdge)deathTurns++;
   // 团战配合窗口和阵亡一样是有时效的：被背压拦住就等于丢掉了这个窗口。
   if(!canRequest()&&!maybeConfirmed&&!deathEdge&&!pendingCoordination){note(v,'skip','output_backpressure');if(now()-(store.waitStatusAt??-Infinity)>=30000){store.waitStatusAt=now();await status(v,'interrupted','等待下一次低频自动分析');}return;}
   busy=true;
@@ -158,7 +161,9 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
    else if(Number(c.gameSeconds)>0){const event={kind:'state',state:{...c.me,time:c.gameSeconds,enemyItems:(c.enemies??[]).flatMap(p=>p.items??[]),...aliveCounts(c)}};event.coachTrigger=stateCoachingTrigger(event,nextStore);if(event.coachTrigger)events=[event];}
    // Dying is the most actionable automatic turn, and it must not depend on an earlier
    // publish having taught the coach the alive baseline (a busy queue swallows those).
-   if(deathEdge)events=[{kind:'state',coachTrigger:'death',state:{...c.me,time:c.gameSeconds,enemyItems:(c.enemies??[]).flatMap(p=>p.items??[]),...aliveCounts(c)}}];
+   // 第一次阵亡不播报：开局第一波掉人信息量低，还打断节奏。
+ if(deathEdge&&deathTurns===1)note(v,'skip','first_death');
+ if(deathEdge&&deathTurns>1)events=[{kind:'state',coachTrigger:'death',state:{...c.me,time:c.gameSeconds,enemyItems:(c.enemies??[]).flatMap(p=>p.items??[]),...aliveCounts(c)}}];
    if(!events.length&&store.lastValidity&&!adviceIsValid(store.lastValidity,c,now())&&now()-(store.lastAt??0)>=30000){events=c.offers?.length?[{kind:'augment_offer',options:c.offers}]:['Loading','GameStart'].includes(c.phase)?[{kind:'loading_roster'}]:[{kind:'state',coachTrigger:'situation'}];}
    // Remember what has already been seen even when this tick does nothing, so a consumed
 
@@ -179,9 +184,9 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
    const equipmentChanges=plan.stage==='enemyChange'?(c.completedEquipmentEvents??[]).filter(e=>e.at>(store.equipmentAt??0)).map(e=>e.hero+'：'+e.items.join('、')).join('；'):'';
    const message='自动教练任务：'+plan.prompt.split('\n').filter(line=>!line.startsWith('【本轮筛选事实 JSON】')).join('\n')+(equipmentChanges?'\n本轮新成型的敌方装备（日志观测）：'+equipmentChanges:'')+'\n先按需读取本局工具事实。缺少价格资料时只说明下一件目标，不编报价或断言买得起。';
    const workflow='工作方式（多步，不是一次性作答）：\n1) 先判断此刻最该做的一件事；事实不足时按需调用工具：query_match_events/game_log_query 查本局事件，site_query/web_search 查英雄、装备与强化资料，inspect_latest_screen 看当前画面。\n2) 任何数值（价格、冷却、强化效果、胜率）都以工具结果为依据；查不到就说明缺口，不猜。\n3) 复核：动作是否与剩余时间窗口、存活人数、装备进度一致，矛盾时换更保守的动作。\n4) 只输出播报正文，不列工具名、不描述过程。\n';
-const actionable=message+'\n'+workflow+'这是口头播报，要像真人在语音里说话：可用语气助词（啦、呀、呢、哦、嘛）软化语气；整条播报最多一个叹词，放在最带情绪那句的开头——顺利或赢团用嘿嘿、嘻嘻、哇塞，失误或被反杀用啊这、哎呦、天呐，别堆叠；中娅、出装、活命这类紧急提醒不加叹词，直接说事；避免书面语与长定语句。这是战况即时播报：用2至3句先说现在做什么，再说针对谁或等什么条件，最后点明当前装备、阵容或已选海克斯为何支持这个动作。不要复述时钟、等级、比分、KDA或整套装备清单，不写泛泛的注意走位/配合队友。不编造冷却、价格、排名或未知技能状态；缺资料时依据已确认事实给保守建议，避免用整段工具错误说明占据正文。未确认可购买时，把装备建议安排在下一次可购买时，不说现在先买再上线；不以英雄总胜率解释单件装备强度，省略未核验百分比；不把召唤物挡路说成能够阻断位移，不断言未经核验的技能交互。';
+const actionable=message+'\n'+workflow+'这是口头播报，要像真人在语音里说话：每条至少带一个语气助词（啦、呀、呢、哦、嘛、吧、啊），最多两个，别每句都加；整条播报最多一个叹词，放在最带情绪那句的开头——顺利或赢团用嘿嘿、嘻嘻、哇塞，失误或被反杀用啊这、哎呦、天呐；中娅、出装、活命这类紧急提醒不加叹词，但仍带一个语气助词；避免书面语与长定语句。像这样说话：别急呀，等兵线过来再打哦；哎呀这波亏了，回头补个人头嘛。这是战况即时播报：用2至3句先说现在做什么，再说针对谁或等什么条件，最后点明当前装备、阵容或已选海克斯为何支持这个动作。不要复述时钟、等级、比分、KDA或整套装备清单，不写泛泛的注意走位/配合队友。不编造冷却、价格、排名或未知技能状态；缺资料时依据已确认事实给保守建议，避免用整段工具错误说明占据正文。未确认可购买时，把装备建议安排在下一次可购买时，不说现在先买再上线；不以英雄总胜率解释单件装备强度，省略未核验百分比；不把召唤物挡路说成能够阻断位移，不断言未经核验的技能交互。';
    const startedAt=now();
-  const answer=await agent.ask({game:v.game,match:v.match,question:actionable,topic:'advice',automatic:true,timeCritical:plan.stage==='coordination'||plan.stage==='death'||plan.stage==='enemyChange'||plan.stage==='postAugment'||plan.stage==='ace'||plan.stage==='turret',...(maybeConfirmed||plan.stage==='death'?{urgent:true}:{})});
+  const answer=await agent.ask({game:v.game,match:v.match,question:actionable,topic:'advice',automatic:true,timeCritical:plan.stage==='coordination'||plan.stage==='death'||plan.stage==='enemyChange'||plan.stage==='postAugment'||plan.stage==='ace'||plan.stage==='turret',...(maybeConfirmed||['death','ace','coordination'].includes(plan.stage)?{urgent:true}:{})});
   scheduler.recordDuration(plan.stage,now()-startedAt);
   if(decision&&decision.lane==='fast')note(v,'scheduled','fast_lane',{stage:plan.stage,reason:decision.reason});
    const current=(await getContext(v.game,v.match)).current;
