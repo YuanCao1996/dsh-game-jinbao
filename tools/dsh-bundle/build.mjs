@@ -15,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const out = resolve(process.argv[2] ?? join(root, 'workspace', 'dsh-plugin-jinbao'));
 const VERSION = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
+// bundle 是独立分发的产物，版本可以比发布线先走一步（pnpm/npm 按 name@version 缓存，
+// 不涨版本会复用旧包，改了代码也装不出新东西）。
+const BUNDLE_VERSION = process.env.JINBAO_BUNDLE_VERSION ?? VERSION;
 const BUNDLE = '@jinbao/dsh-bundle';
 
 // tools/ 下要带进包的目录（顺序无关）；tests/build 脚本在这里剔除。
@@ -70,7 +73,7 @@ await cp(join(root, 'tools/desktop-release/assets/pet/icon.png'), join(out, 'ico
 
 const pkg = {
   name: BUNDLE,
-  version: VERSION,
+  version: BUNDLE_VERSION,
   // 发布到 registry 需要它是公共包；本地 link 安装时这个字段不影响
   type: 'module',
   license: 'SEE LICENSE IN LICENSE',
@@ -223,4 +226,4 @@ await writeFile(join(out, 'README.md'), `# 金宝教练插件包（DSH bundle）
 
 const files = (await walk(out)).filter((p) => RUNTIME.test(p));
 const bytes = files.reduce((n, p) => n + statSync(p).size, 0);
-console.log(JSON.stringify({ out, version: VERSION, files: files.length, mb: +(bytes / 1048576).toFixed(2) }));
+console.log(JSON.stringify({ out, version: BUNDLE_VERSION, base: VERSION, files: files.length, mb: +(bytes / 1048576).toFixed(2) }));
