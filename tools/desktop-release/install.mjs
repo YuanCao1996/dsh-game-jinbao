@@ -69,6 +69,13 @@ for(const name of ['dsh-game-services','dsh-onboarding','dsh-coach-server','lol-
 // free helpers, so copy them instead of dragging standalone-only modules along.
 mkdirSync(join(profiles,'node_modules','cloud-desktop'),{recursive:true});
 for(const name of ['user-memory.mjs','shutdown.mjs'])copyFileSync(join(source,'cloud-desktop',name),join(profiles,'node_modules','cloud-desktop',name));
+// 悬浮窗：插件线没有别的入口会拉起它（只有独立版 main.mjs 和启动器 start.ps1），
+// 所以把 desktop-release 与 jinbao-launcher 装进 profiles 且保持同级——
+// start-overlay.ps1 会 dot-source ..\jinbao-launcher\legacy-overlay.ps1。
+for(const name of ['desktop-release','jinbao-launcher']){
+ const from=join(source,name),to=join(profiles,'node_modules',name);
+ await cp(from,to,{recursive:true,filter:p=>!relative(from,p).split(/[\\/]/).some(part=>part==='tests'||part.includes('.bak'))});
+}
 const updated=doc.toString();
 if(updated!==original){if(existsSync(patch))copyFileSync(patch,patch+'.jinbao-'+Date.now()+'.bak');writeFileSync(patch+'.tmp',updated);renameSync(patch+'.tmp',patch);}
 console.log('Installed.');
