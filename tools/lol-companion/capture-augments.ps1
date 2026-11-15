@@ -209,6 +209,9 @@ public static class JinbaoChatSignature {
   $chatLines=@()
   $chatError=''
   $chatReuse=$false
+  # 诊断用：聊天区 OCR 读不到字时存一张证据图（整局最多 3 张、间隔 ≥5 秒）。
+  # 没有它只能猜「是裁剪错了，还是聊天框本来就没展开」。
+  if(!$global:JinbaoChatDumps){$global:JinbaoChatDumps=0;$global:JinbaoChatDumpAt=0}
   $chatStart=$captureWatch.ElapsedMilliseconds
   if($Focus -eq 'full'){
    $csx=$inputBitmap.Width/1920.0;$csy=$inputBitmap.Height/1080.0;$k=3
@@ -291,7 +294,21 @@ public static class JinbaoChatSignature {
     }
     # Fail open: if the enlarged crop OCR yields nothing, keep the whole-frame lines
     # instead of silently deleting the chat region.
-    if(@($chatLines).Count -gt 0){$frame.lines=@($kept)+@($chatLines)}else{$frame.lines=$wholeLines}
+    if(@($chatLines).Count -gt 0){$frame.lines=@($kept)+@($chatLines)}else{
+   $frame.lines=$wholeLines
+   # 读不到字时留证据图：能直接看出聊天框是空白的，还是裁剪位置偏了。
+   try{
+    if($Focus -eq 'full' -and $global:JinbaoChatDumps -lt 3 -and ($captureWatch.ElapsedMilliseconds-$global:JinbaoChatDumpAt) -ge 5000 -and $StateDir){
+     $dumpRect=[Drawing.Rectangle]::new($ccx,$ccy,$ccw,$cch)
+     $dumpBmp=$inputBitmap.Clone($dumpRect,$inputBitmap.PixelFormat)
+     try{
+      $dumpPath=Join-Path $StateDir ('chat-dump-'+[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()+'.png')
+      $dumpBmp.Save($dumpPath,[Drawing.Imaging.ImageFormat]::Png)
+      $global:JinbaoChatDumps++;$global:JinbaoChatDumpAt=$captureWatch.ElapsedMilliseconds
+     }finally{$dumpBmp.Dispose()}
+    }
+   }catch{}
+  }
     $chatMergeMs=$captureWatch.ElapsedMilliseconds-$mergeT0
    }
   }
