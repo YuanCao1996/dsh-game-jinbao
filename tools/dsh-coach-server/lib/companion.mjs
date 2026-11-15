@@ -57,7 +57,8 @@ export function openingLine(state, { game, match, at = Date.now() } = {}) {
     return `连着输了 ${state.lossRun} 局，这局先稳一手，别急。`;
   }
   if (!state.matches) {
-    return nights ? '第一次一起打，夜深了，我只说关键的那句。' : '第一次一起打，这局我先看阵容。';
+    // 不再用「第一次，…」开头：读起来生硬，也不知道在说什么。
+ return nights ? '夜深了，这局我只说关键的那句。' : '开局我先看阵容，慢慢来。';
   }
   if (nights) return '夜深了，这局我只说关键的一句。';
   return null;

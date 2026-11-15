@@ -45,7 +45,7 @@ test('开局问候：进对局 3 秒后才说，且一局只有一次', () => {
   assert.equal(settleHumanMoments(state, Date.now() + 1000, { role: 'jinbao', clock: 6 }), false, '只问一次');
 });
 
-test('阵亡反应有次数上限与间隔限制', () => {
+test('第一次阵亡不播报，其余仍受次数上限与间隔限制', () => {
   const state = base();
   const now = Date.now();
   state.gameSeconds = 60;
@@ -60,7 +60,7 @@ test('阵亡反应有次数上限与间隔限制', () => {
     state.me.dead = false;              // 复活
     settleHumanMoments(state, at + 500, { role: 'jinbao', clock: 61 + i });
   }
-  assert.equal(count, DEATH_MAX_PER_MATCH, '一局最多反应 3 次阵亡，实际 ' + count);
+  assert.equal(count, DEATH_MAX_PER_MATCH - 1, '第一次阵亡不说，剩下最多反应 2 次，实际 ' + count);
 });
 
 test('最近有战术播报时不插话', () => {
@@ -105,12 +105,12 @@ test('换对局后记忆重置', () => {
   assert.deepEqual(state.humanMoments.emitted, {});
 });
 
-test('jinbao 的台词共 40 句，且全部带着事实槽位或短语气口', async () => {
+test('jinbao 的台词共 36 句，且全部带着事实槽位或短语气口', async () => {
   const mod = await import('../human-moments.mjs');
   const text = await (await import('node:fs/promises')).readFile(new URL('../human-moments.mjs', import.meta.url), 'utf8');
   const block = text.slice(text.indexOf('  jinbao: {'), text.indexOf('  liurufeng: {'));
   const lines = [...block.matchAll(/'([^']+)'/g)].map(m => m[1]);
-  assert.equal(lines.length, 40, 'jinbao 应为 40 句，实际 ' + lines.length);
+  assert.equal(lines.length, 36, 'jinbao 应为 36 句（去掉第一次阵亡那套），实际 ' + lines.length);
   const sample = { champion: '安妮', level: 8, opponent: '劫', minute: 10, kills: 3, deaths: 2 };
   for (const line of lines) {
     // 带槽位的按“填进真实值之后”的长度算，模板本身的字符数没有意义

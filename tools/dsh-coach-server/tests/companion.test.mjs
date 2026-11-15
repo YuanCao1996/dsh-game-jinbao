@@ -33,7 +33,7 @@ test('a losing streak gets one comfort line, not one per match', () => {
 
 test('the very first match is greeted once, with a night variant', () => {
   const fresh = emptyCompanion();
-  assert.match(openingLine(fresh, { match: 'm1', at: at('2026-11-04T14:00:00') }), /第一次一起打/);
+  assert.match(openingLine(fresh, { match: 'm1', at: at('2026-11-04T14:00:00') }), /开局我先看阵容/);
   assert.match(openingLine(fresh, { match: 'm1', at: at('2026-11-04T23:30:00') }), /夜深了/);
 });
 
@@ -52,10 +52,10 @@ test('touch returns the line once per match and persists state', async () => {
   let clock = at('2026-11-04T14:00:00');
   const companion = createCompanion({ stateDir: dir, now: () => clock });
   const first = companion.touch({ game: 'lol', match: 'm1' });
-  assert.match(first, /第一次一起打/);
+  assert.match(first, /开局我先看阵容/);
   clock += 1000;
   assert.equal(companion.touch({ game: 'lol', match: 'm1' }), null, 'a reload must not repeat the greeting');
-  assert.match(companion.touch({ game: 'lol', match: 'm2' }), /夜深了|第一次|天没见|连着输/, 'a new match may greet again');
+  assert.match(companion.touch({ game: 'lol', match: 'm2' }), /夜深了|开局我先看阵容|天没见|连着输/, 'a new match may greet again');
 
   const reopened = createCompanion({ stateDir: dir, now: () => clock });
   assert.equal(reopened.state().lastSeenAt, clock);
