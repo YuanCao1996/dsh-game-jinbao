@@ -68,7 +68,8 @@ const THREAT_RULES=[
  {test:/中娅|沙漏/,line:hero=>hero+'出中娅了，别先手跳她'},
  {test:/兰德里/,line:hero=>hero+'有兰德里，别贴着兵线打'},
  {test:/荆棘/,line:hero=>hero+'出荆棘了，别硬接普攻'},
- {test:/水银/,line:hero=>hero+'出了水银，控制别浪费'},
+ // 只认水银饰带（解控）：水银之靴是常见的魔抗鞋，报成「出了水银」既含糊又误导。
+ {test:/水银饰带/,line:hero=>hero+'出了水银饰带，控制技能留一手'},
  {test:/无尽|死亡之帽/,line:hero=>hero+'爆发起来了，别单吃'},
  {test:/救赎|钢铁烈阳/,line:hero=>hero+'有保命装，别all in'},
 ];

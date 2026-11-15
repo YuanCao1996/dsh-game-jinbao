@@ -7,10 +7,15 @@ export function acceptedTeamRound(state,id,name,now=Date.now()){
  if(state.game!=='lol'||state.ended||!state.match||!Number.isFinite(state.at)||now<state.at||now-state.at>30000)return null;
  return state.augmentRounds?.find(round=>round.closed&&!round.dismissed&&Array.isArray(round.options)&&round.options.includes(name)&&augmentConfirmationId(state,round)===id)??null;
 }
-export function augmentConfirmation(state,rows=[],now=Date.now(),{allowAssumed=false}={}){
+export function augmentConfirmation(state,rows=[],now=Date.now(),{allowAssumed=false,panelOpen=false,settleMs=2000}={}){
  if(state.game!=='lol'||state.ended||!state.match||now-state.at>30000)return null;
+ // 候选还在面板上就是「还没选」，不是「没认出来」——这时绝不能弹确认。
+ if(panelOpen)return null;
  const round=[...state.augmentRounds].reverse().find(r=>r.closed&&(!r.confirmed.length&&!r.assumed||allowAssumed&&r.confirmationSource==='countdown-default-confirmed')&&!r.dismissed&&r.closedAt&&now-r.closedAt>=3000&&now-r.closedAt<120000);
  if(!round||!round.options.length)return null;
+ // 刚关闭的两秒内不弹：面板可能只是被技能特效挡了一下（视觉闪断），
+ // 真没认出来时晚两秒问完全来得及。
+ if(Number.isFinite(round.closedAt)&&now-Number(round.closedAt)<settleMs)return null;
  const ranked=rankedAugments(rows,state.me.champion);
  // Only the cards currently on the panel can be confirmed. Rerolled-away names stay
  // in round.options for the "seen N/6" counter, but offering them here would let one

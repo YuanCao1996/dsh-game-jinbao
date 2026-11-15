@@ -122,3 +122,27 @@ test('确认面板按适配排名排序，刷新后换成新候选并重新排�
  assert.deepEqual(prompt.options.map(o=>o.name),['戊','己','丁'],'刷新后的候选按排名重排');
  assert.deepEqual(prompt.options.some(o=>o.name==='甲'),false,'刷新掉的旧卡不再列出');
 });
+
+test('面板还没关就问“刚才选了哪个”是误弹：面板重新出现要撤回', () => {
+  const state = initialOverlayState();
+  const now = Date.now();
+  state.game = 'lol'; state.match = 'm1'; state.matchStartedAt = now - 60000; state.at = now;
+  const ev = (extra) => applyOverlayEvent(state, { game: 'lol', match: 'm1', ...extra }, 'live.jsonl');
+  ev({ kind: 'augment_offer', roll: 1, options: ['甲', '乙', '丙'], at: now });
+  ev({ kind: 'augment_offer_closed', roll: 1, reason: 'undecided', at: now + 100 });
+  assert.equal(state.augmentRounds.at(-1)?.closed, true);
+  ev({ kind: 'augment_offer', roll: 1, options: ['甲', '乙', '丙'], at: now + 200 });
+  assert.equal(state.augmentRounds.at(-1)?.closed, false, '面板回来了，这一轮应重新打开');
+  assert.equal(augmentConfirmation(state, [], now + 5000), null, '面板还在时不能弹确认');
+});
+
+test('刚关闭的两秒内不弹确认，等稳了再问', () => {
+  const state = initialOverlayState();
+  const now = Date.now();
+  state.game = 'lol'; state.match = 'm1'; state.matchStartedAt = now - 60000; state.at = now;
+  const ev = (extra) => applyOverlayEvent(state, { game: 'lol', match: 'm1', ...extra }, 'live.jsonl');
+  ev({ kind: 'augment_offer', roll: 2, options: ['甲', '乙', '丙'], at: now });
+  ev({ kind: 'augment_offer_closed', roll: 2, reason: 'undecided', at: now });
+  assert.equal(augmentConfirmation(state, [], now + 500), null, '刚关闭 0.5 秒就弹，说明是视觉闪断');
+  assert.ok(augmentConfirmation(state, [], now + 5000), '稳定关闭后仍要问，别把真漏的无声吞掉');
+});

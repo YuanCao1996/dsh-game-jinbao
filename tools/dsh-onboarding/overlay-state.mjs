@@ -194,6 +194,12 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     if((event.roll!=null&&event.roll!==state.offerRound)||!state.offers.length)state.offerHistory=[];
     state.offerRound=event.roll??state.offerRound;
     state.offers=list(event.options??event.cards??event.augments).slice(0,3);
+    // 面板又出现说明上一拍「关闭」是视觉闪断：把最近这一轮重新打开，
+    // 否则玩家还没点，悬浮窗就会弹「刚才选了哪个」的确认面板。
+    const reopened=(state.augmentRounds??[]).at(-1);
+    if(reopened&&reopened.closed&&!reopened.confirmed?.length&&(event.roll==null||reopened.id==null||String(reopened.id)===String(event.roll))){
+     reopened.closed=false;reopened.closedAt=null;
+    }
     state.offerHistory=[...new Set([...state.offerHistory,...offerNames(state.offers)])].slice(0,6);
     // 同一轮里还有重掷：如果刚识别到的「已选」这张已经不在新候选里，说明那次是提前触发
     // （玩家其实又刷新了），撤掉这条记录与对应消息，避免错报已选海克斯。
@@ -864,7 +870,7 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
      kda: (me.k!=null&&me.d!=null&&me.a!=null)?me.k+'/'+me.d+'/'+me.a:'',
      gold: me.gold??state.gold??null,
     },
-    confirmation:augmentConfirmation(state,rows),
+    confirmation:augmentConfirmation(state,rows,Date.now(),{panelOpen:(state.offers??[]).length>0}),
     heroStats,
     playerRows,
     stats: heroStats+'\n\n'+roster.join('\n'),
