@@ -278,7 +278,7 @@ function Set-Collapsed([bool]$on,[switch]$PreserveMode){
    $controls.MainBorder.CornerRadius='12';$controls.MainBorder.Padding='8,6';$controls.MainBorder.BorderThickness=0
    # 收起成字幕条时如果当前没有内容，补一行占位，避免整条透明看起来像消失。
    try{
-    if(-not ([string]$controls.NarrowText.Text).Trim()){Set-HighlightedText $controls.NarrowText '金宝待命中 · 双击展开';$controls.NarrowText.Foreground='#9CAABA'}
+    if(-not ([string]$controls.NarrowText.Text).Trim()){Set-HighlightedText $controls.NarrowText '';$controls.NarrowText.Foreground='#9CAABA'}
     $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null)
     $controls.NarrowCanvas.Opacity=1
     $controls.NarrowPanel.Visibility='Visible'

@@ -53,3 +53,13 @@ test('加粗星号与井号不进入悬浮窗', () => {
   assert.match(out, /离群之刺（阿卡丽）：4\/2\/4/);
   assert.match(out, /邪法小法师/);
 });
+
+test('人数清点与就位类播报算噪音', async () => {
+  const { noiseBroadcast } = await import('../advice-text.mjs');
+  assert.equal(noiseBroadcast('我方5人已就位'), true);
+  assert.equal(noiseBroadcast('敌方三人已到齐'), true);
+  assert.equal(noiseBroadcast('十人到齐，直接开'), true);
+  assert.equal(noiseBroadcast('我方双人还在复活，先回城补状态'), false, '带复活/行动的不算清点');
+  assert.equal(noiseBroadcast('先推中路二塔，别深追'), false);
+  assert.equal(noiseBroadcast(''), false);
+});

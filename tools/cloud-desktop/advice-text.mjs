@@ -18,6 +18,14 @@ export function stripSources(text) {
   return value.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
 }
 
+// 人数清点/就位类播报没有决策价值（"我方5人已就位"），既占时间又打断节奏，直接不发。
+const ROSTER_NOISE = /(?:我|敌|双)方[^。！？!?]{0,6}?\d*\s*人?\s*(?:已|都)?(?:就位|到齐|就绪|集结)|全员(?:已)?(?:就位|到齐|就绪)|十人到齐/;
+export function noiseBroadcast(text) {
+ const value = String(text ?? '');
+ if (!value.trim()) return false;
+ return ROSTER_NOISE.test(value);
+}
+
 const SENTENCE_END = /[。！？!?.]/;
 
 export function condenseAdvice(text, { maxChars = 68, maxSentences = 2 } = {}) {

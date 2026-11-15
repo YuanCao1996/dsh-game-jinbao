@@ -231,7 +231,7 @@ function Add-PlaybackMessage($message){
 function Show-NarrowPlaceholder {
  try{
   if(([string]$controls.NarrowText.Text).Trim()){return}
-  Set-HighlightedText $controls.NarrowText '金宝待命中 · 点这里展开'
+  Set-HighlightedText $controls.NarrowText ''
   $controls.NarrowText.FontSize=[Math]::Max(13,$controls.NarrowText.FontSize)
   $controls.NarrowText.Foreground='#9CAABA'
  }catch{}
