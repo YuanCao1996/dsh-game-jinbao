@@ -406,7 +406,7 @@ if(xpSaveButton&&typeof xpSaveButton.addEventListener==='function'){xpSaveButton
  if(!mode)return;
  try{const d=await call('display');sub.value=d.subtitle===false?'scroll':'subtitle';sp.checked=d.speech===true;ct.checked=d.clickThrough!==false;}catch(e){}
  const cs=document.getElementById('chatStatus');
- const paintChat=async()=>{try{const s=await call('chat-status');cs.textContent=s.fresh?(s.available?'聊天识别：正常（读到 '+s.chatLines+' 行）':'聊天识别：聊天框未展开 —— 按 Enter 展开聊天框，或在游戏设置里开启「显示聊天」'):'聊天识别：等待对局数据…';}catch{cs.textContent='聊天识别：不可用';}};
+ const paintChat=async()=>{try{const s=await call('chat-status');cs.textContent=!s.fresh?'聊天识别：等待对局数据…':!s.inGame?'聊天识别：当前不在对局中':s.available?'聊天识别：正常（读到 '+s.chatLines+' 行）':'聊天识别：聊天框未展开 —— 按 Enter 展开聊天框，或在游戏设置里开启「显示聊天」';}catch{cs.textContent='聊天识别：不可用';}};
  await paintChat();setInterval(paintChat,5000);
  document.getElementById('displaySave').onclick=async()=>{st.textContent='保存中…';try{await call('display',{subtitle:sub.value!=='scroll',speech:sp.checked,clickThrough:ct.checked});st.textContent='已保存，约 1 秒生效';}catch(e){st.textContent='保存失败';}};
 })();

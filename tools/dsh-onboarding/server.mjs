@@ -553,7 +553,8 @@ if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{ena
  if(req.url==='/api/chat-status'&&req.method==='GET'){
   let value={};try{value=JSON.parse(await readFile(join(stateDir,'augment-diagnostics.json'),'utf8'));}catch{}
   const at=Number(value.at)||0,age=Date.now()-at;
-  send(res,200,{available:Number(value.chatLines)>0,chatLines:Number(value.chatLines)||0,fresh:age>=0&&age<120000,age,at:at||null});
+  send(res,200,{available:Number(value.chatLines)>0,chatLines:Number(value.chatLines)||0,
+   inGame:value.available===true&&value.foreground===true,fresh:age>=0&&age<120000,age,at:at||null});
   return;
  }
  if(req.url==='/api/diagnostics'&&req.method==='GET'){send(res,200,diagnostics?.status()??{recording:false,supported:false});return;}
