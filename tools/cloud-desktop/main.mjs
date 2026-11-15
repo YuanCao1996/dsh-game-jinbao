@@ -15,6 +15,7 @@ import{createUserMemory}from'./user-memory.mjs';
 import{createAgentActivity}from'../agent-activity/activity.mjs';
 import{createShutdown,notifyRestart}from'./shutdown.mjs';
 import{createOverlaySupervisor}from'./overlay-supervisor.mjs';
+import{acquireInstanceLock,releaseInstanceLock,publishSettingsUrl}from'../shared/instance-lock.mjs';
 import{createDiagnostics}from'./diagnostics.mjs';
 import{createSpeech,cloudSpeech,ownSpeech}from'./speech.mjs';
 import{createAutomaticPacing}from'./automatic-pacing.mjs';
@@ -89,8 +90,14 @@ const updateTimer=setInterval(()=>void updates.check(),6*60*60*1000);void update
 const speechTimer=setInterval(()=>speech.tick(),500);
 const diagnosticsTimer=setInterval(()=>void diagnostics.tick(),2000);
 const observationTimer=setInterval(()=>{void observation.tick();void logSource.tick();},500);
+// 独立版与插件版共享一把 UI 所有权锁：先启动的一方拥有悬浮窗与语音，后来者降级。
+// 端口其实不冲突（本进程的设置端口是随机的，教练也在进程内），冲突的是"谁在屏幕上说话"。
+const instanceLock=acquireInstanceLock({line:'standalone',stateDir});
+const secondaryLock=instanceLock.role==='secondary';
+if(instanceLock.role==='owner')publishSettingsUrl(setup.url);
+if(secondaryLock)try{await writeFile(join(stateDir,'instance-secondary.json'),JSON.stringify({owner:instanceLock.owner?.line??'unknown',settingsUrl:instanceLock.owner?.settingsUrl??'',at:Date.now()}),{mode:0o600});}catch{}
 await rm(join(stateDir,'overlay-stopped'),{force:true});
-const coach=args.includes('--coach')?createCloudCoach({stateDir,canRequest:pacing.canRequest,trace:diagnostics.coach,view:setup.view,getContext:(game,match)=>memory.currentFacts(game,match),agent,enabled:()=>setup.config().mode!=='demo'}):null;
+const coach=args.includes('--coach')&&!secondaryLock?createCloudCoach({stateDir,canRequest:pacing.canRequest,trace:diagnostics.coach,view:setup.view,getContext:(game,match)=>memory.currentFacts(game,match),agent,enabled:()=>setup.config().mode!=='demo'}):null;
 const coachTimer=coach?setInterval(()=>void coach.tick(),3000):null;
 const supervisor=args.includes('--collect')?createSupervisor({root,stateDir}):null;
 const interval=supervisor?setInterval(()=>void supervisor.tick().catch(()=>{}),3000):null;
@@ -98,7 +105,7 @@ const overlay=args.includes('--headless')?null:createOverlaySupervisor({stateDir
  execFile('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',join(root,'tools/desktop-release/start-overlay.ps1'),'-StateDir',stateDir,...(recover?['-Recover']:[])],{windowsHide:true},(error,stdout)=>error?reject(error):resolve({external:stdout.includes('Existing DSH Jinbao overlay restored.')}));
 })});
 const overlayTimer=overlay?setInterval(()=>void overlay.tick(),3000):null;
-if(!args.includes('--headless')){
+if(!args.includes('--headless')&&!secondaryLock){
  void overlay.start();
  execFile('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',join(root,'tools/jinbao-launcher/platform.ps1'),'-Action','open','-Target',setup.url],{windowsHide:true},()=>{});
 }
@@ -106,7 +113,7 @@ console.log(JSON.stringify({standalone:true,requiresDshDesktop:false,stateDir,po
 if(process.connected)process.send({action:'ready'});
 const stop=createShutdown({
  quiesce:()=>{if(interval)clearInterval(interval);if(coachTimer)clearInterval(coachTimer);if(overlayTimer)clearInterval(overlayTimer);void overlay?.close();clearInterval(stopTimer);clearInterval(heartbeat);clearInterval(diagnosticsTimer);clearInterval(speechTimer);clearInterval(updateTimer);clearInterval(observationTimer);setup.stopAccepting();},
- steps:[['overlay',()=>overlay?.close()],['coach',()=>coach?.close()],['speech',()=>speech.close()],['agent',()=>agent.close()],['memory',()=>userMemory.close()],['collectors',()=>supervisor?.close()],['updates',()=>updates.close()],['observation',()=>observation.close()],['logs',()=>logSource.close()],['installer',()=>nativeInstaller.close()],['login',()=>loginTask],['settings',()=>setup.close()],['usage-outbox',()=>teamUsageOutbox?.close()],['cache-reports',()=>teamCacheReports?.close()],['team-cache',()=>teamCacheStore?.close()],['activity',()=>activity.close()],['diagnostics',()=>diagnostics.close()],['instance',()=>instance.close()]],
+ steps:[['overlay',()=>overlay?.close()],['coach',()=>coach?.close()],['speech',()=>speech.close()],['agent',()=>agent.close()],['memory',()=>userMemory.close()],['collectors',()=>supervisor?.close()],['updates',()=>updates.close()],['observation',()=>observation.close()],['logs',()=>logSource.close()],['installer',()=>nativeInstaller.close()],['login',()=>loginTask],['settings',()=>setup.close()],['usage-outbox',()=>teamUsageOutbox?.close()],['cache-reports',()=>teamCacheReports?.close()],['team-cache',()=>teamCacheStore?.close()],['activity',()=>activity.close()],['diagnostics',()=>diagnostics.close()],['instance-lock',()=>releaseInstanceLock()],['instance',()=>instance.close()]],
  complete:async({failed})=>{try{await writeFile(join(stateDir,'shutdown-state.json'),JSON.stringify({at:Date.now(),state:failed.length?'completed_with_errors':'completed',failedSteps:failed}),{mode:0o600});await notifyRestart({requested:restartRequested,failed,connected:process.connected,send:(...values)=>process.send(...values)});}finally{process.exit(failed.length?1:0);}}
 });
 const stopTimer=setInterval(()=>void access(join(stateDir,'overlay-stopped')).then(stop).catch(()=>{}),500);
