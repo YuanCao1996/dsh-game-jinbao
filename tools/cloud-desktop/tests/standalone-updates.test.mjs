@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {generateKeyPairSync,sign,createHash}from'node:crypto';import {mkdtemp,mkdir,writeFile,readFile,cp,rm}from'node:fs/promises';import{join,dirname}from'node:path';import{tmpdir}from'node:os';
+import {generateKeyPairSync,sign,createHash}from'node:crypto';import {mkdtemp,mkdir,writeFile,readFile,cp,rm,stat}from'node:fs/promises';import{join,dirname}from'node:path';import{tmpdir}from'node:os';
 import{createUpdater,verifyRelease}from'../../jinbao-launcher/update.mjs';import{createStandaloneUpdates}from'../updates.mjs';
 import{runEntry}from'../entry.mjs';import{EventEmitter}from'node:events';
 const digest=b=>createHash('sha256').update(b).digest('hex');
@@ -89,4 +89,112 @@ test('下载中断后按 Range 续传，不会卡到 15 分钟超时', async () 
     const prepared = await updater.prepared();
     assert.equal(prepared.release.version, '0.2.1');
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+// 应用层更新：包体里 90MB 是从不变化的 node.exe，每次更新重下它既慢又容易断。
+// 本地那份与发布声明一致时只下应用层包，运行时用硬链接挂过来（同卷不占额外空间）。
+async function appFixture({ localRuntime = Buffer.from('MZ fixture runtime binary') } = {}) {
+  const dir = await mkdtemp(join(tmpdir(), 'jinbao-app-update-'));
+  const root = join(dir, 'old'), payloadDir = join(dir, 'app'), stateDir = join(dir, 'state');
+  await mkdir(stateDir); await mkdir(join(root, 'runtime'), { recursive: true });
+  const runtime = Buffer.from('MZ fixture runtime binary');
+  await writeFile(join(root, 'runtime/node.exe'), localRuntime);
+  await writeFile(join(root, 'manifest.json'), JSON.stringify({ version: '0.2.0', runtime: 'standalone', files: [] }));
+  const files = [];
+  for (const [path, text] of Object.entries({
+    'start-preview.vbs': 'Rem', 'tools/cloud-desktop/entry.mjs': 'export {}',
+    'tools/cloud-desktop/main.mjs': 'export {}', 'tools/jinbao-launcher/update.mjs': 'export {}',
+  })) {
+    const bytes = Buffer.from(text);
+    await mkdir(dirname(join(payloadDir, path)), { recursive: true });
+    await writeFile(join(payloadDir, path), bytes);
+    files.push({ path, bytes: bytes.length, sha256: digest(bytes) });
+  }
+  files.push({ path: 'runtime/node.exe', bytes: runtime.length, sha256: digest(runtime) });
+  const manifest = Buffer.from(JSON.stringify({ version: '0.2.1', runtime: 'standalone', files }));
+  await writeFile(join(payloadDir, 'manifest.json'), manifest);
+  const appArchive = Buffer.from('app only archive bytes'), fullArchive = Buffer.from('full archive bytes');
+  const base = 'https://api.jinbaoai.top/downloads/jinbao/v0.2.1/';
+  const release = {
+    runtime: 'standalone', version: '0.2.1', manifestSha256: digest(manifest),
+    url: base + 'jinbao-desktop-windows.zip', bytes: fullArchive.length, sha256: digest(fullArchive),
+    app: { url: base + 'jinbao-desktop-windows-app.zip', bytes: appArchive.length, sha256: digest(appArchive),
+      base: { path: 'runtime/node.exe', bytes: runtime.length, sha256: digest(runtime) } },
+  };
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const payload = Buffer.from(JSON.stringify(release));
+  const envelope = { payload: payload.toString('base64'), signature: sign(null, payload, privateKey).toString('base64') };
+  return { dir, root, payloadDir, stateDir, runtime, release, envelope, appArchive, fullArchive, publicKey, privateKey };
+}
+
+test('应用层更新只下载应用包，运行时从本机复用（硬链接，不额外占空间）', async () => {
+  const f = await appFixture();
+  try {
+    const urls = [], says = [];
+    const updater = createUpdater({ root: f.root, stateDir: f.stateDir, channel: 'standalone', publicKey: f.publicKey,
+      extract: (_archive, destination) => cp(f.payloadDir, destination, { recursive: true }),
+      fetchImpl: async (url) => {
+        urls.push(String(url));
+        if (String(url).endsWith('latest.json')) return Response.json(f.envelope);
+        says.push(JSON.parse(await readFile(join(f.stateDir, 'updates/status.json'), 'utf8')));
+        return new Response(String(url).endsWith('-app.zip') ? f.appArchive : f.fullArchive);
+      } });
+    await updater.check();
+    assert.ok(urls.some(u => u.endsWith('-app.zip')), '应当下载应用层包');
+    assert.ok(!urls.some(u => u.endsWith('jinbao-desktop-windows.zip')), '不该再下全量包');
+    assert.equal(says[0].appOnly, true);
+    assert.equal(says[0].totalBytes, f.appArchive.length, '进度要按应用层包的体积算');
+    const prepared = await updater.prepared();
+    assert.equal(prepared.release.version, '0.2.1');
+    const copied = join(prepared.root, 'runtime/node.exe');
+    assert.deepEqual(await readFile(copied), f.runtime, '运行时内容要与本机那份一致');
+    if (process.platform === 'win32') {
+      assert.equal((await stat(copied)).ino, (await stat(join(f.root, 'runtime/node.exe'))).ino, '应当是硬链接而不是复制');
+    }
+  } finally { await rm(f.dir, { recursive: true, force: true }); }
+});
+
+test('本机运行时对不上发布声明时退回全量包，绝不拿错版本的运行时凑数', async () => {
+  const f = await appFixture({ localRuntime: Buffer.from('MZ something else entirely') });
+  try {
+    const urls = [], says = [];
+    const updater = createUpdater({ root: f.root, stateDir: f.stateDir, channel: 'standalone', publicKey: f.publicKey,
+      extract: async (_archive, destination) => {
+        await cp(f.payloadDir, destination, { recursive: true });
+        await mkdir(join(destination, 'runtime'), { recursive: true });
+        await writeFile(join(destination, 'runtime/node.exe'), f.runtime);
+      },
+      fetchImpl: async (url) => {
+        urls.push(String(url));
+        if (String(url).endsWith('latest.json')) return Response.json(f.envelope);
+        says.push(JSON.parse(await readFile(join(f.stateDir, 'updates/status.json'), 'utf8')));
+        return new Response(String(url).endsWith('-app.zip') ? f.appArchive : f.fullArchive);
+      } });
+    await updater.check();
+    assert.ok(!urls.some(u => u.endsWith('-app.zip')), '运行时不一致时不能走应用层');
+    assert.ok(urls.some(u => u.endsWith('jinbao-desktop-windows.zip')), '应当下载全量包');
+    assert.equal(says[0].appOnly, false);
+    assert.equal(says[0].totalBytes, f.fullArchive.length);
+    assert.equal((await updater.prepared()).release.version, '0.2.1');
+  } finally { await rm(f.dir, { recursive: true, force: true }); }
+});
+
+test('应用层包被篡改或签名里的应用层信息不合规时都不换版本', async () => {
+  const f = await appFixture();
+  try {
+    const bare = createUpdater({ root: f.root, stateDir: f.stateDir, channel: 'standalone', publicKey: f.publicKey,
+      extract: (_archive, destination) => cp(f.payloadDir, destination, { recursive: true }),
+      fetchImpl: async (url) => String(url).endsWith('latest.json') ? Response.json(f.envelope) : new Response(Buffer.alloc(f.appArchive.length)) });
+    await bare.check();
+    assert.equal(await bare.resolve(), f.root, '校验不过的包不能上屏');
+    assert.equal(JSON.parse(await readFile(join(f.stateDir, 'updates/status.json'), 'utf8')).state, 'failed');
+
+    const signedAs = release => {
+      const payload = Buffer.from(JSON.stringify(release));
+      return { payload: payload.toString('base64'), signature: sign(null, payload, f.privateKey).toString('base64') };
+    };
+    assert.throws(() => verifyRelease(signedAs({ ...f.release, app: { ...f.release.app, url: 'https://evil.example/app.zip' } }), f.publicKey, 'standalone'), /Invalid release metadata/);
+    assert.throws(() => verifyRelease(signedAs({ ...f.release, app: { ...f.release.app, base: { ...f.release.app.base, sha256: 'nope' } } }), f.publicKey, 'standalone'), /Invalid release metadata/);
+    assert.throws(() => verifyRelease(signedAs({ ...f.release, app: { ...f.release.app, base: { ...f.release.app.base, path: 'runtime/other.exe' } } }), f.publicKey, 'standalone'), /Invalid release metadata/);
+  } finally { await rm(f.dir, { recursive: true, force: true }); }
 });

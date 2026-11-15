@@ -1,6 +1,6 @@
 import { createHash, randomUUID, verify } from 'node:crypto';
-import { readFile, writeFile, mkdir, rename, open, unlink, readdir, lstat, rm } from 'node:fs/promises';
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { readFile, writeFile, mkdir, rename, open, unlink, readdir, lstat, rm, link, copyFile } from 'node:fs/promises';
+import { join, resolve, relative, isAbsolute, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -38,6 +38,17 @@ export function verifyRelease(envelope, publicKey, channel='legacy') {
       !Number.isSafeInteger(release.bytes) || release.bytes <= 0 || release.bytes > MAX_ARCHIVE ||
       !/^[a-f0-9]{64}$/.test(release.sha256) || !/^[a-f0-9]{64}$/.test(release.manifestSha256)) throw Error('Invalid release metadata');
   if(release.notes!==undefined&&(typeof release.notes!=='string'||release.notes.length>4000))throw Error('Invalid release notes');
+  if(release.app!==undefined){
+    // 应用层包：只含除运行时以外的文件，运行时从当前安装硬链接过去。
+    // 包体 39MB 里有 32MB 是从不变化的 node.exe，每次更新都重下它纯属浪费（也更容易下到一半断掉）。
+    const app=release.app,sha=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+    if(!app||typeof app!=='object'||Array.isArray(app)||
+       app.url!==`https://api.jinbaoai.top/downloads/${directory}/v${release.version}/jinbao-desktop-windows-app.zip`||
+       !Number.isSafeInteger(app.bytes)||app.bytes<=0||app.bytes>MAX_ARCHIVE||!sha(app.sha256)) throw Error('Invalid release metadata');
+    const base=app.base;
+    if(!base||typeof base!=='object'||base.path!=='runtime/node.exe'||
+       !Number.isSafeInteger(base.bytes)||base.bytes<=0||base.bytes>MAX_ARCHIVE||!sha(base.sha256)) throw Error('Invalid release metadata');
+  }
   return release;
 }
 
@@ -105,6 +116,20 @@ export async function extractArchive(archive, destination) {
   await exec(ps, ['-NoProfile','-ExecutionPolicy','Bypass','-File',join(moduleDir,'extract-update.ps1'),'-Archive',archive,'-Destination',destination], { windowsHide: true, timeout: 120000, maxBuffer: 16384 });
 }
 
+// 分块算哈希：node.exe 有 90MB，读成一块会让内存和耗时都不好看。
+async function hashFile(path) {
+  const digestOf = createHash('sha256'), handle = await open(path,'r');
+  try {
+    const buffer = Buffer.allocUnsafe(1024 * 1024); let position = 0;
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
+      if (!bytesRead) break;
+      digestOf.update(buffer.subarray(0, bytesRead)); position += bytesRead;
+    }
+  } finally { await handle.close(); }
+  return digestOf.digest('hex');
+}
+
 export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, extract = extractArchive, now = Date.now, channel='legacy' }) {
   if(!['legacy','standalone'].includes(channel))throw Error('Invalid update channel');
   const updates = join(resolve(stateDir),'updates');
@@ -121,6 +146,24 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
     const directory = join(updates,'releases','v'+release.version);
     await verifyPackage(directory,release);
     return {root:directory,envelope,release};
+  }
+  // 本地运行时与这一版发布声明完全一致时只下载应用层；否则老实下全量包。
+  async function appPlanFor(release) {
+    const app=release.app;
+    if(!app||typeof app!=='object')return null;
+    try {
+      const local=join(resolve(root),app.base.path),info=await lstat(local);
+      if(!info.isFile()||info.size!==app.base.bytes)return null;
+      if(await hashFile(local)!==app.base.sha256)return null;
+      return app;
+    } catch { return null; }
+  }
+  // 应用层包里没有 node.exe：用硬链接把当前安装里的那份挂过来（同卷不占额外空间），
+  // 失败就退回复制。之后 verifyPackage 会按发布清单核对它的字节与哈希。
+  async function provideBase(directory,base) {
+    const source=join(resolve(root),base.path),target=join(directory,base.path);
+    await mkdir(dirname(target),{recursive:true});
+    try { await link(source,target); } catch { await copyFile(source,target); }
   }
   return {
     async check(signal) {
@@ -149,9 +192,11 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
         if (active && compareVersions(active.release.version,release.version) >= 0) {
           await status({state:'ready',version:active.release.version,currentVersion,notes:active.release.notes,message:'新版 '+active.release.version+' 已就绪，可在方便时安装'}); return;
         }
+        const appPlan=await appPlanFor(release);
+        const target=appPlan??{url:release.url,bytes:release.bytes,sha256:release.sha256};
         await mkdir(join(updates,'releases'),{recursive:true});
         phase='downloading';
-        await status({state:'downloading',version:release.version,currentVersion,downloadedBytes:0,totalBytes:release.bytes,percent:0,notes:release.notes,message:'正在后台下载新版 '+release.version});
+        await status({state:'downloading',version:release.version,currentVersion,downloadedBytes:0,totalBytes:target.bytes,percent:0,appOnly:appPlan!==null,notes:release.notes,message:'正在后台下载新版 '+release.version});
         const downloadSignal=AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(15*60*1000)]);
         archive=join(updates,'download-'+randomUUID()+'.zip');
         const started=now();let count=0,lastProgress=0;let hash=createHash('sha256');
@@ -160,14 +205,14 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
           // 断点续传 + 停流重连：发布包 48MB、服务器对外约 420KB/s，纯等待就要两分钟；
           // 连接被掐断时旧实现会一直挂着直到 15 分钟总超时，用户看到的就是「卡在一半」。
           let attempt=0,lastError=null;
-          while(count<release.bytes){
+          while(count<target.bytes){
             attempt+=1;
             const controller=new AbortController();
             let stallTimer=null;
             const armStall=()=>{clearTimeout(stallTimer);stallTimer=setTimeout(()=>controller.abort(),STALL_MS);};
             try{
               armStall();
-              const download=await fetchImpl(release.url,{redirect:'error',
+              const download=await fetchImpl(target.url,{redirect:'error',
                 signal:AbortSignal.any([downloadSignal,controller.signal]),
                 ...(count?{headers:{Range:'bytes='+count+'-'}}:{})});
               if(download.status===416)break;
@@ -176,33 +221,34 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
               for await (const chunk of download.body){
                 armStall();
                 const at=count;
-                count+=chunk.length;if(count>release.bytes)throw Error('Update size mismatch');
+                count+=chunk.length;if(count>target.bytes)throw Error('Update size mismatch');
                 hash.update(chunk);await file.write(chunk,0,chunk.length,at);
-                if(now()-lastProgress>=500||count===release.bytes){
+                if(now()-lastProgress>=500||count===target.bytes){
                   lastProgress=now();
                   const speed=Math.round(count/Math.max(.001,(now()-started)/1000));
                   await status({state:'downloading',version:release.version,currentVersion,notes:release.notes,
-                    downloadedBytes:count,totalBytes:release.bytes,
-                    percent:Math.min(100,Math.floor(count/release.bytes*100)),
+                    downloadedBytes:count,totalBytes:target.bytes,appOnly:appPlan!==null,
+                    percent:Math.min(100,Math.floor(count/target.bytes*100)),
                     bytesPerSecond:speed,
-                    etaMs:speed>0?Math.round((release.bytes-count)/speed*1000):null,
-                    message:'正在后台下载新版 '+release.version+' · '+Math.floor(count/release.bytes*100)+'%'});
+                    etaMs:speed>0?Math.round((target.bytes-count)/speed*1000):null,
+                    message:'正在后台下载新版 '+release.version+' · '+Math.floor(count/target.bytes*100)+'%'});
                 }
               }
             }catch(error){lastError=error;}
             finally{clearTimeout(stallTimer);}
-            if(count>=release.bytes)break;
+            if(count>=target.bytes)break;
             if(attempt>=3)throw lastError??Error('Update download interrupted');
             await new Promise(resolve=>setTimeout(resolve,1000));
           }
         } finally { await file.close(); }
         phase='verifying';
         await status({state:'verifying',version:release.version,currentVersion,notes:release.notes,message:'下载完成，正在验证更新完整性…'});
-        if(count!==release.bytes||hash.digest('hex')!==release.sha256)throw Error('Update checksum mismatch');
+        if(count!==target.bytes||hash.digest('hex')!==target.sha256)throw Error('Update checksum mismatch');
         staging=join(updates,'staging-'+randomUUID());
         phase='extracting';
         await status({state:'extracting',version:release.version,currentVersion,notes:release.notes,message:'验证通过，正在准备安装文件…'});
         await extract(archive,staging);
+        if(appPlan)await provideBase(staging,appPlan.base);
         await verifyPackage(staging,release);
         const destination=join(updates,'releases','v'+release.version);
         try { await rename(staging,destination); }
