@@ -1,12 +1,15 @@
 ﻿// 日记的调度：什么时候写、写哪一天、失败就静默。
 // 三类内容共用一套存储：每天一篇（daily）、每周一段回顾（weekly）、节日一封信（letter）。
 import { readFile, writeFile } from 'node:fs/promises';
+
+async function readJson(path) { try { return JSON.parse(await readFile(path, 'utf8')); } catch { return null; } }
 import { join } from 'node:path';
 import { collectDay } from '../lol-companion/diary-source.mjs';
 import { decide, dayKey, shiftDay, dayRange } from '../lol-companion/diary-day.mjs';
 import { writeDiary, openingOf } from '../lol-companion/diary-write.mjs';
 import { absenceLevel, festivalOn, timeBand, anniversaryOf, toneGuidance } from '../lol-companion/diary-mood.mjs';
 import { promiseThreads, lineThread, mergeThreads, dueThreads, insightFor } from '../lol-companion/diary-threads.mjs';
+import { weekKey, isStale, rankCandidates, summarize, trendPrompt, acceptTerm } from '../lol-companion/diary-trends.mjs';
 
 async function readRows(stateDir) {
   let text;
@@ -20,7 +23,7 @@ async function readRows(stateDir) {
   return rows.filter(row => Number.isFinite(Number(row?.at)));
 }
 
-export function createDiary({ store, stateDir, query, ask, role = () => '金宝', isIdle = () => true, now = Date.now, trace = () => {}, backfillDays = 3, retryMs = 60 * 1000, maxWritesPerTick = 2 }) {
+export function createDiary({ store, stateDir, query, ask, trendSource = null, role = () => '金宝', isIdle = () => true, now = Date.now, trace = () => {}, backfillDays = 3, retryMs = 60 * 1000, maxWritesPerTick = 2 }) {
   let running = false, lastAttempt = 0;
   const decided = new Set(); // 同一天的决定是确定的，别每次 tick 都重复记日志
 
@@ -48,7 +51,39 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
     });
   }
 
-  async function remember(entry, facts) {
+  // 一周查一次「网上在传什么」：热榜原文 → 让模型挑出真正的梗（一周一次调用）→ 存一周。
+  // 宁可这周没有，也不把新闻/时政写进日记；挑不出来就记一条空的，这周不再重试。
+  async function refreshTrends() {
+    const saved = await store.trends().catch(() => null);
+    if (!isStale(saved, now())) return summarize(saved);
+    // 手工覆盖优先：想指定本周的说法时，改这个文件即可（{week,items}）。
+    const manual = await readJson(join(stateDir, 'diary', 'trends-manual.json')).catch(() => null);
+    if (manual?.week === weekKey(now()) && Array.isArray(manual.items)) {
+      const record = { week: manual.week, at: now(), items: rankCandidates(manual.items), source: 'manual' };
+      await store.saveTrends(record).catch(() => {});
+      return summarize(record);
+    }
+    let texts = [];
+    if (typeof trendSource === 'function') { try { texts = await trendSource(); } catch { texts = []; } }
+    const prompt = trendPrompt(texts);
+    let items = [];
+    if (prompt) {
+      try {
+        const reply = await ask(prompt);
+        const match = /\[[^\]]*\]/.exec(String(reply ?? ''));
+        const parsed = match ? JSON.parse(match[0]) : [];
+        items = (Array.isArray(parsed) ? parsed : []).map(acceptTerm).filter(Boolean).slice(0, 3);
+      } catch (error) {
+        // 教练正忙就下个 tick 再试，别把这一周记成「没有梗」。
+        if (error?.status === 409) return summarize(saved);
+        items = [];
+      }
+    }
+    const record = { week: weekKey(now()), at: now(), items };
+    await store.saveTrends(record).catch(() => {});
+    trace({ event: 'diary_trends', week: record.week, count: items.length });
+    return summarize(record);
+  }  async function remember(entry, facts) {
     const threads = mergeThreads(
       (await store.threads()).map(thread => thread),
       [...lineThread(entry), ...promiseThreads(facts?.selfChats ?? [], entry.day)].map(thread => ({ ...thread, at: now() })),
@@ -56,7 +91,7 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
     await store.saveThreads(threads);
   }
 
-  async function writeDaily(day, { rows, band, festival, anniversary, recent }) {
+  async function writeDaily(day, { rows, band, festival, anniversary, recent, trends = [] }) {
     // 缺席按「那一天」算：隔了十天回来，回来那天的日记才该是委屈的。
     const absence = absenceFor(day, rows);
     const facts = await collectDay({ stateDir, day, query });
@@ -67,7 +102,7 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
       return null;
     }
     const tone = toneGuidance({ absence, festival, band, anniversary });
-    const entry = await writeDiary({ day, facts, decision, role: role(), recent, ask, now, tone });
+    const entry = await writeDiary({ day, facts, decision, role: role(), recent, ask, now, tone, trends });
     const saved = await store.save(entry);
     await remember(saved, facts);
     trace({ event: 'diary_written', day, chars: saved.chars, topic: saved.topic, score: decision.score });
@@ -95,6 +130,7 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
         const anniversary = anniversaryOf({ today, first });
         const festival = festivalOn(today);
         const recent = () => recentOpenings();
+        const trends = (await refreshTrends()).items;
 
         // 1) 节日信：上午九点之后才发，一天一封，比日记正式。
         if (festival && !existing.has(today) && new Date(now()).getHours() >= 9 && written.length < maxWritesPerTick) {
@@ -103,7 +139,7 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
             day: today,
             facts: { day: today, matches: [], selfChats: [], herLines: [] },
             decision: { min: 150, max: 320, topic: 'festival', score: 0, topicLabel: festival.label },
-            role: role(), recent: await recent(), ask, now, tone, letter: true,
+            role: role(), recent: await recent(), ask, now, tone, letter: true, trends,
           });
           const saved = await store.save(entry);
           // 节日信的邮箱投递要服务端来做：客户端只持有被打码的邮箱（7***@qq.com），
@@ -132,7 +168,7 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
               day: today,
               facts: { day: today, matches: week.map(row => ({ champion: row.champion, result: row.result, seconds: row.seconds, kda: row.kda, adviceRevoked: row?.advice?.revoked ?? 0 })), selfChats: [], herLines: [] },
               decision: { min: 200, max: 380, topic: 'weekly', score: 0, topicLabel: '这一周' },
-              role: role(), recent: await recent(), ask, now, tone, weekly: true, insight: insight ?? '',
+              role: role(), recent: await recent(), ask, now, tone, weekly: true, insight: insight ?? '', trends,
             });
             const saved = await store.save(entry);
             trace({ event: 'diary_weekly', day: today, chars: saved.chars, insight: !!insight });
@@ -147,7 +183,7 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
           if (existing.has(day)) continue;
           const facts = await collectDay({ stateDir, day, query });
           if (!facts.matches.length && !facts.selfChats.length && !facts.appChats) continue; // 那天没玩，没有可写的
-          const saved = await writeDaily(day, { rows, band, festival, anniversary, recent: recent() });
+          const saved = await writeDaily(day, { rows, band, festival, anniversary, recent: recent(), trends });
           if (saved) written.push(saved);
         }
       } catch (error) {

@@ -40,7 +40,7 @@ export function buildFactsBlock(facts = {}) {
   return lines.join('\n');
 }
 
-export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, insight = '' }) {
+export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, insight = '', trends = [] }) {
   const topic = decision?.topicLabel ?? TOPIC_LABEL[decision?.topic] ?? '今天';
   const min = Number(decision?.min) || 150, max = Number(decision?.max) || 280;
   const openings = (Array.isArray(recent) ? recent : []).map(item => String(item ?? '').slice(0, 30)).filter(Boolean).slice(0, 3);
@@ -56,6 +56,7 @@ export function buildPrompt({ day, facts, decision, role = '金宝', recent = []
     '不要逐局列出英雄名，也不要把每一局都提一遍；不列数据，不评价他打得好不好。',
     '不要出现其他玩家昵称，指代只用「他」。不用「作为 AI／总之／综上」，不喊口号，不催他上线。',
     tone,
+    trends.length ? '本周网上在传这些说法：' + trends.slice(0, 5).map(term => '「' + term + '」').join('') + '。只在你觉得完全贴合时用一处，绝不解释这个说法，也别硬塞；用不上就不用。' : '',
     insight ? `你可以提一句你的发现（用你自己的话说，别写成数据）：${insight}` : '',
     weekly ? '这一周的事合成一段，不要一天一段地报；只挑这一周最想说的一两处。' : '',
     letter ? '开头要有称呼（一句短的就够），结尾要有落款，别写落款日期以外的东西。' : '',
@@ -99,11 +100,11 @@ export function parseDiaryReply(reply, { min = 150, max = 280 } = {}) {
 }
 
 // 交给调用方的 ask 只负责「问一句话、拿回一段文字」，模型路由由上层决定。
-export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, insight = '' }) {
+export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, insight = '', trends = [] }) {
   if (typeof ask !== 'function') throw Error('缺少模型调用');
   const errors = [];
   for (const strict of [false, true]) {
-    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, insight });
+    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, insight, trends });
     let reply;
     try { reply = await ask(prompt); } catch (error) { errors.push(error?.message ?? String(error)); if (error?.status === 409 || error?.status === 401) break; continue; }
     try {

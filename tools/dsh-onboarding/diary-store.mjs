@@ -98,6 +98,14 @@ export function createDiaryStore({ stateDir }) {
       await atomicJson(indexPath, []);
       return removed;
     },
+    // 本周热梗：一周只查一次，查不到也存一条空记录，免得整周反复去查。
+    async trends() {
+      return await readJson(join(root, 'trends.json'), null);
+    },
+    async saveTrends(record) {
+      await atomicJson(join(root, 'trends.json'), record);
+      return record;
+    },
     // 未了线：存一份就好，挑选与去重在 diary-threads.mjs 里做（纯函数）。
     async threads() {
       const rows = await readJson(join(root, 'threads.json'), []);

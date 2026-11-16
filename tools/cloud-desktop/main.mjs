@@ -1,4 +1,4 @@
-﻿import{createCloudCapture}from'./capture.mjs';
+import{createCloudCapture}from'./capture.mjs';
 import{createCloudCoach}from'./auto-coach.mjs';
 import{claimInstance}from'./instance.mjs';
 import{createEventQuery}from'./event-query.mjs';
@@ -82,7 +82,14 @@ const rawAgent=createRuntimeRouter({getMode:()=>setup?.config().mode??'cloud',is
 }});
 // 日记：一天最多一篇，只在没有进行中的对局时写；写不成就是这天没写，不留占位。
 const diaryIdle=()=>{const v=setup?.view();if(!v)return true;return !(v.match&&!v.ended&&(v.gameTime!=='等待对局'||v.phase==='ChampSelect')&&Date.now()-(v.updatedAt??0)<30000);};
-const diary=createDiary({store:createDiaryStore({stateDir}),stateDir,query:queryEvents,
+// 每周一次「网上在传什么」：B 站热榜原文，本地只挑梗（见 diary-trends.mjs）。失败就当这周没有。
+const trendSource=async()=>{
+ const texts=[],get=async url=>{const response=await fetch(url,{signal:AbortSignal.timeout(8000),headers:{'User-Agent':'Mozilla/5.0','Referer':'https://www.bilibili.com/'}});if(!response.ok)throw Error('trend fetch failed');return await response.json();};
+ try{const data=await get('https://api.bilibili.com/x/web-interface/search/square?limit=50');for(const item of data?.data?.trending?.list??[])if(typeof item?.keyword==='string')texts.push(item.keyword);}catch{}
+ try{const data=await get('https://api.bilibili.com/x/web-interface/ranking/v2?rid=0&type=all');for(const item of data?.data?.list??[])if(typeof item?.title==='string')texts.push(item.title);}catch{}
+ return texts;
+};
+const diary=createDiary({store:createDiaryStore({stateDir}),stateDir,query:queryEvents,trendSource,
  ask:async question=>{if(!diaryIdle())throw Object.assign(Error('Match active'),{status:409});const v=setup?.view();return rawAgent.ask({game:v?.game||'lol',match:v?.match||'waiting',question,topic:'chat',automatic:false,role:speech.role()});},
  role:()=>roleById(speech.role()).name,isIdle:diaryIdle,trace:event=>diagnostics.record('diary',event)});
 // 「他主动找她聊过几次」：日记的分数要用，所以只记一个计数，不存内容。
