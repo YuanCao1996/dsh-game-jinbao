@@ -76,7 +76,22 @@ DashScope 兼容接口（服务器上本来就有 Key）：
 结论：**卡面与聊天都用 `game-vision`（qwen3.5-ocr）**；`game-vision-chat` 只作为"读错了升级"的
 第二档，第三档才开思考。
 
-### 回滚
+### 接线（collector，2026-11-17）
+
+- **侧车图**：`capture-augments.ps1` 每次抓帧顺带写两张 JPEG——
+  `<StateDir>\vision-strip.jpg`（三张卡标题带，约 1.6k×190）和 `vision-chat.jpg`（聊天框裁剪，840×400）；
+  `JINBAO_VISION_FRAMES=0` 可关。`capture-worker.mjs` 负责把 `-StateDir` 传给 worker。
+- **触发点**：`collector.mjs`
+  - 海克斯：`augment_offer` 里有卡名吸附不上 `augment-names.json` 时，同一轮只补读一次
+    （`vision-verify.mjs` 校验侧车图新鲜度 ≤2.5 s），成功则追加 `augment_offer_corrected`；
+  - 聊天：本地一行都没解析出来、但 `frame.chatLines > 0` 时，最多每 4 s 补读一次，
+    补读回来的行仍走 `chatObserver.observeLines()` 同一条解析/纠错链路。
+- **采用门槛**：卡名必须吸附到名录且至少 2 个成立；聊天行必须非空。模型结果一律不直接落库。
+- **开关**：`JINBAO_VISION_ASSIST=0` 整体关闭；`JINBAO_VISION_TIER=free|basic|plus` 选额度档位；
+  全部调用记 `vision_assist` 诊断事件，采纳结果另记 `augment_offer_corrected` / `chat_vision_lines`。
+- **复用**：`chat-observer.observe()` 现在接受 `chatOnly` / `chatLines` / `lines` 三种来源
+  （此前只认 `chatOnly`，采集脚本给的是 `chatLines`，聊天解析被静默跳过）。
+
 
 ```bash
 cp /opt/jinbao-desktop-backups/ocr-vision-<时间>/{main.mjs,upstream.mjs,model-routes.json} …
