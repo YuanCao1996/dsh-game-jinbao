@@ -1,4 +1,4 @@
-// 把一天的事实压成一段很短的中文，交给模型写；再把回包校验、截断成可落盘的日记。
+﻿// 把一天的事实压成一段很短的中文，交给模型写；再把回包校验、截断成可落盘的日记。
 // 长度预算：prompt 必须留出角色设定（≤2000 字符上限）的位置，所以事实摘要只给要点。
 import { TOPIC_LABEL } from './diary-day.mjs';
 
@@ -40,12 +40,13 @@ export function buildFactsBlock(facts = {}) {
   return lines.join('\n');
 }
 
-export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false }) {
+export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, insight = '' }) {
   const topic = decision?.topicLabel ?? TOPIC_LABEL[decision?.topic] ?? '今天';
   const min = Number(decision?.min) || 150, max = Number(decision?.max) || 280;
   const openings = (Array.isArray(recent) ? recent : []).map(item => String(item ?? '').slice(0, 30)).filter(Boolean).slice(0, 3);
+  const opening = letter ? `【节日信】用第一人称给「${role}」写一封信，不是播报、不是战报。日期 ${day}。` : weekly ? `【一周回顾】用第一人称给「${role}」写一段这一周的回顾，不是播报、不是战报。日期 ${day}。` : `【今天的日记】用第一人称给「${role}」写一篇日记，不是播报、不是建议、不是战报。日期 ${day}。`;
   const parts = [
-    `【今天的日记】用第一人称给「${role}」写一篇日记，不是播报、不是建议、不是战报。日期 ${day}。`,
+    opening,
     buildFactsBlock(facts) || '今天没发生什么值得写的事。',
     `叙述重心：${topic}。`,
     `长度 ${min}—${Math.max(min + 20, max)} 字，最多 3 段；写完就停，不要总结。`,
@@ -54,6 +55,10 @@ export function buildPrompt({ day, facts, decision, role = '金宝', recent = []
     '他说过的话只能从上面「他在游戏里自己打的字」里取；素材没给就不要引用、不要编造对话。',
     '不要逐局列出英雄名，也不要把每一局都提一遍；不列数据，不评价他打得好不好。',
     '不要出现其他玩家昵称，指代只用「他」。不用「作为 AI／总之／综上」，不喊口号，不催他上线。',
+    tone,
+    insight ? `你可以提一句你的发现（用你自己的话说，别写成数据）：${insight}` : '',
+    weekly ? '这一周的事合成一段，不要一天一段地报；只挑这一周最想说的一两处。' : '',
+    letter ? '开头要有称呼（一句短的就够），结尾要有落款，别写落款日期以外的东西。' : '',
     openings.length ? `最近几篇是这么写的，换素材、换句式、换个结尾，别重样：${openings.join('／')}` : '',
     '只输出一个 JSON 对象，不要代码块以外的解释：',
     '{"title":"不超过12个字","body":"正文","mood":"得意|平静|心虚|想念|犯困","line":"明天想跟他说的一句话，不超过18字，可以留空"}',
@@ -94,16 +99,16 @@ export function parseDiaryReply(reply, { min = 150, max = 280 } = {}) {
 }
 
 // 交给调用方的 ask 只负责「问一句话、拿回一段文字」，模型路由由上层决定。
-export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now }) {
+export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, insight = '' }) {
   if (typeof ask !== 'function') throw Error('缺少模型调用');
   const errors = [];
   for (const strict of [false, true]) {
-    const prompt = buildPrompt({ day, facts, decision, role, recent, strict });
+    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, insight });
     let reply;
     try { reply = await ask(prompt); } catch (error) { errors.push(error?.message ?? String(error)); if (error?.status === 409 || error?.status === 401) break; continue; }
     try {
       const parsed = parseDiaryReply(reply, { min: decision?.min, max: decision?.max });
-      return { version: 1, day, at: now(), role, ...parsed, topic: decision?.topic ?? 'champion', score: decision?.score ?? 0 };
+      return { version: 1, day, at: now(), role, ...parsed, topic: decision?.topic ?? 'champion', score: decision?.score ?? 0, kind: letter ? 'letter' : weekly ? 'weekly' : 'daily' };
     } catch (error) { errors.push(error.message); }
   }
   throw Object.assign(Error('日记没有写成：' + (errors[0] ?? '未知原因')), { code: 'diary_rejected' });

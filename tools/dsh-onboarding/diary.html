@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金宝日记</title><style>
+﻿<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金宝日记</title><style>
 /* ── 物理层：纸色、墨色、赭石、发丝线。颜色锁定在这里，其余只用变量。 ── */
 :root{
   color-scheme:light;
@@ -387,7 +387,8 @@ function renderEntry(entry){
   $('diaryTitle').textContent=String(entry.title||'').trim()||'没有标题';
   const metaTime=$('diaryMetaTime');
   if(parseDay(day))metaTime.dateTime=day;else metaTime.removeAttribute('datetime');
-  metaTime.textContent=fmtFull(day);
+  const kindLabel={weekly:'一周回顾',letter:'节日信'}[String(entry.kind||'')]||'';
+  metaTime.textContent=(kindLabel?kindLabel+' · ':'')+fmtFull(day);
   const mood=String(entry.mood||'').trim();
   $('diaryMood').textContent=mood;
   $('diaryMetaDot').hidden=!mood;

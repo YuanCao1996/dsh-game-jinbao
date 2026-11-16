@@ -1,4 +1,4 @@
-import { condenseAdvice, stripSources, noiseBroadcast } from './advice-text.mjs';
+﻿import { condenseAdvice, stripSources, noiseBroadcast } from './advice-text.mjs';
 import{mkdir,appendFile,writeFile,rename}from'node:fs/promises';import{join}from'node:path';
 import{stateCoachingTrigger,buildLolCoachingPlan,createAdviceValidity,adviceIsValid}from'../dsh-coach-server/lib/lol-coaching-plan.js';
 import{createCoachScheduler}from'./coach-scheduler.mjs';
@@ -17,7 +17,7 @@ function coordinationEdge(side,previous){
  const strong=value=>value>=2;
  return strong(side)!==strong(previous)||strong(-side)!==strong(-previous);
 }
-export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>true,canRequest=()=>true,now=Date.now,trace=()=>{},diaryLine=null,publish=entry=>appendFile(join(stateDir,'logs/coach_broadcasts.jsonl'),JSON.stringify(entry)+'\n',{mode:0o600}),publishStatus=async value=>{if(!stateDir)return;const file=join(stateDir,'coach-status.json');await writeFile(file+'.tmp',JSON.stringify(value),{mode:0o600});await rename(file+'.tmp',file);}}){
+export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>true,canRequest=()=>true,now=Date.now,trace=()=>{},diaryLine=null,absenceTone=null,publish=entry=>appendFile(join(stateDir,'logs/coach_broadcasts.jsonl'),JSON.stringify(entry)+'\n',{mode:0o600}),publishStatus=async value=>{if(!stateDir)return;const file=join(stateDir,'coach-status.json');await writeFile(file+'.tmp',JSON.stringify(value),{mode:0o600});await rename(file+'.tmp',file);}}){
  let busy=false,closed=false,match='',store={},offers='',owned='',ownedCount=0,selection='',retryAt=0;
 // 本局第几次阵亡：第一次不播报（用户要求），之后的正常出建议。
 let deathTurns=0;
@@ -189,6 +189,8 @@ let deathTurns=0;
    // 她昨天在日记里惦记的那句话：一周最多用两次，跟眼下局势无关就别硬提。
    let diaryHint='';
    if(diaryLine)try{const pending=await diaryLine();if(pending?.text)diaryHint='\n（你昨天在日记里写过：'+String(pending.text).slice(0,24)+'。如果跟眼下这波有关，可以自然带一句；无关就别硬提。）';}catch{}
+   // 久别回来 / 来得少了 / 节日：开场那一条的语气不一样，但不解释原因、不抱怨第二遍。
+   if(plan.stage==='opening'&&absenceTone)try{const tone=await absenceTone();if(tone?.hintText)diaryHint+='\n（'+String(tone.hintText).slice(0,80)+'。只在这一句里透一点情绪，不要说原因，也不要重复第二遍。）';}catch{}
 const actionable=message+'\n'+workflow+'这是口头播报，要像真人在语音里说话：每条至少带一个语气助词（啦、呀、呢、哦、嘛、吧、啊），最多两个，别每句都加；整条播报最多一个叹词，放在最带情绪那句的开头——顺利或赢团用嘿嘿、嘻嘻、哇塞，失误或被反杀用啊这、哎呦、天呐；中娅、出装、活命这类紧急提醒不加叹词，但仍带一个语气助词；避免书面语与长定语句；不要用「第一次」「首次」开头播报。像这样说话：别急呀，等兵线过来再打哦；哎呀这波亏了，回头补个人头嘛。这是战况即时播报：用2至3句先说现在做什么，再说针对谁或等什么条件，最后点明当前装备、阵容或已选海克斯为何支持这个动作。不要复述时钟、等级、比分、KDA或整套装备清单；不播报「我方N人已就位/到齐」这类人数清点，不写泛泛的注意走位/配合队友。不编造冷却、价格、排名或未知技能状态；缺资料时依据已确认事实给保守建议，避免用整段工具错误说明占据正文。没核实的东西不要写进播报：不出现「待统计、待确认、未知、未查到」这类占位词，缺资料就换一个站得住的说法，实在没有就不提这件事。未确认可购买时，把装备建议安排在下一次可购买时，不说现在先买再上线；不以英雄总胜率解释单件装备强度，省略未核验百分比；不把召唤物挡路说成能够阻断位移，不断言未经核验的技能交互。'+diaryHint;
    const startedAt=now();
   const answer=await agent.ask({game:v.game,match:v.match,question:actionable,topic:'advice',automatic:true,timeCritical:plan.stage==='coordination'||plan.stage==='death'||plan.stage==='enemyChange'||plan.stage==='postAugment'||plan.stage==='ace'||plan.stage==='turret',...(maybeConfirmed||['death','ace','coordination'].includes(plan.stage)?{urgent:true}:{})});

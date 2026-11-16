@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { createDiary } from '../diary.mjs';
 import { createDiaryStore } from '../../dsh-onboarding/diary-store.mjs';
 import { decide, dayStart, shiftDay, stableRoll } from '../../lol-companion/diary-day.mjs';
+import { festivalOn } from '../../lol-companion/diary-mood.mjs';
+const boringToday = day => new Date(dayStart(day) + 12 * 3600e3).getDay() !== 0 && !festivalOn(day);
 
 const line = value => JSON.stringify(value) + '\n';
 // 一天的正文要有 280—450 字，否则在「长」档里会被判太短。
@@ -14,7 +16,7 @@ const GOOD = JSON.stringify({ title: '改口三次', body: BODY, mood: '心虚',
 // 让 now 落在 targetDay 的第二天中午：这样 tick 补写的正好是 targetDay。
 const nowFor = day => dayStart(day) + 86400e3 + 12 * 3600e3;
 
-async function fixture({ days = [], now, settings, chats = true } = {}) {
+async function fixture({ days = [], now, settings, chats = true, chatLines = ['打野来下路', '别急我来了', '这波我C', '你等我', '换线了', '走了'] } = {}) {
   const stateDir = await mkdtemp(join(tmpdir(), 'jinbao-diary-'));
   await mkdir(join(stateDir, 'game-memory'), { recursive: true });
   const rows = [];
@@ -25,7 +27,7 @@ async function fixture({ days = [], now, settings, chats = true } = {}) {
     }
   }
   await writeFile(join(stateDir, 'game-memory/match-history.jsonl'), rows.map(line).join(''));
-  const query = async () => (chats ? { rows: [{ event: { kind: 'chat_events', events: ['打野来下路', '别急我来了', '这波我C', '你等我', '换线了', '走了'].map(text => ({ kind: 'team_chat', text, self: true })) } }] } : { rows: [] });
+  const query = async () => (chats ? { rows: [{ event: { kind: 'chat_events', events: chatLines.map(text => ({ kind: 'team_chat', text, self: true })) } }] } : { rows: [] });
   const asked = [], events = [];
   const store = createDiaryStore({ stateDir });
   if (settings) await store.setSettings(settings);
@@ -100,6 +102,7 @@ test('一次最多补两篇，剩下的下次再补', async () => {
   for (let offset = 0; offset < 40 && !today; offset++) {
     const candidate = shiftDay('2026-12-20', -offset);
     const set = [1, 2, 3].map(back => shiftDay(candidate, -back));
+    if (!boringToday(candidate)) continue; // 周日会多出一篇周回顾、节日会多一封信，这个用例只测每日补写
     if (set.every(day => decide({ facts: { day, matches: [{}, {}, {}], selfChats: ['a', 'b', 'c', 'd', 'e', 'f'] }, day }).write)) { today = candidate; days = set; }
   }
   assert.ok(today, '应当能找到连续三天都掷中的窗口');
@@ -120,5 +123,67 @@ test('她惦记的那句话只交给教练一次', async () => {
     const pending = await f.diary.lineForPrompt();
     assert.deepEqual(pending, { day, text: '明天再讲吧' });
     assert.equal(await f.diary.lineForPrompt(), null, '用过就不再给');
+  } finally { await rm(f.stateDir, { recursive: true, force: true }); }
+});
+
+test('节日写信：一天一封，早上九点之前不发', async () => {
+  const day = '2026-12-25';
+  const early = await fixture({ days: [], now: dayStart(day) + 4 * 3600e3 });
+  try {
+    await early.diary.tick();
+    assert.equal((await early.store.list()).length, 0, '太早不发');
+  } finally { await rm(early.stateDir, { recursive: true, force: true }); }
+
+  const f = await fixture({ days: [], now: dayStart(day) + 12 * 3600e3 });
+  try {
+    await f.diary.tick();
+    const list = await f.store.list();
+    assert.equal(list.length, 1);
+    assert.equal(list[0].kind, 'letter');
+    assert.equal(list[0].day, day);
+    await f.diary.tick();
+    assert.equal((await f.store.list()).length, 1, '一天只有一封');
+  } finally { await rm(f.stateDir, { recursive: true, force: true }); }
+});
+
+test('周日写一篇周回顾，但这周没怎么玩就不写', async () => {
+  let sunday = null;
+  for (let offset = 0; offset < 20 && !sunday; offset++) {
+    const candidate = shiftDay('2026-12-20', offset);
+    if (new Date(dayStart(candidate) + 12 * 3600e3).getDay() === 0) sunday = candidate;
+  }
+  assert.ok(sunday, '应当能找到周日');
+  const days = [1, 2, 3].map(back => shiftDay(sunday, -back));
+
+  const quiet = await fixture({ days: [], now: dayStart(sunday) + 12 * 3600e3 });
+  try {
+    await quiet.diary.tick();
+    assert.ok(!(await quiet.store.list()).some(row => row.kind === 'weekly'), '这周没玩就不写');
+  } finally { await rm(quiet.stateDir, { recursive: true, force: true }); }
+
+  const f = await fixture({ days, now: dayStart(sunday) + 12 * 3600e3 });
+  try {
+    await f.diary.tick();
+    const weekly = (await f.store.list()).find(row => row.kind === 'weekly');
+    assert.ok(weekly, '应当有一篇周回顾：' + JSON.stringify(await f.store.list()));
+    assert.equal(weekly.day, sunday);
+  } finally { await rm(f.stateDir, { recursive: true, force: true }); }
+});
+
+test('未了线：日记里那句话和他说过的「明天」都会记下来，一周只提两次', async () => {
+  const day = '2026-11-15';
+  const f = await fixture({ days: [day], now: nowFor(day), chatLines: ['明天换个出装试试', '这波我C'] });
+  try {
+    await f.diary.tick();
+    const first = await f.diary.threadForPrompt();
+    const second = await f.diary.threadForPrompt();
+    const third = await f.diary.threadForPrompt();
+    const texts = [first?.text, second?.text].filter(Boolean);
+    assert.equal(texts.length, 2, JSON.stringify([first, second]));
+    assert.ok(texts.some(text => text.includes('明天换个出装')) || texts.some(text => text.includes('明天再讲')), JSON.stringify(texts));
+    assert.equal(third, null, '一周最多提两次');
+    const threads = await f.store.threads();
+    assert.ok(threads.length >= 2);
+    assert.ok(threads.every(thread => !thread.usedAt || thread.usedAt > 0));
   } finally { await rm(f.stateDir, { recursive: true, force: true }); }
 });

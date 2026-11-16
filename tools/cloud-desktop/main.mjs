@@ -108,7 +108,7 @@ const secondaryLock=instanceLock.role==='secondary';
 if(instanceLock.role==='owner')publishSettingsUrl(setup.url);
 if(secondaryLock)try{await writeFile(join(stateDir,'instance-secondary.json'),JSON.stringify({owner:instanceLock.owner?.line??'unknown',settingsUrl:instanceLock.owner?.settingsUrl??'',at:Date.now()}),{mode:0o600});}catch{}
 await rm(join(stateDir,'overlay-stopped'),{force:true});
-const coach=args.includes('--coach')&&!secondaryLock?createCloudCoach({stateDir,canRequest:pacing.canRequest,trace:diagnostics.coach,view:setup.view,getContext:(game,match)=>memory.currentFacts(game,match),agent,diaryLine:()=>diary.lineForPrompt(),enabled:()=>setup.config().mode!=='demo'}):null;
+const coach=args.includes('--coach')&&!secondaryLock?createCloudCoach({stateDir,canRequest:pacing.canRequest,trace:diagnostics.coach,view:setup.view,getContext:(game,match)=>memory.currentFacts(game,match),agent,diaryLine:()=>diary.threadForPrompt(),absenceTone:()=>diary.currentTone(),enabled:()=>setup.config().mode!=='demo'}):null;
 const coachTimer=coach?setInterval(()=>void coach.tick(),3000):null;
 const supervisor=args.includes('--collect')?createSupervisor({root,stateDir}):null;
 const interval=supervisor?setInterval(()=>void supervisor.tick().catch(()=>{}),3000):null;

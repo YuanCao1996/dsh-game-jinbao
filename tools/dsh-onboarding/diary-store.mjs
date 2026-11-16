@@ -1,4 +1,4 @@
-// 日记的本地存储：全部在 stateDir/diary 下，不上传。索引单独一份，正文一天一个文件。
+﻿// 日记的本地存储：全部在 stateDir/diary 下，不上传。索引单独一份，正文一天一个文件。
 import { mkdir, readFile, writeFile, rename, rm, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -68,13 +68,14 @@ export function createDiaryStore({ stateDir }) {
         mood: MOODS.has(entry.mood) ? entry.mood : '平静',
         line: String(entry.line ?? '').trim().slice(0, 20),
         chars: [...body.replace(/\s+/g, '')].length,
+        kind: ['daily','weekly','letter'].includes(entry.kind) ? entry.kind : 'daily',
         role: String(entry.role ?? '金宝').slice(0, 12),
         topic: String(entry.topic ?? '').slice(0, 24),
         score: Number(entry.score) || 0,
       };
       await atomicJson(entryPath(day), record);
       const rows = (await index()).filter(row => row.day !== day);
-      rows.push({ day, at: record.at, title: record.title, mood: record.mood, chars: record.chars, role: record.role, hasLine: !!record.line });
+      rows.push({ day, at: record.at, title: record.title, mood: record.mood, chars: record.chars, role: record.role, kind: record.kind, hasLine: !!record.line });
       await atomicJson(indexPath, rows.sort((a, b) => (a.day < b.day ? 1 : -1)));
       return record;
     },
@@ -96,6 +97,16 @@ export function createDiaryStore({ stateDir }) {
       }
       await atomicJson(indexPath, []);
       return removed;
+    },
+    // 未了线：存一份就好，挑选与去重在 diary-threads.mjs 里做（纯函数）。
+    async threads() {
+      const rows = await readJson(join(root, 'threads.json'), []);
+      return Array.isArray(rows) ? rows : [];
+    },
+    async saveThreads(list) {
+      const rows = Array.isArray(list) ? list.slice(-40) : [];
+      await atomicJson(join(root, 'threads.json'), rows);
+      return rows;
     },
     // 「她昨天惦记的那句话」：只取最近一篇还没用过的，且一周最多用两次。
     async pendingLine({ today, weekLimit = 2 } = {}) {
