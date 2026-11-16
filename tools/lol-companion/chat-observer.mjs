@@ -18,7 +18,12 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
     setCatalog(catalog){champions=catalog.champions??champions;items=catalog.items??items;},
     observe(frame,state){
       if(!frame?.available||!frame.foreground||!state)return;
-      return this.observeLines(Array.isArray(frame.chatOnly)?frame.chatOnly:[],state,frame);
+      // 采集脚本返回的是 chatLines（聊天区裁剪后的行），历史字段名还有 chatOnly；
+      // 测试与旧调用方直接给 lines。三个都接受，否则聊天会被静默跳过。
+      const source=Array.isArray(frame.chatOnly)?frame.chatOnly
+        :Array.isArray(frame.chatLines)?frame.chatLines
+        :Array.isArray(frame.lines)?frame.lines:[];
+      return this.observeLines(source,state,frame);
     },
     // 云端补读回来的行走同一条解析/纠错链路；box 由调用方合成，只要落在聊天区内即可。
     observeLines(source,state,frame){
