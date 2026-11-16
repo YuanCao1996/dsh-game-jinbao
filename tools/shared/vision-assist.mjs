@@ -45,7 +45,7 @@ function parseAnswer(text, key) {
   const raw = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
   let value;
   try { value = JSON.parse(raw); } catch { return null; }
-  const list = value?.[key];
+  const list = Array.isArray(value) ? value : value?.[key];
   if (!Array.isArray(list) || list.length > 12) return null;
   return list.map((item) => (typeof item === 'string' && item.trim() ? item.trim() : null));
 }
@@ -74,8 +74,9 @@ export function createVisionAssist({
   timeoutMs = 25000,
   thinking = 'auto',
   adaptive = true,
-  budgets = { augment: 4000, chat: 7000 },
+  budgets = { augment: 1500, chat: 2500 },
   detail = 'low',
+  modelOverride = null,
 } = {}) {
   const usagePath = stateDir ? `${stateDir}/vision-assist-usage.json` : null;
   const limits = VISION_TIERS[resolveVisionTier(tier)];
@@ -153,9 +154,16 @@ export function createVisionAssist({
     const mimeType = image.mimeType ?? 'image/jpeg';
     const level = adaptive ? policy[kind].level : 0;
     const budget = Number(budgets?.[kind] ?? 0) || 0;
-    const tokenBudget = kind === 'augment' ? [300, 600, 1000][level] : [500, 900, 1400][level];
-    const base = {
-      model: 'game-fast', stream: false, max_tokens: tokenBudget,
+    // 档位阶梯：纯 OCR 模型最快；读错了换语义模型；再错才让它思考。
+    const ladder = [
+      { model: 'game-vision', thinking: 'disabled', max: kind === 'augment' ? 300 : 500 },
+      { model: 'game-vision-chat', thinking: 'disabled', max: kind === 'augment' ? 400 : 600 },
+      { model: 'game-vision-chat', thinking: 'enabled', max: kind === 'augment' ? 600 : 900 },
+    ];
+    let plan = ladder[Math.min(level, ladder.length - 1)];
+    let model = modelOverride ?? plan.model;
+    const base = () => ({
+      model, stream: false, max_tokens: plan.max,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: [
@@ -163,27 +171,35 @@ export function createVisionAssist({
           { type: 'image_url', image_url: { url: `data:${mimeType};base64,${Buffer.from(image.data).toString('base64')}`, detail: image.detail ?? detail } },
         ] },
       ],
+    });
+    // 关思考是默认：抄字任务思考纯属浪费延迟与额度。网关不认时降级重发并记住。
+    const thinkingExtra = (withThinking) => {
+      if (withThinking) return { thinking: { type: 'enabled' } };
+      return thinkingState === 'auto' ? { thinking: { type: 'disabled' } } : {};
     };
-    // level 0 请求关闭思考：抄字任务思考纯属浪费延迟与额度；网关照旧不认时就降级重发。
-    // level ≥1 是"读错了升级"：带思考并逐级提高强度。
-    const thinkingFor = (current) => (current === 0
-      ? (thinkingState === 'auto' ? { thinking: { type: 'disabled' } } : null)
-      : { thinking: { type: 'enabled' }, reasoning_effort: current === 1 ? 'low' : 'high' });
-    let thinkingDisabled = level === 0 && thinkingState === 'auto';
+    let wantsThinking = plan.thinking === 'enabled';
+    let thinkingDisabled = !wantsThinking && thinkingState === 'auto';
     const send = (payload) => fetchImpl(`${baseUrl}/v1/chat/completions`, {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Jinbao-Operation': 'ocr_assist' },
       body: JSON.stringify(payload),
     });
     const started = now();
-    const extra = thinkingFor(level) ?? {};
     try {
-      let response = await send({ ...base, ...extra });
+      let response = await send({ ...base(), ...thinkingExtra(wantsThinking) });
       if (!response.ok && response.status === 400 && thinkingDisabled) {
         thinkingDisabled = false;
         thinkingState = 'off';
         log({ event: 'vision_assist', kind, status: 'capability', reason: 'thinking_unsupported', tier });
-        response = await send(base);
+        response = await send(base());
+      }
+      // 网关还没部署视觉路由时（model unavailable）自动退回原来的 game-fast，不让功能整体失效。
+      if (!response.ok && response.status === 400 && model !== 'game-fast') {
+        log({ event: 'vision_assist', kind, status: 'capability', reason: 'vision_model_unavailable', model, tier });
+        model = 'game-fast';
+        plan = { ...plan, thinking: 'disabled', max: Math.max(plan.max, 400) };
+        wantsThinking = false;
+        response = await send({ ...base(), ...(thinkingState === 'auto' ? { thinking: { type: 'disabled' } } : {}) });
       }
       if (!response.ok) throw Object.assign(Error('vision_assist_http'), { status: response.status });
       const answer = JSON.parse(await response.text())?.choices?.[0]?.message?.content;
@@ -202,7 +218,7 @@ export function createVisionAssist({
       }
       failures = 0;
       observe(kind, elapsed, budget);
-      const result = { ok: true, list, ms: elapsed, bytes, level: policy[kind].level };
+      const result = { ok: true, list, ms: elapsed, bytes, level: policy[kind].level, model };
       log({ event: 'vision_assist', kind, status: 'ok', ms: elapsed, bytes, tier, level: policy[kind].level, matchId: String(matchId ?? '') });
       return result;
     } catch (error) {

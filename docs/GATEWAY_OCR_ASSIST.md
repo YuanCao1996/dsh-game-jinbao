@@ -43,7 +43,44 @@
 
 - 请求带 `X-Jinbao-Operation: ocr_assist`、`thinking:{type:"disabled"}`、`image_url.detail`（默认 low）；
 - 网关若仍拒绝 `thinking`（回到旧版），自动去掉该字段重发一次并记住；
-- **自适应档位**：`level 0` 关思考抄字 → 解析失败/调用方回报"读错了"连续两次升到 `level 1`
-  （thinking enabled + effort low）→ 再错升到 `level 2`（effort high）；连续两次超过预算
-  （卡面 4 s、聊天 7 s）或稳定成功 5 次则降档；
-- 档位、预算、失败计数都在 `stats()` 里可见，便于诊断。
+- **自适应档位**：`level 0` 用 `game-vision`（qwen3.5-ocr）关思考抄字 → 连续两次解析失败或调用方
+  回报"读错了"升到 `level 1`（`game-vision-chat` / qwen3.7-flash，关思考）→ 再错升到 `level 2`
+  （qwen3.7-flash + 思考）；连续两次超过预算（卡面 1.5 s、聊天 2.5 s）或稳定成功 5 次则降档；
+- 网关没部署视觉路由时（`model unavailable`）自动退回 `game-fast`，功能不会整体失效；
+- 档位、预算、失败计数都在 `stats()` 里可见。
+
+## 视觉快速通道（DashScope，2026-11-16 追加）
+
+opencode_go 自身抖动 2.6–5.3 s，卡面只能做到 3–6.4 s，对 5 秒面板仍然临界。第二条路是
+DashScope 兼容接口（服务器上本来就有 Key）：
+
+- 新路由（`/etc/jinbao-desktop/model-routes.json`）：
+  - `game-vision` → `qwen3.5-ocr`（纯 OCR，最快）
+  - `game-vision-chat` → `qwen3.7-flash`（语义读图，升档用）
+  - 两者 `provider: dashscope`，`baseUrl: https://dashscope.aliyuncs.com/compatible-mode/v1`
+- 凭据：`/etc/jinbao-desktop/vision.env`（600，内容 `DESKTOP_DASHSCOPE_API_KEY=…`，值取自
+  `/etc/jinbao/.env.production` 的 `DASHSCOPE_API_KEY`）+ systemd drop-in
+  `/etc/systemd/system/jinbao-desktop.service.d/vision-env.conf`；`server/main.mjs` 的凭据引用
+  白名单从 1 个扩到 2 个。
+- `models/upstream.mjs`：dashscope 路由把 `thinking` 翻成 `enable_thinking`，并去掉
+  `reasoning_effort` 与 `image_url.detail`（DashScope 不认这两个字段）。
+
+### 网关实测（同一批真实帧，含网关开销）
+
+| 场景 | game-fast（opencode_go） | game-vision（qwen3.5-ocr） | game-vision-chat（qwen3.7-flash） |
+|---|---|---|---|
+| 卡面三标题 | 3.4 s | **0.45–0.62 s，全对** | 0.64 s，全对 |
+| 聊天三行 | 5.0 s，全对 | **0.65–0.69 s**，三行基本正确 | 0.89–1.6 s，个别字更差 |
+| 聊天 + 开思考 | — | — | 14 s，没有更好 |
+
+结论：**卡面与聊天都用 `game-vision`（qwen3.5-ocr）**；`game-vision-chat` 只作为"读错了升级"的
+第二档，第三档才开思考。
+
+### 回滚
+
+```bash
+cp /opt/jinbao-desktop-backups/ocr-vision-<时间>/{main.mjs,upstream.mjs,model-routes.json} …
+rm /etc/systemd/system/jinbao-desktop.service.d/vision-env.conf
+systemctl daemon-reload && systemctl restart jinbao-desktop
+```
+

@@ -157,9 +157,9 @@ test('读错了就升档：连续两次解析失败后，第三次请求带思�
   const ok = await assist.readTitles({ image: jpeg('a3'), matchId: 'm' });
   assert.ok(ok);
   const third = bodies.at(-1);
-  assert.deepEqual(third.thinking, { type: 'enabled' });
-  assert.equal(third.reasoning_effort, 'low');
-  assert.equal(third.max_tokens, 600);
+  assert.equal(third.model, 'game-vision-chat', '升档先换语义模型');
+  assert.deepEqual(third.thinking, { type: 'disabled' });
+  assert.equal(third.max_tokens, 400);
 });
 
 test('慢了就降档：升到 1 档后连续两次超预算，退回关思考', async () => {
@@ -193,6 +193,6 @@ test('调用方回报"读错了"也能升档；回报采纳则复位', async () 
   assist.report({ kind: 'chat', accepted: false });
   assert.equal(assist.stats().policy.chat.level, 1);
   await assist.readChat({ image: jpeg('c2'), matchId: 'm' });
-  assert.deepEqual(bodies.at(-1).thinking, { type: 'enabled' });
-  assert.equal(bodies.at(-1).reasoning_effort, 'low');
+  assert.equal(bodies.at(-1).model, 'game-vision-chat');
+  assert.deepEqual(bodies.at(-1).thinking, { type: 'disabled' });
 });
