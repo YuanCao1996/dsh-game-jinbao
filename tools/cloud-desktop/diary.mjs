@@ -56,7 +56,9 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
     await store.saveThreads(threads);
   }
 
-  async function writeDaily(day, { absence, band, festival, anniversary, recent }) {
+  async function writeDaily(day, { rows, band, festival, anniversary, recent }) {
+    // 缺席按「那一天」算：隔了十天回来，回来那天的日记才该是委屈的。
+    const absence = absenceFor(day, rows);
     const facts = await collectDay({ stateDir, day, query });
     const decision = decide({ facts, day });
     if (!decision.write) {
@@ -145,7 +147,7 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
           if (existing.has(day)) continue;
           const facts = await collectDay({ stateDir, day, query });
           if (!facts.matches.length && !facts.selfChats.length && !facts.appChats) continue; // 那天没玩，没有可写的
-          const saved = await writeDaily(day, { absence, band, festival, anniversary, recent: recent() });
+          const saved = await writeDaily(day, { rows, band, festival, anniversary, recent: recent() });
           if (saved) written.push(saved);
         }
       } catch (error) {
