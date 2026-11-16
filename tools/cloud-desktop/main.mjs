@@ -1,4 +1,4 @@
-import{createCloudCapture}from'./capture.mjs';
+﻿import{createCloudCapture}from'./capture.mjs';
 import{createCloudCoach}from'./auto-coach.mjs';
 import{claimInstance}from'./instance.mjs';
 import{createEventQuery}from'./event-query.mjs';
@@ -7,9 +7,13 @@ import{createLocalAgent}from'./local-agent.mjs';import{createExperienceToolkit,e
 import{locateNativeModules}from'./native-modules.mjs';
 import{createWebSearch}from'./web-search.mjs';
 import{createStandaloneUpdates}from'./updates.mjs';
+import{createDiary}from'./diary.mjs';
+import{createDiaryStore}from'../dsh-onboarding/diary-store.mjs';
+import{dayKey}from'../lol-companion/diary-day.mjs';
+import{roleById}from'./roles.mjs';
 import{createDesktopObservation}from'./observation.mjs';
 import{createNativeInstaller}from'./native-installer.mjs';
-import{access,rm,readFile,writeFile,appendFile}from'node:fs/promises';
+import{access,rm,readFile,writeFile,appendFile,mkdir}from'node:fs/promises';
 import{createExternalLogSource}from'./log-source.mjs';
 import{createUserMemory}from'./user-memory.mjs';
 import{createAgentActivity}from'../agent-activity/activity.mjs';
@@ -76,10 +80,17 @@ const rawAgent=createRuntimeRouter({getMode:()=>setup?.config().mode??'cloud',is
  cloud:()=>createCloudAgent({getActivityEnabled:activity.isEnabled,apiPrefix:'/desktop/agent-preview',deviceId:stateDir,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),experienceTools,onProgress,memoryTools:userMemory.execute,observationPlan:args=>observation.plan(args)}),
  byok:()=>createLocalAgent({stateDir,getConfig:()=>setup.config(),getKey:async()=>(await credentials.resolve('JINBAO_USER_MODEL_API_KEY'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),onProgress,getActivityEnabled:activity.isEnabled,memoryTools:userMemory.execute,search:query=>setup.search(query),webSearch:createWebSearch(),observationPlan:args=>observation.plan(args)}),
 }});
-const agent={...rawAgent,ask:request=>pacing.run(request,async admitted=>{const role=speech.role(),answer=await rawAgent.ask({...admitted,role});if(role!==speech.role())throw Object.assign(Error('Role changed'),{status:409,code:'agent_preempted'});if(admitted.topic==='chat')speech.chat({...admitted,text:answer});return answer;})};
+// 日记：一天最多一篇，只在没有进行中的对局时写；写不成就是这天没写，不留占位。
+const diaryIdle=()=>{const v=setup?.view();if(!v)return true;return !(v.match&&!v.ended&&(v.gameTime!=='等待对局'||v.phase==='ChampSelect')&&Date.now()-(v.updatedAt??0)<30000);};
+const diary=createDiary({store:createDiaryStore({stateDir}),stateDir,query:queryEvents,
+ ask:async question=>{if(!diaryIdle())throw Object.assign(Error('Match active'),{status:409});const v=setup?.view();return rawAgent.ask({game:v?.game||'lol',match:v?.match||'waiting',question,topic:'chat',automatic:false,role:speech.role()});},
+ role:()=>roleById(speech.role()).name,isIdle:diaryIdle,trace:event=>diagnostics.record('diary',event)});
+// 「他主动找她聊过几次」：日记的分数要用，所以只记一个计数，不存内容。
+const countDiaryQuestion=async()=>{try{await mkdir(join(stateDir,'diary'),{recursive:true});await appendFile(join(stateDir,'diary','questions-'+dayKey(Date.now())+'.jsonl'),JSON.stringify({at:Date.now()})+'\n',{mode:0o600});}catch{}};
+const agent={...rawAgent,ask:request=>pacing.run(request,async admitted=>{if(admitted.topic==='chat')void countDiaryQuestion();const role=speech.role(),answer=await rawAgent.ask({...admitted,role});if(role!==speech.role())throw Object.assign(Error('Role changed'),{status:409,code:'agent_preempted'});if(admitted.topic==='chat')speech.chat({...admitted,text:answer});return answer;})};
 let restartRequested=false;
 const updates=createStandaloneUpdates({root,stateDir,restart:process.connected?async()=>{await writeFile(join(stateDir,'overlay-control.json'),JSON.stringify({action:'exit',at:Date.now()}));restartRequested=true;setTimeout(()=>void stop(),500);}:null});
-setup=await createSetupServer({credentials,stateDir,port,cloudAgent:agent,localAgent:agent,runtimeId:'standalone',teamRooms:args.includes('--team-rooms'),teamHostPreview:args.includes('--team-byok-host')&&!!teamCacheStore&&!!teamCacheReports&&!!teamUsageOutbox,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError:!teamUsageOutbox,teamCacheError:!teamCacheStore||!teamCacheReports,activity,diagnostics,speech,canAutoRequest:pacing.canRequest,prepareModel:async config=>{if(config.mode==='byok')try{await locateNativeModules({stateDir,desktopPath:config.desktopPath});const validation=await createLocalAgent({stateDir,getConfig:()=>config,getKey:async()=>'',getContext:async()=>({})});await validation.close();}catch{throw Object.assign(Error('Local DSH unavailable'),{status:409,code:'local_dsh_unavailable'});}},onModelChange:()=>agent.reconfigure(),updateController:updates,observation,nativeInstaller,logSource,userMemory});
+setup=await createSetupServer({credentials,stateDir,port,cloudAgent:agent,localAgent:agent,runtimeId:'standalone',teamRooms:args.includes('--team-rooms'),teamHostPreview:args.includes('--team-byok-host')&&!!teamCacheStore&&!!teamCacheReports&&!!teamUsageOutbox,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError:!teamUsageOutbox,teamCacheError:!teamCacheStore||!teamCacheReports,activity,diagnostics,speech,canAutoRequest:pacing.canRequest,prepareModel:async config=>{if(config.mode==='byok')try{await locateNativeModules({stateDir,desktopPath:config.desktopPath});const validation=await createLocalAgent({stateDir,getConfig:()=>config,getKey:async()=>'',getContext:async()=>({})});await validation.close();}catch{throw Object.assign(Error('Local DSH unavailable'),{status:409,code:'local_dsh_unavailable'});}},onModelChange:()=>agent.reconfigure(),updateController:updates,observation,nativeInstaller,logSource,userMemory,diary});
 const version=JSON.parse(await readFile(join(root,'package.json'),'utf8')).version+' (独立预览)';
 // Reuse the server's existing IP-based trial seats. A remembered login or an
 // explicit local-mode choice always wins; exhausted seats fall back to email UI.
@@ -87,7 +98,7 @@ const loginTask=!args.includes('--headless')?setup.ensureTrialLogin().catch(()=>
 await writeFile(join(stateDir,'launcher-state.json'),JSON.stringify({phase:'cloud-preview',version,updatedAt:Date.now()}));
 const heartbeat=setInterval(()=>void writeFile(join(stateDir,'launcher-state.json'),JSON.stringify({phase:'standalone',version,updatedAt:Date.now()})).catch(()=>{}),5000);
 const updateTimer=setInterval(()=>void updates.check(),6*60*60*1000);void updates.check();
-const speechTimer=setInterval(()=>speech.tick(),500);
+const diaryTimer=setInterval(()=>void diary.tick(),10*60*1000);setTimeout(()=>void diary.tick(),45000).unref?.();
 const diagnosticsTimer=setInterval(()=>void diagnostics.tick(),2000);
 const observationTimer=setInterval(()=>{void observation.tick();void logSource.tick();},500);
 // 独立版与插件版共享一把 UI 所有权锁：先启动的一方拥有悬浮窗与语音，后来者降级。
@@ -97,7 +108,7 @@ const secondaryLock=instanceLock.role==='secondary';
 if(instanceLock.role==='owner')publishSettingsUrl(setup.url);
 if(secondaryLock)try{await writeFile(join(stateDir,'instance-secondary.json'),JSON.stringify({owner:instanceLock.owner?.line??'unknown',settingsUrl:instanceLock.owner?.settingsUrl??'',at:Date.now()}),{mode:0o600});}catch{}
 await rm(join(stateDir,'overlay-stopped'),{force:true});
-const coach=args.includes('--coach')&&!secondaryLock?createCloudCoach({stateDir,canRequest:pacing.canRequest,trace:diagnostics.coach,view:setup.view,getContext:(game,match)=>memory.currentFacts(game,match),agent,enabled:()=>setup.config().mode!=='demo'}):null;
+const coach=args.includes('--coach')&&!secondaryLock?createCloudCoach({stateDir,canRequest:pacing.canRequest,trace:diagnostics.coach,view:setup.view,getContext:(game,match)=>memory.currentFacts(game,match),agent,diaryLine:()=>diary.lineForPrompt(),enabled:()=>setup.config().mode!=='demo'}):null;
 const coachTimer=coach?setInterval(()=>void coach.tick(),3000):null;
 const supervisor=args.includes('--collect')?createSupervisor({root,stateDir}):null;
 const interval=supervisor?setInterval(()=>void supervisor.tick().catch(()=>{}),3000):null;
@@ -112,7 +123,7 @@ if(!args.includes('--headless')&&!secondaryLock){
 console.log(JSON.stringify({standalone:true,requiresDshDesktop:false,stateDir,port:setup.port,collecting:!!supervisor}));
 if(process.connected)process.send({action:'ready'});
 const stop=createShutdown({
- quiesce:()=>{if(interval)clearInterval(interval);if(coachTimer)clearInterval(coachTimer);if(overlayTimer)clearInterval(overlayTimer);void overlay?.close();clearInterval(stopTimer);clearInterval(heartbeat);clearInterval(diagnosticsTimer);clearInterval(speechTimer);clearInterval(updateTimer);clearInterval(observationTimer);setup.stopAccepting();},
+ quiesce:()=>{if(interval)clearInterval(interval);if(coachTimer)clearInterval(coachTimer);if(overlayTimer)clearInterval(overlayTimer);void overlay?.close();clearInterval(stopTimer);clearInterval(heartbeat);clearInterval(diagnosticsTimer);clearInterval(speechTimer);clearInterval(diaryTimer);clearInterval(updateTimer);clearInterval(observationTimer);setup.stopAccepting();},
  steps:[['overlay',()=>overlay?.close()],['coach',()=>coach?.close()],['speech',()=>speech.close()],['agent',()=>agent.close()],['memory',()=>userMemory.close()],['collectors',()=>supervisor?.close()],['updates',()=>updates.close()],['observation',()=>observation.close()],['logs',()=>logSource.close()],['installer',()=>nativeInstaller.close()],['login',()=>loginTask],['settings',()=>setup.close()],['usage-outbox',()=>teamUsageOutbox?.close()],['cache-reports',()=>teamCacheReports?.close()],['team-cache',()=>teamCacheStore?.close()],['activity',()=>activity.close()],['diagnostics',()=>diagnostics.close()],['instance-lock',()=>releaseInstanceLock()],['instance',()=>instance.close()]],
  complete:async({failed})=>{try{await writeFile(join(stateDir,'shutdown-state.json'),JSON.stringify({at:Date.now(),state:failed.length?'completed_with_errors':'completed',failedSteps:failed}),{mode:0o600});await notifyRestart({requested:restartRequested,failed,connected:process.connected,send:(...values)=>process.send(...values)});}finally{process.exit(failed.length?1:0);}}
 });

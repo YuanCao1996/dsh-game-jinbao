@@ -30,7 +30,7 @@ const same=(a,b)=>typeof a==='string'&&a.length===b.length&&timingSafeEqual(Buff
 const send=(res,status,value,headers)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...(headers??{})});res.end(JSON.stringify(value));};
 const error=status=>Object.assign(Error('setup operation failed'),{status});
 async function body(req,max=512*1024,onBytes){const declared=Number(req.headers['content-length']);if(Number.isFinite(declared)&&declared>max){onBytes?.(declared);req.resume();throw error(413);}let size=0;const chunks=[];for await(const c of req){size+=c.length;onBytes?.(size);if(size>max)throw error(413);chunks.push(c);}try{const b=JSON.parse(Buffer.concat(chunks));if(!b||typeof b!=='object'||Array.isArray(b))throw 0;return b;}catch{throw error(400);}}
-export async function createSetupServer({credentials,stateDir,port=3084,coachPort=3081,serviceBaseUrl='https://api.jinbaoai.top',fetchImpl=fetch,cloudAgent,localAgent,runtimeId,prepareModel,onModelChange,updateController,observation,nativeInstaller,logSource,userMemory,activity,diagnostics,speech,canAutoRequest,teamRooms=false,teamHostPreview=false,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError=false,teamCacheError=false}) {
+export async function createSetupServer({credentials,stateDir,port=3084,coachPort=3081,serviceBaseUrl='https://api.jinbaoai.top',fetchImpl=fetch,cloudAgent,localAgent,runtimeId,prepareModel,onModelChange,updateController,observation,nativeInstaller,logSource,userMemory,activity,diagnostics,speech,diary,canAutoRequest,teamRooms=false,teamHostPreview=false,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError=false,teamCacheError=false}) {
  if(!Number.isInteger(coachPort)||coachPort<1||coachPort>65535)throw Error('Invalid coach port');
  const coachOrigin='http://127.0.0.1:'+coachPort;
  const service=serviceUrl(serviceBaseUrl),nonce=randomBytes(32).toString('hex');
@@ -389,6 +389,11 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
     res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' https://game.gtimg.cn; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
     res.end(await readFile(new URL('./exploration.html',import.meta.url)));return;
    }
+   // 金宝日记：独立一页，读的是本机 diary 目录，不联网。
+   if(req.method==='GET'&&req.url==='/diary'){
+    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
+    res.end(await readFile(new URL('./diary.html',import.meta.url)));return;
+   }
    // First-run guide: real overlay screenshots plus CSS transitions. The filenames are
    // an explicit allowlist so the route cannot read anything outside welcome/.
    if(req.method==='GET'&&req.url==='/welcome'){
@@ -465,6 +470,35 @@ if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{ena
     if(!hit)throw error(404);
     const data=await readFile(join(stateDir,'highlights',matchFolder(hit.match),hit.file));
     res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'private, max-age=86400','Content-Length':data.length});res.end(data);return;
+   }
+   if(req.url.startsWith('/api/diary')){
+    if(!diary){send(res,503,{error:'日记还没准备好'});return;}
+   if(req.url==='/api/diary'&&req.method==='GET'){
+    const entries=await diary.list({limit:120});
+    send(res,200,{enabled:(await diary.settings()).enabled,count:await diary.count(),entries});return;
+   }
+   if(req.url==='/api/diary'&&req.method==='DELETE'){send(res,200,{removed:await diary.removeAll()});return;}
+   if(req.url==='/api/diary/settings'&&req.method==='POST'){
+    if(!String(req.headers['content-type']).startsWith('application/json'))throw error(400);
+    const value=await body(req,512);
+    if(typeof value.enabled!=='boolean'||Object.keys(value).length!==1)throw error(400);
+    send(res,200,await diary.setSettings({enabled:value.enabled}));return;
+   }
+   // 手动写一篇：只在设置页/调试时用，仍然受「一天最多一篇」和同一套校验约束。
+   if(req.url==='/api/diary/write'&&req.method==='POST'){
+    if(!String(req.headers['content-type']).startsWith('application/json'))throw error(400);
+    await body(req,256);
+    const written=await diary.tick({force:true});
+    send(res,200,{written:(written??[]).map(entry=>({day:entry.day,title:entry.title,chars:entry.chars}))});return;
+   }
+   if(req.url.startsWith('/api/diary/')&&(req.method==='GET'||req.method==='DELETE')){
+    const day=decodeURIComponent(req.url.slice('/api/diary/'.length));
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw error(400);
+    if(req.method==='DELETE'){send(res,200,{removed:await diary.remove(day)});return;}
+    const entry=await diary.get(day);
+    if(!entry){send(res,404,{error:'那天她没动笔'});return;}
+    send(res,200,{entry});return;
+   }
    }
    if(req.url.startsWith('/api/exploration')){
     try{
