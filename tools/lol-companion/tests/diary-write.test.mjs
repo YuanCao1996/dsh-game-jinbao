@@ -1,6 +1,6 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPrompt, buildFactsBlock, parseDiaryReply, trimBody, writeDiary, charCount, openingOf } from '../diary-write.mjs';
+import { buildPrompt, buildFactsBlock, parseDiaryReply, trimBody, writeDiary, charCount, openingOf, sanitizeMarkup } from '../diary-write.mjs';
 import { decide } from '../diary-day.mjs';
 
 const facts = {
@@ -105,4 +105,13 @@ test('素材很长时也不会把 JSON 契约截掉', () => {
   assert.ok(prompt.length <= 1500, 'prompt 超预算：' + prompt.length);
   assert.ok(prompt.trimEnd().endsWith('}'), '结尾必须是 JSON 契约');
   assert.match(prompt, /"title"/);
+});
+
+test('涂改只放行一处 <del>，其它标签一律扒掉', () => {
+  assert.equal(sanitizeMarkup('把<del>鞋子</del>先出成鞋子'), '把<del>鞋子</del>先出成鞋子');
+  assert.equal(sanitizeMarkup('<script>alert(1)</script>好'), 'alert(1)好');
+  assert.equal(sanitizeMarkup('A<del>一</del>B<del>二</del>C'), 'A<del>一</del>B二C', '只留第一处涂改');
+  const parsed = parseDiaryReply(JSON.stringify({ title: '改口', body: '把<del>鞋子</del>换成别的。'.repeat(8), mood: '平静' }), { min: 80, max: 450 });
+  assert.equal(parsed.edited, true);
+  assert.ok(parsed.chars <= 450);
 });

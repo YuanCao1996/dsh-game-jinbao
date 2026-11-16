@@ -117,6 +117,22 @@ public static class JinbaoChatSignature {
  if(!$engineReady){@{available=$true;ocrAvailable=$false;foreground=$true;capturedAt=$capturedAt;reason='chinese_language_unavailable';lines=@();allyHud=$allyHud} | ConvertTo-Json -Depth 6 -Compress;exit 0}
  $asTask=[System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {$_.Name -eq 'AsTask' -and $_.IsGenericMethod -and $_.GetGenericArguments().Count -eq 1 -and $_.GetParameters().Count -eq 1} | Select-Object -First 1
  function Await-Operation($operation,[Type]$type){$task=$asTask.MakeGenericMethod($type).Invoke($null,@($operation));$task.Wait();return $task.Result}
+ function Save-JinbaoVisionJpeg($source,[int]$x,[int]$y,[int]$w,[int]$h,[string]$path){
+  if(!$source -or $w -le 0 -or $h -le 0 -or !$path){return}
+  $crop=$null
+  try{
+   $rect=[Drawing.Rectangle]::new($x,$y,[Math]::Min($w,$source.Width-$x),[Math]::Min($h,$source.Height-$y))
+   if($rect.Width -le 0 -or $rect.Height -le 0){return}
+   $crop=$source.Clone($rect,$source.PixelFormat)
+   if(!$global:JinbaoVisionJpegCodec){$global:JinbaoVisionJpegCodec=[Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object {$_.MimeType -eq 'image/jpeg'} | Select-Object -First 1}
+   if(!$global:JinbaoVisionJpegParams){$p=[Drawing.Imaging.EncoderParameters]::new(1);$p.Param[0]=[Drawing.Imaging.EncoderParameter]::new([Drawing.Imaging.Encoder]::Quality,[long]82);$global:JinbaoVisionJpegParams=$p}
+   $codec=$global:JinbaoVisionJpegCodec
+   if(!$codec){return}
+   $tmp=$path+'.tmp'
+   $crop.Save($tmp,$codec,$global:JinbaoVisionJpegParams)
+   Move-Item -LiteralPath $tmp -Destination $path -Force
+  }catch{[void]$_.Exception.Message}finally{if($crop){$crop.Dispose()}}
+ }
  function Read-OcrImage([byte[]]$imageBytes){
   $stream=[Windows.Storage.Streams.InMemoryRandomAccessStream]::new()
  $software=$null
@@ -167,6 +183,10 @@ public static class JinbaoChatSignature {
     $stripGraphics.DrawImage($enlarged,0,$slot*$stride)
    }finally{if($crop){$crop.Dispose()};if($enlarged){$enlarged.Dispose()};$encoded.Dispose()}
   }
+   if($StateDir -and $env:JINBAO_VISION_FRAMES -ne '0'){
+    $vx=[int]($inputBitmap.Width/2-$inputBitmap.Height*0.55);$vy=[int]($inputBitmap.Height*0.33)
+    Save-JinbaoVisionJpeg $inputBitmap $vx $vy ([int]($inputBitmap.Height*1.75)) ([int]($inputBitmap.Height*0.18)) (Join-Path $StateDir 'vision-strip.jpg')
+   }
    $stripBytes=[IO.MemoryStream]::new()
    try{
     # The three card titles stay pixel-identical while the panel is simply displayed,
@@ -258,6 +278,9 @@ public static class JinbaoChatSignature {
       $chatGraphics.PixelOffsetMode=[Drawing.Drawing2D.PixelOffsetMode]::HighQuality
       $chatGraphics.DrawImage($inputBitmap,[Drawing.Rectangle]::new(0,0,$ccw*$k,$cch*$k),[Drawing.Rectangle]::new($ccx,$ccy,$ccw,$cch),[Drawing.GraphicsUnit]::Pixel)
      }finally{$chatGraphics.Dispose()}
+     if($StateDir -and $env:JINBAO_VISION_FRAMES -ne '0'){
+      Save-JinbaoVisionJpeg $inputBitmap $ccx $ccy $ccw $cch (Join-Path $StateDir 'vision-chat.jpg')
+     }
      $bigChat.Save($chatStream,[Drawing.Imaging.ImageFormat]::Bmp)
      $localChat=Read-OcrImage $chatStream.ToArray()
      $chatDebug="crop=${ccw}x${cch} big=$($bigChat.Width)x$($bigChat.Height) ocr=$($localChat.width)x$($localChat.height) lines=$(@($localChat.lines).Count)"

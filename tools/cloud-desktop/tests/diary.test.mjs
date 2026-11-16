@@ -226,3 +226,14 @@ test('热梗一周只查一次；查到就带上，查不到就不提', async ()
     assert.ok(empty.prompts.every(prompt => !prompt.includes('本周网上在传')), '这周没捞到梗，就不写这一行');
   } finally { await rm(empty.stateDir, { recursive: true, force: true }); }
 });
+
+test('跨天互文：从几天前那篇里挑一句话喂给模型', async () => {
+  const day = '2026-11-15';
+  const f = await fixture({ days: [day], now: nowFor(day) });
+  try {
+    await f.store.save({ day: shiftDay(day, -4), title: '旧的那篇', body: '那时候灯笼还亮着。第二句话在这里。第三句也还在。' });
+    await f.diary.tick();
+    assert.ok(f.prompts.some(prompt => prompt.includes('第二句话在这里')), '应当喂了旧文里的一句：' + JSON.stringify(f.prompts));
+    assert.ok(f.prompts.every(prompt => !prompt.includes('第三句也还在')), '只给一句，别把整篇塞进去');
+  } finally { await rm(f.stateDir, { recursive: true, force: true }); }
+});

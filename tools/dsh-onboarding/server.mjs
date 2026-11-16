@@ -1,4 +1,4 @@
-import {readFileSync} from 'node:fs';
+﻿import {readFileSync} from 'node:fs';
 import {createLocalExploration} from './exploration-local.mjs';
 import { createAnnotations, ANNOTATION_TAGS } from './annotations.mjs';
 import { createHighlights, matchFolder } from './highlights.mjs';
@@ -490,6 +490,12 @@ if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{ena
     await body(req,256);
     const written=await diary.tick({force:true});
     send(res,200,{written:(written??[]).map(entry=>({day:entry.day,title:entry.title,chars:entry.chars}))});return;
+   }
+   if(req.url.startsWith('/api/diary/on-this-day')&&req.method==='GET'){
+    const url=new URL(req.url,'http://127.0.0.1');
+    const day=url.searchParams.get('day')??'';
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day))throw error(400);
+    send(res,200,{entry:await diary.onThisDay(day)});return;
    }
    if(req.url.startsWith('/api/diary/')&&(req.method==='GET'||req.method==='DELETE')){
     const day=decodeURIComponent(req.url.slice('/api/diary/'.length));

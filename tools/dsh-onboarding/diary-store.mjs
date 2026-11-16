@@ -49,6 +49,13 @@ export function createDiaryStore({ stateDir }) {
       return rows.sort((a, b) => (a.day < b.day ? 1 : -1)).slice(0, Math.max(1, Math.min(500, limit)));
     },
     async count() { return (await index()).length; },
+    // 去年今天（或那年今天）：同月同日、更早的那一篇，最多一篇。
+    async onThisDay(day) {
+      const monthDay = String(day ?? '').slice(5);
+      if (!/^\d{2}-\d{2}$/.test(monthDay)) return null;
+      const rows = (await index()).filter(row => row.day.slice(5) === monthDay && row.day < String(day)).sort((a, b) => (a.day < b.day ? 1 : -1));
+      return rows[0] ? { day: rows[0].day, title: rows[0].title } : null;
+    },
     async get(day) {
       if (!DAY.test(String(day ?? ''))) return null;
       const entry = await readJson(entryPath(day), null);
@@ -68,6 +75,7 @@ export function createDiaryStore({ stateDir }) {
         mood: MOODS.has(entry.mood) ? entry.mood : '平静',
         line: String(entry.line ?? '').trim().slice(0, 20),
         chars: [...body.replace(/\s+/g, '')].length,
+        edited: entry.edited === true || /<del>/.test(body),
         kind: ['daily','weekly','letter'].includes(entry.kind) ? entry.kind : 'daily',
         role: String(entry.role ?? '金宝').slice(0, 12),
         topic: String(entry.topic ?? '').slice(0, 24),
@@ -75,7 +83,7 @@ export function createDiaryStore({ stateDir }) {
       };
       await atomicJson(entryPath(day), record);
       const rows = (await index()).filter(row => row.day !== day);
-      rows.push({ day, at: record.at, title: record.title, mood: record.mood, chars: record.chars, role: record.role, kind: record.kind, hasLine: !!record.line });
+      rows.push({ day, at: record.at, title: record.title, mood: record.mood, chars: record.chars, role: record.role, kind: record.kind, edited: record.edited, hasLine: !!record.line });
       await atomicJson(indexPath, rows.sort((a, b) => (a.day < b.day ? 1 : -1)));
       return record;
     },

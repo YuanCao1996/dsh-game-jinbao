@@ -1,6 +1,7 @@
 // 把一天的事实压成一段很短的中文，交给模型写；再把回包校验、截断成可落盘的日记。
 // 长度预算：prompt 必须留出角色设定（≤2000 字符上限）的位置，所以事实摘要只给要点。
 import { TOPIC_LABEL } from './diary-day.mjs';
+import { dayHint } from './diary-mood.mjs';
 
 export const MOODS = ['得意', '平静', '心虚', '想念', '犯困'];
 // 四个角色的「声音」：只改口吻，不改事实。没有的按金宝处理。
@@ -49,7 +50,7 @@ export function buildFactsBlock(facts = {}) {
   return lines.join('\n');
 }
 
-export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, insight = '', trends = [] }) {
+export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, insight = '', trends = [], now = Date.now(), echo = '' }) {
   const topic = decision?.topicLabel ?? TOPIC_LABEL[decision?.topic] ?? '今天';
   const min = Number(decision?.min) || 150, max = Number(decision?.max) || 280;
   const openings = (Array.isArray(recent) ? recent : []).map(item => String(item ?? '').slice(0, 30)).filter(Boolean).slice(0, 3);
@@ -64,6 +65,10 @@ export function buildPrompt({ day, facts, decision, role = '金宝', recent = []
     `长度 ${min}—${Math.max(min + 20, max)} 字，最多 3 段；写完就停，不要总结。`,
     '只写一两件事，写深一点：落在一个具体瞬间、一件装备、一句他说过的话上。',
     decision?.formHint ? `写法：${decision.formHint}` : '',
+    dayHint({ day, at: now }),
+    // 跨天互文：只给一小段前几天写过的正文，允许回指，但别抄原句。
+    echo ? `前几天你写过这一段：${echo}。想回指就提一句（比如「上次那盏灯笼」），别解释、别把原句抄回来；不想回指就不提。` : '',
+    '最多可以有一处涂改：写成 <del>原本写的</del>改成这样；不是每篇都要有。',
     // 实测模型会写出「他打字『你先别——』」，而素材里根本没有这句话。宁可少一句也不能编。
     '他说过的话只能从上面「他在游戏里自己打的字」里取；素材没给就不要引用、不要编造对话。',
     '不要逐局列出英雄名，也不要把每一局都提一遍；不列数据，不评价他打得好不好。',
@@ -91,6 +96,20 @@ export function buildPrompt({ day, facts, decision, role = '金宝', recent = []
   return (head.length > room ? head.slice(0, room) : head) + '\n' + tail;
 }
 
+// 只放行一处 <del>涂改</del>，其它标签一律扒掉——正文最终是内嵌到页面里的，
+// 不能因为模型想「表现手写感」就给它一个任意 HTML 的口子。
+export function sanitizeMarkup(text) {
+  const dels = [];
+  let value = String(text ?? '');
+  value = value.replace(/<del>([\s\S]{0,16}?)<\/del>/g, (_all, inner) => {
+    dels.push(inner);
+    return '\u0001' + (dels.length - 1) + '\u0001';
+  });
+  value = value.replace(/<[^>]{0,120}>/g, '');
+  value = value.replace(/\u0001(\d+)\u0001/g, (_all, index) => (Number(index) === 0 ? '<del>' + dels[0] + '</del>' : dels[Number(index)]));
+  return value;
+}
+
 export function trimBody(body, max) {
   const text = String(body ?? '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   if (charCount(text) <= max) return text;
@@ -114,25 +133,27 @@ export function parseDiaryReply(reply, { min = 150, max = 280 } = {}) {
   const value = extractJson(reply);
   const title = String(value.title ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, 16);
   if (charCount(title) < 1) throw Error('日记缺少标题');
-  const body = trimBody(value.body, Math.max(60, Math.round(max * 1.15)));
-  const length = charCount(body);
+  const raw = sanitizeMarkup(value.body);
+  const body = trimBody(raw, Math.max(60, Math.round(max * 1.15)));
+  const length = charCount(body.replace(/<\/?del>/g, ''));
   if (length < Math.max(40, Math.round(min * 0.45))) throw Error('日记太短：' + length);
   const mood = MOODS.includes(value.mood) ? value.mood : '平静';
   const line = String(value.line ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, 20);
-  return { title, body, paragraphs: body.split(/\n{2,}/).map(part => part.trim()).filter(Boolean), mood, line, chars: length };
+  return { title, body, paragraphs: body.split(/\n{2,}/).map(part => part.trim()).filter(Boolean), mood, line, chars: length, edited: /<del>/.test(body) };
 }
 
 // 交给调用方的 ask 只负责「问一句话、拿回一段文字」，模型路由由上层决定。
-export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, insight = '', trends = [] }) {
+export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, insight = '', trends = [], echo = '' }) {
   if (typeof ask !== 'function') throw Error('缺少模型调用');
   const errors = [];
   for (const strict of [false, true]) {
-    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, insight, trends });
+    const at = now();
+    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, insight, trends, now: at, echo });
     let reply;
     try { reply = await ask(prompt); } catch (error) { errors.push(error?.message ?? String(error)); if (error?.status === 409 || error?.status === 401) break; continue; }
     try {
       const parsed = parseDiaryReply(reply, { min: decision?.min, max: decision?.max });
-      return { version: 1, day, at: now(), role, ...parsed, topic: decision?.topic ?? 'champion', score: decision?.score ?? 0, kind: letter ? 'letter' : weekly ? 'weekly' : 'daily' };
+      return { version: 1, day, at, role, ...parsed, topic: decision?.topic ?? 'champion', score: decision?.score ?? 0, kind: letter ? 'letter' : weekly ? 'weekly' : 'daily' };
     } catch (error) { errors.push(error.message); }
   }
   throw Object.assign(Error('日记没有写成：' + (errors[0] ?? '未知原因')), { code: 'diary_rejected' });

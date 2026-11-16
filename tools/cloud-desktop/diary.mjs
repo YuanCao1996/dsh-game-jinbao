@@ -1,11 +1,11 @@
-﻿// 日记的调度：什么时候写、写哪一天、失败就静默。
+// 日记的调度：什么时候写、写哪一天、失败就静默。
 // 三类内容共用一套存储：每天一篇（daily）、每周一段回顾（weekly）、节日一封信（letter）。
 import { readFile, writeFile } from 'node:fs/promises';
 
 async function readJson(path) { try { return JSON.parse(await readFile(path, 'utf8')); } catch { return null; } }
 import { join } from 'node:path';
 import { collectDay } from '../lol-companion/diary-source.mjs';
-import { decide, dayKey, shiftDay, dayRange } from '../lol-companion/diary-day.mjs';
+import { decide, dayKey, shiftDay, dayRange, stableRoll } from '../lol-companion/diary-day.mjs';
 import { writeDiary, openingOf } from '../lol-companion/diary-write.mjs';
 import { absenceLevel, festivalOn, timeBand, anniversaryOf, toneGuidance } from '../lol-companion/diary-mood.mjs';
 import { promiseThreads, lineThread, mergeThreads, dueThreads, insightFor } from '../lol-companion/diary-threads.mjs';
@@ -83,7 +83,27 @@ export function createDiary({ store, stateDir, query, ask, trendSource = null, r
     await store.saveTrends(record).catch(() => {});
     trace({ event: 'diary_trends', week: record.week, count: items.length });
     return summarize(record);
-  }  async function remember(entry, facts) {
+  }
+
+  // 跨天互文：从 3—7 天前那一篇里挑一句，允许她回指（"上次那盏灯笼"），但只给一句，别喂整篇。
+  function sentenceFrom(body) {
+    const plain = String(body ?? '').replace(/<\/?del>/g, '').replace(/\s+/g, ' ').trim();
+    const parts = plain.split(/(?<=[。！？…])/).map(part => part.trim()).filter(part => part.length >= 6);
+    return parts.length ? parts[Math.floor(parts.length / 2)].slice(0, 40) : '';
+  }
+
+  async function echoFor(day) {
+    try {
+      const from = shiftDay(day, -7), to = shiftDay(day, -3);
+      const rows = (await store.list({ limit: 200 })).filter(row => row.day >= from && row.day <= to);
+      if (!rows.length) return '';
+      const index = Math.floor(stableRoll(day + ':echo') * rows.length) % rows.length;
+      const entry = await store.get(rows[index].day);
+      return entry ? sentenceFrom(entry.body) : '';
+    } catch { return ''; }
+  }
+
+  async function remember(entry, facts) {
     const threads = mergeThreads(
       (await store.threads()).map(thread => thread),
       [...lineThread(entry), ...promiseThreads(facts?.selfChats ?? [], entry.day)].map(thread => ({ ...thread, at: now() })),
@@ -102,7 +122,8 @@ export function createDiary({ store, stateDir, query, ask, trendSource = null, r
       return null;
     }
     const tone = toneGuidance({ absence, festival, band, anniversary });
-    const entry = await writeDiary({ day, facts, decision, role: role(), recent, ask, now, tone, trends });
+    const echo = await echoFor(day);
+    const entry = await writeDiary({ day, facts, decision, role: role(), recent, ask, now, tone, trends, echo });
     const saved = await store.save(entry);
     await remember(saved, facts);
     trace({ event: 'diary_written', day, chars: saved.chars, topic: saved.topic, score: decision.score });
@@ -198,6 +219,7 @@ export function createDiary({ store, stateDir, query, ask, trendSource = null, r
     settings: () => store.settings(),
     setSettings: patch => store.setSettings(patch),
     count: () => store.count(),
+    onThisDay: day => store.onThisDay(day),
     // 教练用：拿一条「未了线」，或者退回到日记里那句还没用过的 line；一周最多两次。
     async threadForPrompt() {
       try {

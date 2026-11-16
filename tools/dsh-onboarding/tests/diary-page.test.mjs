@@ -62,3 +62,13 @@ test('the inline script parses and restores the settings nonce', () => {
   assert.equal(run(''), second);
   assert.equal(run('#not-a-nonce'), second);
 });
+
+test('页面支持涂改、去年今天和动笔时间', async () => {
+  const html = await readFile(new URL('../diary.html', import.meta.url), 'utf8');
+  assert.match(html, /diaryLastYear/);
+  assert.match(html, /on-this-day/);
+  assert.match(html, /&lt;del&gt;/);
+  assert.match(html, /diaryEdited/);
+  assert.match(html, /<del>\$1<\/del>/);
+  assert.match(html, /<style>/);
+});

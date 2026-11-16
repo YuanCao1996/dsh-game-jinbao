@@ -1,4 +1,4 @@
-﻿import {activityLine} from './activity-line.mjs';
+import {activityLine} from './activity-line.mjs';
 import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
 import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId, leaderboardRowData } from './leaderboard-pages.mjs';
 import { mkdir, readdir, stat, open, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
@@ -183,6 +183,15 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     state.equipment = text(s.build) || state.equipment;
     state.teamfight = text(s.teamfight?.text) || state.teamfight;
     observeEquipment(state);
+  }
+  if (event.kind === 'augment_offer_corrected') {
+    // 云端补读纠正卡名：只改当前这一轮的候选显示与推荐输入，不当作新一轮。
+    const sameRound = event.roll == null || state.offerRound == null || String(event.roll) === String(state.offerRound);
+    const corrected = list(event.options ?? event.cards ?? event.augments).slice(0, 3);
+    if (sameRound && corrected.length) {
+      state.offers = corrected;
+      state.offerHistory = [...new Set([...state.offerHistory, ...offerNames(corrected)])].slice(0, 6);
+    }
   }
   if (event.kind === 'player_stats') state.playerStats = list(event.rows);
   if (event.kind === 'augment_offer') {

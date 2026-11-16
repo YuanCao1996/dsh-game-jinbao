@@ -73,3 +73,35 @@ export function toneGuidance({ absence, festival, band, anniversary, holidayGree
   if (holidayGreeting) lines.push('这是一封节日信，比对日记更正式一点：开头有称呼，结尾有落款。');
   return lines.join('\n');
 }
+
+export const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+export function weekdayOf(day) {
+  const date = new Date(day + 'T12:00:00');
+  return Number.isNaN(date.getTime()) ? '' : WEEKDAYS[date.getDay()];
+}
+
+// 季节只用来给语气加一点底色（"入冬了"），不用节气：节气日期逐年浮动，写错反而假。
+export function seasonOf(day) {
+  const month = Number(String(day ?? '').slice(5, 7));
+  if (!month) return '';
+  if (month <= 2 || month === 12) return '冬天';
+  if (month <= 5) return '春天';
+  if (month <= 8) return '夏天';
+  return '秋天';
+}
+
+// 她写这篇时的真实钟点：允许正文里出现「十一点四十」这种具体时间。
+export function clockHint(at) {
+  const date = new Date(Number(at));
+  if (Number.isNaN(date.getTime())) return '';
+  return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+}
+
+export function dayHint({ day, at }) {
+  const weekday = weekdayOf(day);
+  const season = seasonOf(day);
+  const clock = clockHint(at);
+  const pieces = [weekday, season && season + '了'].filter(Boolean).join('、');
+  return [pieces ? '今天是' + pieces : '', clock ? '你动笔时是 ' + clock : ''].filter(Boolean).join('；');
+}

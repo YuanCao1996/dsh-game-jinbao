@@ -13,6 +13,8 @@ import {createCaptureSchedule} from './capture-schedule.mjs';
 import {createItemCatalogue} from './item-policy.mjs';
 import {createHudAssets} from './hud-assets.mjs';
 import {createAllyUltimateObserver} from './ally-ultimates.mjs';
+import {createVisionVerify} from './vision-verify.mjs';
+import {createVisionAssist,snapAugmentName} from '../shared/vision-assist.mjs';
 import {shouldEndOnSilence,silenceEndEvents,SILENCE_END_MS} from './silence.mjs';
 import {clockGlitch,startsNewMatch} from './match-clock.mjs';
 import { homedir } from 'node:os';
@@ -22,6 +24,8 @@ import {writeFile,rename,readdir,stat} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const folder=process.env.JINBAO_LOG_DIR??join(homedir(),'.dsh','jinbao','logs');
+// 状态目录：补识别的侧车图（vision-strip.jpg / vision-chat.jpg）就写在这里。
+const stateDir=process.env.JINBAO_STATE_DIR??dirname(folder);
 // Old match logs filled 160MB over ten days; keep the recent ones only.
 try{const pruned=pruneEventLogs(folder);if(pruned.removed.length)console.log('pruned old logs: '+pruned.removed.length+', kept '+pruned.kept);}catch{}
 try{const frames=pruneCaptureFrames(dirname(folder));if(frames.removed.length)console.log('pruned old frame folders: '+frames.removed.length+', kept '+frames.kept);}catch{}
@@ -34,11 +38,31 @@ let selectionLog=null,selectionMatch=null;
 console.log('LoL collector started; waiting for client. Logs: '+folder);
 let running=true,lastLiveState=null,capturing=false,lastCaptureAvailable=null,nextCaptureAt=0,captureGeneration=0;
 const captureStop=new AbortController();
-const captureWorker=createAugmentCaptureWorker();
+const captureWorker=createAugmentCaptureWorker({stateDir});
 // 整屏 OCR 每次要 1–2 秒，正好卡在面板出现的瞬间；卡标题只要几百毫秒。
 // 面板出现后能否立刻显示三选一，取决于标题帧多快轮到，所以整屏降到 4 秒一次。
 const captureSchedule=createCaptureSchedule({fullIntervalMs:4000});
 const names=await augmentNames();
+// 云端补识别：本地 OCR/像素判定不确定时，拿侧车图问视觉模型；结果必须吸附到名录才采纳。
+let visionVerify=null;
+try{
+ if(process.env.JINBAO_VISION_ASSIST!=='0'){
+  const {createCredentials}=await import('../cloud-desktop/credentials.mjs');
+  const credentials=await createCredentials(stateDir);
+  const token=(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value;
+  if(token){
+   const assist=createVisionAssist({
+    stateDir,
+    getToken:async()=>token,
+    tier:process.env.JINBAO_VISION_TIER??'basic',
+    budgets:{augment:1500,chat:2500},
+    log:row=>{try{log.append({kind:'vision_assist',...row});}catch{}},
+   });
+   visionVerify=createVisionVerify({assist,catalogue:names});
+   console.log('vision assist ready');
+  }else console.log('vision assist skipped: no service token');
+ }
+}catch(error){console.error('vision assist unavailable: '+String(error?.message??error));}
 let captureReportBusy=false,lastCaptureReport=0,captureSequence=0;
 const captureReport=async value=>{
  if(captureReportBusy||Date.now()-lastCaptureReport<1000)return;
@@ -127,10 +151,39 @@ const startCardWatch=offer=>{
 const observer=createAugmentObserver(names,event=>{
  if(!running)return;
  log.append(event);
- if(event.kind==='augment_offer')startCardWatch(event);
+ if(event.kind==='augment_offer'){startCardWatch(event);void maybeCorrectOffer(event);}
  // 面板关闭不杀监视器：它的判定结果可能还差一帧才输出，让它自然结束（淡出即停或超时）。
 });
-const chatObserver=createChatObserver(names,event=>{if(running)log.append(event);});
+// 本地读错的卡名用云端补读纠正：只在有名字吸附不上名录时触发，同一轮只试一次。
+const correctedRolls=new Set();
+const maybeCorrectOffer=async event=>{
+ if(!visionVerify||!running)return;
+ const roll=String(event.roll??'');
+ if(!roll||correctedRolls.has(roll))return;
+ const options=Array.isArray(event.options)?event.options:[];
+ if(!options.some(option=>option?.name&&!snapAugmentName(option.name,names)))return;
+ correctedRolls.add(roll);
+ try{
+  const result=await visionVerify.correctOffer({roll,options,stateDir,matchId:String(lastLiveState?.gameId??'')});
+  if(result)log.append({kind:'augment_offer_corrected',roll:event.roll,options:result.options,previous:result.previous,ms:result.ms,model:result.model,source:'vision-model'});
+ }catch{}
+};
+let chatEmitted=0,chatCorrectAt=0;
+// 聊天：本地一行都没解析出来、但聊天区确实有字时，补读一次并走同一条解析链路。
+const maybeCorrectChat=async frame=>{
+ if(!visionVerify||!running)return;
+ if(Date.now()-chatCorrectAt<4000)return;
+ chatCorrectAt=Date.now();
+ try{
+  const result=await visionVerify.readChat({stateDir,matchId:String(lastLiveState?.gameId??'')});
+  if(!result)return;
+  const H=Number(frame.height)||1080;
+  const lines=result.lines.map((text,index)=>{const y=H*0.58+index*22;return {text,box:[[10,y],[600,y],[600,y+18],[10,y+18]]};});
+  chatObserver.observeLines(lines,lastLiveState,frame);
+  log.append({kind:'chat_vision_lines',count:lines.length,ms:result.ms,model:result.model});
+ }catch{}
+};
+const chatObserver=createChatObserver(names,event=>{if(running){chatEmitted+=1;log.append(event);}});
 const readChatCatalog=createChatCatalogReader(lcuRequest);
 let enrichItem=item=>item,championNames=new Map(),champions=[];
 const ultimateObserver=createAllyUltimateObserver(event=>{if(running)log.append(event);});
@@ -164,7 +217,12 @@ const captureTimer=setInterval(async()=>{
    const captureStatus=JSON.stringify([frame.available,frame.foreground===true,diagnostic.reason??frame.reason??'',diagnostic.recognized,diagnostic.method]);
    if(captureStatus!==lastCaptureAvailable){lastCaptureAvailable=captureStatus;log.append({kind:'augment_capture_status',available:frame.ocrAvailable??frame.available,foreground:frame.foreground===true,reason:frame.reason??'',...diagnostic,captureBackend:frame.captureBackend,timings:frame.timings});}
    if(!frame.available)nextCaptureAt=Date.now()+60000;
-   if(frame.focus!=='titles'&&!frame.panelOccluded)chatObserver.observe(frame,lastLiveState);
+   if(frame.focus!=='titles'&&!frame.panelOccluded){
+    chatEmitted=0;
+    chatObserver.observe(frame,lastLiveState);
+    // 本地一行都没解析出来、但 OCR 确实读到聊天区有字：补读一次。
+    if(!chatEmitted&&Number(frame.chatLines)>0)void maybeCorrectChat(frame);
+   }
   }
  }catch(error){if(running){void captureReport({available:false,reason:'capture_failed',elapsedMs:Date.now()-captureStarted,message:String(error?.message??'')});if(lastCaptureAvailable!=='capture-error'){lastCaptureAvailable='capture-error';log.append({kind:'augment_capture_status',available:true,reason:'capture_failed'});}}}finally{capturing=false;}
 },250);captureTimer.unref();

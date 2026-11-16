@@ -1,4 +1,4 @@
-﻿import {parseChat,AUGMENT_VERB_RE} from './chat.mjs';
+import {parseChat,AUGMENT_VERB_RE} from './chat.mjs';
 import {correctMessage,snapInText} from './chat-correct.mjs';
 const normalized=value=>String(value??'').replace(/[\s:：!！·•,，。.]/g,'').toLowerCase();
 function lookup(map,value){
@@ -18,6 +18,11 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
     setCatalog(catalog){champions=catalog.champions??champions;items=catalog.items??items;},
     observe(frame,state){
       if(!frame?.available||!frame.foreground||!state)return;
+      return this.observeLines(Array.isArray(frame.chatOnly)?frame.chatOnly:[],state,frame);
+    },
+    // 云端补读回来的行走同一条解析/纠错链路；box 由调用方合成，只要落在聊天区内即可。
+    observeLines(source,state,frame){
+      if(!state||!Array.isArray(source)||!source.length)return;
       const aliases=new Map();
       for(const c of champions)for(const name of [c.name,c.alias])if(name)aliases.set(normalized(name),c.name);
       const players=[state.me,...state.allies,...state.enemies].filter(p=>p?.champion);
@@ -30,7 +35,6 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
         return [...new Set(hits.sort((a,b)=>a.at-b.at).map(h=>h.name))];
       };
       // 只解析聊天区裁出来的行：整屏 OCR 里混着技能说明、加载页提示，以前会被当成「队友说话」。
- const source=Array.isArray(frame.chatOnly)?frame.chatOnly:[];
  const lines=source.filter(line=>Array.isArray(line.box)).map(line=>({...line,text:String(line.text??'').replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g,'$1').replace(/(\d)\s*[:：]\s*(\d)/g,'$1:$2')}));
       // 解析前先把整行里的名字纠回来：OCR 认错一个字的英雄名会让整行变成 other 被丢掉。
  const rosterNames=[...new Set([state.me,...(state.allies??[]),...(state.enemies??[])]

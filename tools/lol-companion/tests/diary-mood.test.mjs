@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { festivalOn, timeBand, absenceLevel, anniversaryOf, toneGuidance } from '../diary-mood.mjs';
 
@@ -55,4 +55,15 @@ test('把情绪、节日、时段合成一句给模型的话', () => {
   const letter = toneGuidance({ festival: festivalOn('2026-12-25'), holidayGreeting: true });
   assert.match(letter, /这是一封节日信/);
   assert.equal(toneGuidance({ band: 'day' }), '');
+});
+
+test('日期、星期、季节、动笔时刻都会变成一句提示', async () => {
+  const { weekdayOf, seasonOf, clockHint, dayHint } = await import('../diary-mood.mjs');
+  assert.equal(weekdayOf('2026-11-15'), '周日');
+  assert.equal(seasonOf('2026-11-15'), '秋天');
+  assert.equal(seasonOf('2026-01-09'), '冬天');
+  assert.equal(clockHint(at(2026, 11, 15, 23, 47)), '23:47');
+  const hint = dayHint({ day: '2026-11-15', at: at(2026, 11, 15, 23, 47) });
+  assert.match(hint, /周日/);
+  assert.match(hint, /23:47/);
 });

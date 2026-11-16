@@ -63,3 +63,15 @@ test('「她惦记的那句话」只会用一次，一周最多两次', async ()
     assert.equal(await store.pendingLine({ today: '2026-11-15' }), null, '一周只给两次');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('同月同日的旧日记能翻出来（去年今天）', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'jinbao-diary-ontoday-'));
+  try {
+    const store = createDiaryStore({ stateDir: dir });
+    await store.save({ day: '2025-11-15', title: '去年的今天', body: '那年冬天。' });
+    await store.save({ day: '2026-11-15', title: '今天', body: '今年。' });
+    assert.deepEqual(await store.onThisDay('2026-11-15'), { day: '2025-11-15', title: '去年的今天' });
+    assert.equal(await store.onThisDay('2026-03-03'), null);
+    assert.equal(await store.onThisDay('bad'), null);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

@@ -3,12 +3,15 @@ import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 // A hung OCR cycle must not stall the whole capture loop: one failed attempt already
 // blocked 12 seconds of a real match (no augment or chat reads during that window).
-export function createAugmentCaptureWorker({spawnImpl=spawn,timeoutMs=6000}={}){
+export function createAugmentCaptureWorker({spawnImpl=spawn,timeoutMs=6000,stateDir}={}){
  let child=null,pending=null,buffer='',closed=false;
  const reset=error=>{const owned=child;child=null;buffer='';if(pending){const request=pending;pending=null;clearTimeout(request.timer);request.signal?.removeEventListener('abort',request.abort);request.reject(error);}owned?.kill();};
  function start(){
   const powershell=join(process.env.SystemRoot??'C:/Windows','System32/WindowsPowerShell/v1.0/powershell.exe');
-  const owned=spawnImpl(powershell,['-NoProfile','-ExecutionPolicy','Bypass','-File',fileURLToPath(new URL('./capture-augments.ps1',import.meta.url)),'-Worker'],{windowsHide:true,stdio:['pipe','pipe','ignore']});child=owned;
+  const args=['-NoProfile','-ExecutionPolicy','Bypass','-File',fileURLToPath(new URL('./capture-augments.ps1',import.meta.url)),'-Worker'];
+  // 云端补识别要从状态目录读侧车图（vision-strip.jpg / vision-chat.jpg），所以把目录传进去。
+  if(stateDir)args.push('-StateDir',stateDir);
+  const owned=spawnImpl(powershell,args,{windowsHide:true,stdio:['pipe','pipe','ignore']});child=owned;
   owned.stdin.on('error',()=>{if(child===owned)reset(Error('Capture worker unavailable'));});
   owned.on('error',()=>{if(child===owned)reset(Error('Capture worker unavailable'));});
   owned.on('exit',()=>{if(child===owned)reset(Error('Capture worker exited'));});

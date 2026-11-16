@@ -198,6 +198,14 @@ h1{
   .state{min-height:280px;padding:30px 10px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style><style>
+/* 纸张感：一层极轻的纹理 + 右上角折角，只加在正文那张纸上 */
+.sheet{position:relative;background-image:repeating-linear-gradient(0deg,rgba(122,102,72,.035) 0 1px,transparent 1px 26px);}
+.sheet::after{content:'';position:absolute;top:0;right:0;width:26px;height:26px;background:linear-gradient(225deg,rgba(122,102,72,.16) 0 50%,transparent 50%);pointer-events:none;}
+.entry-text del{color:var(--ink-faint);text-decoration:line-through;text-decoration-color:var(--brick);text-decoration-thickness:1px;}
+.edited-note{color:var(--ink-faint);font-size:.85em;margin-left:.35em;}
+.last-year{display:block;margin:.4rem 0 1rem;padding:.3rem .1rem;background:none;border:0;border-bottom:1px dashed var(--line-strong);color:var(--ochre);font:inherit;font-size:.92em;cursor:pointer;}
+.last-year:hover{border-bottom-color:var(--ochre);}
 </style></head><body><main>
 <header class="masthead">
   <div class="masthead-main">
@@ -237,6 +245,7 @@ h1{
       </p>
       <div id="diaryText" class="entry-text"></div>
       <p id="diaryLine" class="entry-line" hidden></p>
+      <button id="diaryLastYear" class="last-year" type="button" hidden></button>
       <footer class="entry-foot">
         <span class="byline"><span id="diaryRole">金宝</span> · 写于 <time id="diaryAt">那天</time></span>
         <button id="diaryDelete" type="button">撕掉</button>
@@ -402,7 +411,7 @@ function renderEntry(entry){
     const paragraph=String(raw).trim();
     if(!paragraph)continue;
     const node=document.createElement('p');
-    node.innerHTML=escape(paragraph);
+    node.innerHTML=escape(paragraph).replace(/&lt;del&gt;([\s\S]*?)&lt;\/del&gt;/g,"<del>$1</del>");
     text.append(node);
   }
   if(!text.childElementCount){
@@ -411,6 +420,9 @@ function renderEntry(entry){
     text.append(node);
   }
 
+  const edited=entry.edited===true||/<del>/.test(String(entry.body||''));
+  const editedNote=diaryEdited;
+  if(editedNote)editedNote.hidden=!edited;
   const line=String(entry.line||'').trim();
   const lineBox=$('diaryLine');
   lineBox.textContent=line;
@@ -462,6 +474,20 @@ async function selectDay(day){
   }
 }
 
+async function loadLastYear(day){
+  const button=$('diaryLastYear');
+  if(!button)return;
+  try{
+    const {response,data}=await request('/api/diary/on-this-day?day='+encodeURIComponent(day));
+    const entry=data&&data.entry;
+    if(!response.ok||!entry){button.hidden=true;return;}
+    const sameYear=Number(String(entry.day).slice(0,4))===Number(String(day).slice(0,4))-1;
+    button.dataset.day=entry.day;
+    button.textContent=(sameYear?'去年今天：':'那年今天：')+String(entry.title||'那天');
+    button.hidden=false;
+  }catch(_){button.hidden=true;}
+}
+
 async function loadDiary(){
   const seq=++panelSeq;
   notice('');
@@ -477,6 +503,7 @@ async function loadDiary(){
     const enabled=!(data&&data.enabled===false);
     $('diaryToggle').checked=enabled;
     renderList();
+    await loadLastYear(dayKeyOf(new Date()));
     if(count===0){
       selected=dayKeyOf(new Date());
       renderList();
@@ -510,6 +537,8 @@ $('diaryToggle').addEventListener('change',async event=>{
     input.disabled=false;
   }
 });
+
+$('diaryLastYear')?.addEventListener('click',async event=>{const day=event.currentTarget.dataset.day;if(day)await selectDay(day);});
 
 $('diaryDelete').addEventListener('click',async()=>{
   if(!selected||count===0)return;
