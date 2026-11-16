@@ -38,7 +38,7 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
     const todayStart = dayRange(today).from;
     const past = rows.filter(row => Number(row.at) < todayStart);
     const daysSinceLastPlay = past.length
-      ? Math.max(0, Math.round((todayStart - dayRange(dayKey(Math.max(...past.map(row => Number(row.at)))))).from / 86400e3))
+      ? Math.max(0, Math.round((todayStart - dayRange(dayKey(Math.max(...past.map(row => Number(row.at))))).from) / 86400e3))
       : 30;
     const within = (from, to) => rows.filter(row => Number(row.at) >= from && Number(row.at) < to).length;
     return absenceLevel({
@@ -190,7 +190,7 @@ export function createDiary({ store, stateDir, query, ask, role = () => '金宝'
         if (absence.level === 'normal' && !festival) return null;
         const pieces = [absence.level === 'normal' ? '' : absence.label + (absence.hint ? '：' + absence.hint : ''), festival ? '今天是' + festival.label : ''].filter(Boolean);
         return { level: absence.level, label: absence.label, days: absence.days, festival: festival?.label ?? null, hintText: pieces.join('；') };
-      } catch { return null; }
+      } catch (error) { return { error: String(error?.message ?? error) }; }
     },
   };
 }

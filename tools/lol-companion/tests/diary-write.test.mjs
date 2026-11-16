@@ -77,3 +77,18 @@ test('写不成就是写不成：两次都拿不到合法 JSON 就报错，不�
   assert.equal(unauthorized, 1, '登录失效不重试');
   assert.equal(charCount('金宝'), 2);
 });
+
+test('语气、洞察、周回顾/节日信都会进提示词', () => {
+  const decision = decide({ facts, day: facts.day });
+  const withTone = buildPrompt({ day: facts.day, facts, decision, role: '金宝', tone: '今天是圣诞节。可以自然地带到这一点，但别写成贺卡。', insight: '他连输两场之后的那一局，反而更容易赢（4/5）' });
+  assert.match(withTone, /圣诞节/);
+  assert.match(withTone, /连输两场之后/);
+  assert.match(withTone, /别写成数据/);
+  const weekly = buildPrompt({ day: facts.day, facts, decision, weekly: true });
+  assert.match(weekly, /一周回顾/);
+  assert.match(weekly, /不要一天一段地报/);
+  const letter = buildPrompt({ day: facts.day, facts, decision, letter: true });
+  assert.match(letter, /节日信/);
+  assert.match(letter, /落款/);
+  assert.ok(withTone.length <= 1500 && weekly.length <= 1500 && letter.length <= 1500);
+});

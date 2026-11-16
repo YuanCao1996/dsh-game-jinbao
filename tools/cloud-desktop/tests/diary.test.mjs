@@ -187,3 +187,14 @@ test('未了线：日记里那句话和他说过的「明天」都会记下来�
     assert.ok(threads.every(thread => !thread.usedAt || thread.usedAt > 0));
   } finally { await rm(f.stateDir, { recursive: true, force: true }); }
 });
+
+test('几天没来，播报开场能拿到她的情绪档位', async () => {
+  const day = '2026-11-15';
+  const f = await fixture({ days: [day], now: dayStart(day) + 5 * 86400e3 + 12 * 3600e3 });
+  try {
+    const tone = await f.diary.currentTone();
+    assert.equal(tone.level, 'complain');
+    assert.equal(tone.days, 5);
+    assert.match(tone.hintText, /数着日子/);
+  } finally { await rm(f.stateDir, { recursive: true, force: true }); }
+});
