@@ -71,7 +71,7 @@ export function createVisionAssist({
   fetchImpl = fetch,
   now = Date.now,
   log = () => {},
-  timeoutMs = 8000,
+  timeoutMs = 25000,
 } = {}) {
   const usagePath = stateDir ? `${stateDir}/vision-assist-usage.json` : null;
   const limits = VISION_TIERS[resolveVisionTier(tier)];
@@ -140,7 +140,7 @@ export function createVisionAssist({
     }
     const mimeType = image.mimeType ?? 'image/jpeg';
     const body = {
-      model: 'game-fast', stream: false, max_tokens: 300,
+      model: 'game-fast', stream: false, max_tokens: 1600,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: [
