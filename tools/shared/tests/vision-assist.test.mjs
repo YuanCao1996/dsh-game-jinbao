@@ -119,3 +119,25 @@ test('卡名吸附：空格/标点/异体字能对上，名录里没有的绝不
   assert.equal(snapAugmentName('扳机炼狱！', catalogue).name, '扳机炼狱');
   assert.equal(snapAugmentName('完全不存在的新强化', catalogue), null);
 });
+
+test('先请求关闭思考；网关不认这个字段时自动降级重发，并记住结论', async () => {
+  const bodies = [];
+  const fetchImpl = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    bodies.push(body);
+    if (body.thinking) return { ok: false, status: 400, text: async () => '{"error":"bad_request"}' };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"titles":["沃格勒特的巫师帽",null,null]}' } }] }) };
+  };
+  const assist = createVisionAssist({ stateDir: tempDir(), getToken: async () => 'jc_test', fetchImpl });
+  const first = await assist.readTitles({ image: jpeg('one'), matchId: 'm1' });
+  assert.ok(first, '降级后应该拿到结果');
+  assert.equal(bodies.length, 2, '第一次带 thinking 被拒，应重发一次');
+  assert.deepEqual(bodies[0].thinking, { type: 'disabled' });
+  assert.equal(bodies[1].thinking, undefined);
+  assert.equal(assist.stats().thinking, 'off', '本进程内记住网关不支持');
+  // 第二次请求不再白试 thinking
+  await assist.readTitles({ image: jpeg('two'), matchId: 'm1' });
+  assert.equal(bodies.length, 3);
+  assert.equal(bodies[2].thinking, undefined);
+  assert.equal(assist.stats().calls, 2, '被拒的请求不记账');
+});

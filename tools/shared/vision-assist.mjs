@@ -72,11 +72,14 @@ export function createVisionAssist({
   now = Date.now,
   log = () => {},
   timeoutMs = 25000,
+  thinking = 'auto',
 } = {}) {
   const usagePath = stateDir ? `${stateDir}/vision-assist-usage.json` : null;
   const limits = VISION_TIERS[resolveVisionTier(tier)];
   let usage = loadUsage();
   let failures = 0;
+  // 'auto' = 先带 thinking.disabled，被 400 拒绝就降级并记住；'off' = 从不带
+  let thinkingState = thinking === 'off' ? 'off' : 'auto';
   const seen = new Map();
 
   function loadUsage() {
@@ -139,7 +142,7 @@ export function createVisionAssist({
       return null;
     }
     const mimeType = image.mimeType ?? 'image/jpeg';
-    const body = {
+    const base = {
       model: 'game-fast', stream: false, max_tokens: 1600,
       messages: [
         { role: 'system', content: system },
@@ -149,13 +152,23 @@ export function createVisionAssist({
         ] },
       ],
     };
+    // 先请求关闭思考：这部分任务只需要抄字，思考纯属浪费延迟与额度。
+    // 网关还没放开这个字段时会 400，于是自动降级重发一次并记住结论（本进程内不再试）。
+    let thinkingDisabled = thinkingState === 'auto';
+    const send = (payload) => fetchImpl(`${baseUrl}/v1/chat/completions`, {
+      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
     const started = now();
     try {
-      const response = await fetchImpl(`${baseUrl}/v1/chat/completions`, {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      let response = await send(thinkingDisabled ? { ...base, thinking: { type: 'disabled' } } : base);
+      if (!response.ok && response.status === 400 && thinkingDisabled) {
+        thinkingDisabled = false;
+        thinkingState = 'off';
+        log({ event: 'vision_assist', kind, status: 'capability', reason: 'thinking_unsupported', tier });
+        response = await send(base);
+      }
       if (!response.ok) throw Object.assign(Error('vision_assist_http'), { status: response.status });
       const answer = JSON.parse(await response.text())?.choices?.[0]?.message?.content;
       const list = parseAnswer(answer, key);
@@ -192,7 +205,7 @@ export function createVisionAssist({
     },
     stats() {
       rollDay();
-      return { tier: resolveVisionTier(tier), limits, day: usage.day, calls: usage.calls, bytes: usage.bytes, failures, matches: { ...usage.matches } };
+      return { tier: resolveVisionTier(tier), limits, day: usage.day, calls: usage.calls, bytes: usage.bytes, failures, thinking: thinkingState, matches: { ...usage.matches } };
     },
   };
 }
