@@ -73,6 +73,9 @@ export function createVisionAssist({
   log = () => {},
   timeoutMs = 25000,
   thinking = 'auto',
+  adaptive = true,
+  budgets = { augment: 4000, chat: 7000 },
+  detail = 'low',
 } = {}) {
   const usagePath = stateDir ? `${stateDir}/vision-assist-usage.json` : null;
   const limits = VISION_TIERS[resolveVisionTier(tier)];
@@ -80,6 +83,12 @@ export function createVisionAssist({
   let failures = 0;
   // 'auto' = 先带 thinking.disabled，被 400 拒绝就降级并记住；'off' = 从不带
   let thinkingState = thinking === 'off' ? 'off' : 'auto';
+  // 自适应档：0 = 关思考抄字；1 = 低强度思考；2 = 高强度思考。
+  // 读错了升级，慢了降级——这就是"根据尝试结果调整"。
+  const policy = {
+    augment: { level: 0, slow: 0, fail: 0, ok: 0 },
+    chat: { level: 0, slow: 0, fail: 0, ok: 0 },
+  };
   const seen = new Map();
 
   function loadUsage() {
@@ -142,27 +151,34 @@ export function createVisionAssist({
       return null;
     }
     const mimeType = image.mimeType ?? 'image/jpeg';
+    const level = adaptive ? policy[kind].level : 0;
+    const budget = Number(budgets?.[kind] ?? 0) || 0;
+    const tokenBudget = kind === 'augment' ? [300, 600, 1000][level] : [500, 900, 1400][level];
     const base = {
-      model: 'game-fast', stream: false, max_tokens: 1600,
+      model: 'game-fast', stream: false, max_tokens: tokenBudget,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: [
           { type: 'text', text: question },
-          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${Buffer.from(image.data).toString('base64')}` } },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${Buffer.from(image.data).toString('base64')}`, detail: image.detail ?? detail } },
         ] },
       ],
     };
-    // 先请求关闭思考：这部分任务只需要抄字，思考纯属浪费延迟与额度。
-    // 网关还没放开这个字段时会 400，于是自动降级重发一次并记住结论（本进程内不再试）。
-    let thinkingDisabled = thinkingState === 'auto';
+    // level 0 请求关闭思考：抄字任务思考纯属浪费延迟与额度；网关照旧不认时就降级重发。
+    // level ≥1 是"读错了升级"：带思考并逐级提高强度。
+    const thinkingFor = (current) => (current === 0
+      ? (thinkingState === 'auto' ? { thinking: { type: 'disabled' } } : null)
+      : { thinking: { type: 'enabled' }, reasoning_effort: current === 1 ? 'low' : 'high' });
+    let thinkingDisabled = level === 0 && thinkingState === 'auto';
     const send = (payload) => fetchImpl(`${baseUrl}/v1/chat/completions`, {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs),
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Jinbao-Operation': 'ocr_assist' },
       body: JSON.stringify(payload),
     });
     const started = now();
+    const extra = thinkingFor(level) ?? {};
     try {
-      let response = await send(thinkingDisabled ? { ...base, thinking: { type: 'disabled' } } : base);
+      let response = await send({ ...base, ...extra });
       if (!response.ok && response.status === 400 && thinkingDisabled) {
         thinkingDisabled = false;
         thinkingState = 'off';
@@ -177,19 +193,50 @@ export function createVisionAssist({
       const row = matchUsage(matchId);
       row[kind] += 1; row.bytes += bytes; usage.calls += 1; usage.bytes += bytes;
       saveUsage();
+      const elapsed = now() - started;
       if (!list) {
-        failures += 1;
-        log({ event: 'vision_assist', kind, status: 'failed', reason: 'unparsable', ms: now() - started, bytes, tier });
+        // 解析失败是"读错了"，交给自适应升档；不要当成网络故障去触发熔断。
+        escalate(kind, 'unparsable');
+        log({ event: 'vision_assist', kind, status: 'failed', reason: 'unparsable', ms: elapsed, bytes, tier, level: policy[kind].level });
         return null;
       }
       failures = 0;
-      const result = { ok: true, list, ms: now() - started, bytes };
-      log({ event: 'vision_assist', kind, status: 'ok', ms: result.ms, bytes, tier, matchId: String(matchId ?? '') });
+      observe(kind, elapsed, budget);
+      const result = { ok: true, list, ms: elapsed, bytes, level: policy[kind].level };
+      log({ event: 'vision_assist', kind, status: 'ok', ms: elapsed, bytes, tier, level: policy[kind].level, matchId: String(matchId ?? '') });
       return result;
     } catch (error) {
       failures += 1;
-      log({ event: 'vision_assist', kind, status: 'failed', reason: error?.status ?? error?.code ?? 'error', ms: now() - started, bytes, tier });
+      escalate(kind, error?.status ?? error?.code ?? 'error');
+      log({ event: 'vision_assist', kind, status: 'failed', reason: error?.status ?? error?.code ?? 'error', ms: now() - started, bytes, tier, level: policy[kind].level });
       return null;
+    }
+  }
+
+  // 读错了就升档：连续两次解析失败/吸附失败，提高思考强度。
+  function escalate(kind, reason) {
+    const state = policy[kind];
+    state.ok = 0;
+    state.fail += 1;
+    if (!adaptive || state.fail < 2 || state.level >= 2) return;
+    state.fail = 0;
+    state.level += 1;
+    log({ event: 'vision_assist', kind, status: 'adapt', reason, level: state.level });
+  }
+
+  // 慢了就降档：连续两次超过预算，退回更省的模式；成功得多了也往下退。
+  function observe(kind, ms, budget) {
+    const state = policy[kind];
+    state.fail = 0;
+    state.ok += 1;
+    if (!adaptive) return;
+    state.slow = budget > 0 && ms > budget ? state.slow + 1 : 0;
+    if (state.level > 0 && (state.slow >= 2 || state.ok >= 5)) {
+      const reason = state.slow >= 2 ? 'slow' : 'stable';
+      state.level -= 1;
+      state.slow = 0;
+      state.ok = 0;
+      log({ event: 'vision_assist', kind, status: 'adapt', reason, level: state.level });
     }
   }
 
@@ -203,9 +250,15 @@ export function createVisionAssist({
     readChat({ image, matchId } = {}) {
       return ask({ kind: 'chat', image, matchId, system: CHAT_SYSTEM, question: CHAT_QUESTION, key: 'lines' });
     },
+    // 调用方校验结果后回报：卡名吸附不上、聊天行对不上名单都算读错了，据此升级档位。
+    report({ kind, accepted } = {}) {
+      if (!['augment', 'chat'].includes(kind)) return;
+      if (accepted === false) escalate(kind, 'rejected');
+      else if (accepted === true) { const state = policy[kind]; state.ok += 1; state.fail = 0; }
+    },
     stats() {
       rollDay();
-      return { tier: resolveVisionTier(tier), limits, day: usage.day, calls: usage.calls, bytes: usage.bytes, failures, thinking: thinkingState, matches: { ...usage.matches } };
+      return { tier: resolveVisionTier(tier), limits, day: usage.day, calls: usage.calls, bytes: usage.bytes, failures, thinking: thinkingState, adaptive, policy: { augment: { ...policy.augment }, chat: { ...policy.chat } }, budgets, matches: { ...usage.matches } };
     },
   };
 }

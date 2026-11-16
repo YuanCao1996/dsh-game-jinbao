@@ -141,3 +141,58 @@ test('先请求关闭思考；网关不认这个字段时自动降级重发，�
   assert.equal(bodies[2].thinking, undefined);
   assert.equal(assist.stats().calls, 2, '被拒的请求不记账');
 });
+test('读错了就升档：连续两次解析失败后，第三次请求带思考且强度升到 low', async () => {
+  const bodies = [];
+  let calls = 0;
+  const fetchImpl = async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    calls += 1;
+    const content = calls <= 2 ? '我看不清这三张卡' : '{"titles":["沃格勒特的巫师帽",null,null]}';
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content } }] }) };
+  };
+  const assist = createVisionAssist({ stateDir: tempDir(), getToken: async () => 'jc_test', fetchImpl });
+  assert.equal(await assist.readTitles({ image: jpeg('a1'), matchId: 'm' }), null);
+  assert.equal(await assist.readTitles({ image: jpeg('a2'), matchId: 'm' }), null);
+  assert.equal(assist.stats().policy.augment.level, 1);
+  const ok = await assist.readTitles({ image: jpeg('a3'), matchId: 'm' });
+  assert.ok(ok);
+  const third = bodies.at(-1);
+  assert.deepEqual(third.thinking, { type: 'enabled' });
+  assert.equal(third.reasoning_effort, 'low');
+  assert.equal(third.max_tokens, 600);
+});
+
+test('慢了就降档：升到 1 档后连续两次超预算，退回关思考', async () => {
+  let clock = 0;
+  let phase = 0; // 0-1 解析失败，2-3 慢成功
+  const fetchImpl = async () => {
+    phase += 1;
+    const content = phase <= 2 ? '我看不清' : '{"titles":["甲",null,null]}';
+    if (phase > 2) clock += 5000;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content } }] }) };
+  };
+  const assist = createVisionAssist({ stateDir: tempDir(), getToken: async () => 'jc_test', fetchImpl, now: () => clock, budgets: { augment: 3000, chat: 6000 } });
+  await assist.readTitles({ image: jpeg('s1'), matchId: 'm' });
+  await assist.readTitles({ image: jpeg('s2'), matchId: 'm' });
+  assert.equal(assist.stats().policy.augment.level, 1, '两次读错应升到 1 档');
+  await assist.readTitles({ image: jpeg('s3'), matchId: 'm' });
+  assert.equal(assist.stats().policy.augment.level, 1, '只慢一次不降档');
+  await assist.readTitles({ image: jpeg('s4'), matchId: 'm' });
+  assert.equal(assist.stats().policy.augment.level, 0, '连续两次超预算应降档');
+});
+test('调用方回报"读错了"也能升档；回报采纳则复位', async () => {
+  const bodies = [];
+  const fetchImpl = async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"lines":["甲"]}' } }] }) };
+  };
+  const assist = createVisionAssist({ stateDir: tempDir(), getToken: async () => 'jc_test', fetchImpl });
+  await assist.readChat({ image: jpeg('c1'), matchId: 'm' });
+  assist.report({ kind: 'chat', accepted: false });
+  assert.equal(assist.stats().policy.chat.level, 0, '一次不够');
+  assist.report({ kind: 'chat', accepted: false });
+  assert.equal(assist.stats().policy.chat.level, 1);
+  await assist.readChat({ image: jpeg('c2'), matchId: 'm' });
+  assert.deepEqual(bodies.at(-1).thinking, { type: 'enabled' });
+  assert.equal(bodies.at(-1).reasoning_effort, 'low');
+});
