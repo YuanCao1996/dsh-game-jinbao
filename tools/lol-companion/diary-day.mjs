@@ -82,6 +82,15 @@ export function topicFor(facts = {}, matches = []) {
   return 'silence';
 }
 
+// 形式扰动：同一个人也不会天天用同一种写法。由「日期」决定，不是模型自由发挥。
+export const FORMS = ['note', 'rambling', 'scraps', 'cut'];
+export const FORM_HINT = {
+  note: '今天写成一张便签：只写一件事，一到三句，不写开头也不写结尾。',
+  rambling: '今天一口气写完：一整段到底，不分段，像说完就放下笔。',
+  scraps: '今天写成几段碎句子：长短不一，其中一段只有一句话。',
+  cut: '今天写到一半就停：话没说完就收住，不要总结、不要升华。',
+};
+
 export function decide({ facts = {}, salt = 'jinbao-diary', day } = {}) {
   const matches = Array.isArray(facts.matches) ? facts.matches : [];
   const date = day ?? facts.day;
@@ -89,9 +98,12 @@ export function decide({ facts = {}, salt = 'jinbao-diary', day } = {}) {
   const probability = probabilityFor(score);
   const roll = stableRoll(`${date}:${salt}`);
   const { bucket, min, max } = lengthFor(score);
+  const formRoll = stableRoll(date + ':form');
+  const form = FORMS[Math.floor(formRoll * FORMS.length) % FORMS.length];
   const topic = topicFor(facts, matches);
   return {
     write: score > 0 && roll < probability,
+    form, formHint: FORM_HINT[form],
     score, probability, roll, reasons, bucket, min, max, topic,
     topicLabel: TOPIC_LABEL[topic] ?? '今天',
     day: date,

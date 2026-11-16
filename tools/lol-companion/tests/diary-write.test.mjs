@@ -92,3 +92,17 @@ test('语气、洞察、周回顾/节日信都会进提示词', () => {
   assert.match(letter, /落款/);
   assert.ok(withTone.length <= 1500 && weekly.length <= 1500 && letter.length <= 1500);
 });
+
+test('素材很长时也不会把 JSON 契约截掉', () => {
+  const heavy = {
+    day: '2026-11-15',
+    matches: Array.from({ length: 6 }, (_, index) => ({ champion: '英雄' + index, result: 'win', seconds: 1200, kda: { k: 9, d: 1, a: 9 }, adviceRevoked: 1 })),
+    selfChats: Array.from({ length: 6 }, (_, index) => '这是他说的一句话' + index),
+    herLines: ['来啦！这局冲鸭'],
+  };
+  const decision = decide({ facts: heavy, day: heavy.day });
+  const prompt = buildPrompt({ day: heavy.day, facts: heavy, decision, role: '金宝', recent: ['很长的开头'.repeat(6)], tone: '今天是圣诞节。'.repeat(8) });
+  assert.ok(prompt.length <= 1500, 'prompt 超预算：' + prompt.length);
+  assert.ok(prompt.trimEnd().endsWith('}'), '结尾必须是 JSON 契约');
+  assert.match(prompt, /"title"/);
+});

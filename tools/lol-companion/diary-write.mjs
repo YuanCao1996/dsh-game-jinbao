@@ -1,8 +1,15 @@
-﻿// 把一天的事实压成一段很短的中文，交给模型写；再把回包校验、截断成可落盘的日记。
+// 把一天的事实压成一段很短的中文，交给模型写；再把回包校验、截断成可落盘的日记。
 // 长度预算：prompt 必须留出角色设定（≤2000 字符上限）的位置，所以事实摘要只给要点。
 import { TOPIC_LABEL } from './diary-day.mjs';
 
 export const MOODS = ['得意', '平静', '心虚', '想念', '犯困'];
+// 四个角色的「声音」：只改口吻，不改事实。没有的按金宝处理。
+const ROLE_STYLE = {
+  金宝: '口语、短句，会用语气词（啦、呀、哦、嘛），会自嘲，偶尔把话咽回去半句。',
+  柳如风: '文一点、爱打比方，句子偏长，语气疏离但心软，少用语气词。',
+  王霸天: '直、粗、短促，爱用「你」「老子」，几乎不用形容词，别文绉绉。',
+  铁汁: '憨、话密，同一个词会重复，感叹号多一点，偶尔用错词也不改。',
+};
 const MAX_PROMPT = 1500;
 
 const clock = seconds => {
@@ -35,6 +42,8 @@ export function buildFactsBlock(facts = {}) {
   if (Number(facts.appChats) > 0) lines.push(`他主动在应用里找过你 ${facts.appChats} 次`);
   if (Number(facts.aces) > 0) lines.push(`有 ${facts.aces} 次 ${(facts.aceLabels ?? []).join('/') || '团灭级'} 的高光`);
   if (Number(facts.gapDays) >= 3) lines.push(`你们隔了 ${facts.gapDays} 天才又见面`);
+  if (Number(facts.streakDays) > 1) lines.push(`你连续第 ${facts.streakDays} 天和他一起玩`);
+  if ((facts.firstTimeChampions ?? []).length) lines.push(`今天他第一次用 ${facts.firstTimeChampions[0]}`);
   const herLines = Array.isArray(facts.herLines) ? facts.herLines : [];
   if (herLines.length) lines.push(`你今天说过：${herLines.slice(-2).map(quote).filter(Boolean).join('')}`);
   return lines.join('\n');
@@ -45,27 +54,41 @@ export function buildPrompt({ day, facts, decision, role = '金宝', recent = []
   const min = Number(decision?.min) || 150, max = Number(decision?.max) || 280;
   const openings = (Array.isArray(recent) ? recent : []).map(item => String(item ?? '').slice(0, 30)).filter(Boolean).slice(0, 3);
   const opening = letter ? `【节日信】用第一人称给「${role}」写一封信，不是播报、不是战报。日期 ${day}。` : weekly ? `【一周回顾】用第一人称给「${role}」写一段这一周的回顾，不是播报、不是战报。日期 ${day}。` : `【今天的日记】用第一人称给「${role}」写一篇日记，不是播报、不是建议、不是战报。日期 ${day}。`;
+  // 同一个角色每天写出来的东西也该有同一个「声音」：口癖、句子长短、会不会文绉绉。
+  const style = ROLE_STYLE[role] ?? ROLE_STYLE['金宝'];
   const parts = [
     opening,
+    `你的口吻：${style}`,
     buildFactsBlock(facts) || '今天没发生什么值得写的事。',
     `叙述重心：${topic}。`,
     `长度 ${min}—${Math.max(min + 20, max)} 字，最多 3 段；写完就停，不要总结。`,
     '只写一两件事，写深一点：落在一个具体瞬间、一件装备、一句他说过的话上。',
+    decision?.formHint ? `写法：${decision.formHint}` : '',
     // 实测模型会写出「他打字『你先别——』」，而素材里根本没有这句话。宁可少一句也不能编。
     '他说过的话只能从上面「他在游戏里自己打的字」里取；素材没给就不要引用、不要编造对话。',
     '不要逐局列出英雄名，也不要把每一局都提一遍；不列数据，不评价他打得好不好。',
     '不要出现其他玩家昵称，指代只用「他」。不用「作为 AI／总之／综上」，不喊口号，不催他上线。',
+    // 这些词是「像写作文」的最强信号：每篇都出现，读三篇就露馅。
+    '别用这些词：愣住、暖光、手心全是汗、才发现、原来、眼眶、喉咙、心跳、屏幕的光、说不出的。',
+    '允许不完整：可以省略主语、可以半句话、可以用括号补一句（比如「（算了）」）、可以写错再改。',
+    '至少有一个具体到不像总结的细节：几点、第几局、哪件装备、哪次死法。',
     tone,
     trends.length ? '本周网上在传这些说法：' + trends.slice(0, 5).map(term => '「' + term + '」').join('') + '。只在你觉得完全贴合时用一处，绝不解释这个说法，也别硬塞；用不上就不用。' : '',
     insight ? `你可以提一句你的发现（用你自己的话说，别写成数据）：${insight}` : '',
     weekly ? '这一周的事合成一段，不要一天一段地报；只挑这一周最想说的一两处。' : '',
     letter ? '开头要有称呼（一句短的就够），结尾要有落款，别写落款日期以外的东西。' : '',
     openings.length ? `最近几篇是这么写的，换素材、换句式、换个结尾，别重样：${openings.join('／')}` : '',
+  ];
+  // 结尾的格式要求不能被长度截断掉——否则模型拿不到 JSON 契约，这一篇就废了。
+  const tail = [
+    'line 不是每天都写：只有真的想留一句才写，平时留空。',
+    strict ? '上一次的回复不是合法 JSON，这次只准输出这个 JSON 对象。' : '',
     '只输出一个 JSON 对象，不要代码块以外的解释：',
     '{"title":"不超过12个字","body":"正文","mood":"得意|平静|心虚|想念|犯困","line":"明天想跟他说的一句话，不超过18字，可以留空"}',
-  ];
-  if (strict) parts.push('上一次的回复不是合法 JSON，这次只准输出这个 JSON 对象。');
-  return parts.filter(Boolean).join('\n').slice(0, MAX_PROMPT);
+  ].filter(Boolean).join('\n');
+  const head = parts.filter(Boolean).join('\n');
+  const room = Math.max(200, MAX_PROMPT - tail.length - 1);
+  return (head.length > room ? head.slice(0, room) : head) + '\n' + tail;
 }
 
 export function trimBody(body, max) {

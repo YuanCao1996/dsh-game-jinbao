@@ -1,8 +1,8 @@
-// 汇总「某一天发生了什么」：只读本机落盘的数据，不联网。
+﻿// 汇总「某一天发生了什么」：只读本机落盘的数据，不联网。
 // 玩家在游戏里自己打的字来自 chat_events（self=true），这是最像「主动聊天」的素材。
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { dayKey, dayRange, DAY_CUTOFF_HOURS } from './diary-day.mjs';
+import { dayKey, dayRange, shiftDay, DAY_CUTOFF_HOURS } from './diary-day.mjs';
 
 const ACE_KINDS = new Set(['Ace', 'Penta', 'Quadra', 'Triple']);
 
@@ -96,6 +96,16 @@ export async function collectDay({ stateDir, day, query, maxMatches = 6, maxChat
     if (Number.isFinite(diff) && diff > 0) gapDays = diff;
   }
 
+  // 两个「无用但具体」的细节来源：连续第几天来玩、今天有没有他第一次用的英雄。
+  const playedDays = new Set(history.map(row => dayKey(Number(row.at), cutoffHours)));
+  let streakDays = 0;
+  for (let back = 0; back < 30; back++) {
+    if (!playedDays.has(shiftDay(day, -back))) break;
+    streakDays++;
+  }
+  const before = new Set(history.filter(row => Number(row.at) < from).map(row => String(row.champion ?? '')).filter(Boolean));
+  const firstTimeChampions = matches.map(row => row.champion).filter(name => name && !before.has(name));
+
   const wins = matches.filter(row => row.result === 'win').length;
   const losses = matches.filter(row => row.result === 'lose').length;
   return {
@@ -103,7 +113,7 @@ export async function collectDay({ stateDir, day, query, maxMatches = 6, maxChat
     aceLabels: highlights.map(row => String(row?.label ?? '')).filter(Boolean).slice(0, 3),
     herLines, appChats, gapDays,
     wins, losses,
-    firsts: 0,
+    firsts: 0, streakDays, firstTimeChampions,
     ignoredAdvice: matches.reduce((total, row) => total + (row.adviceRevoked > 0 ? 1 : 0), 0),
   };
 }
