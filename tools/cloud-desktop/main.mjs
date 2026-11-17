@@ -1,4 +1,4 @@
-import{createCloudCapture}from'./capture.mjs';
+﻿import{createCloudCapture}from'./capture.mjs';
 import{createCloudCoach}from'./auto-coach.mjs';
 import{claimInstance}from'./instance.mjs';
 import{createEventQuery}from'./event-query.mjs';
@@ -106,6 +106,7 @@ await writeFile(join(stateDir,'launcher-state.json'),JSON.stringify({phase:'clou
 const heartbeat=setInterval(()=>void writeFile(join(stateDir,'launcher-state.json'),JSON.stringify({phase:'standalone',version,updatedAt:Date.now()})).catch(()=>{}),5000);
 const updateTimer=setInterval(()=>void updates.check(),6*60*60*1000);void updates.check();
 const diaryTimer=setInterval(()=>void diary.tick(),10*60*1000);setTimeout(()=>void diary.tick(),45000).unref?.();
+const speechTimer=setInterval(()=>speech.tick(),500);
 const diagnosticsTimer=setInterval(()=>void diagnostics.tick(),2000);
 const observationTimer=setInterval(()=>{void observation.tick();void logSource.tick();},500);
 // 独立版与插件版共享一把 UI 所有权锁：先启动的一方拥有悬浮窗与语音，后来者降级。
