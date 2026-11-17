@@ -1,4 +1,4 @@
-﻿import {readFile,mkdir,copyFile,writeFile,readdir,stat} from 'node:fs/promises';
+import {readFile,mkdir,copyFile,writeFile,readdir,stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {resolve,relative,dirname,join,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -135,6 +135,15 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
  if(process.platform!=='win32')throw Error('Windows preview build requires Windows');
  const root=fileURLToPath(new URL('../../',import.meta.url));
  if(!process.argv[2])throw Error('Supply a new output directory');
- console.log(JSON.stringify(await buildPreview({root,out:resolve(process.argv[2])})));
+ const out=resolve(process.argv[2]);
+ console.log(JSON.stringify(await buildPreview({root,out})));
+ // 构建完顺手把桌面/开始菜单快捷方式指向新目录：双击打开的永远是刚构建的这份，
+ // 而不是若干天前的旧文件夹（这个坑踩过一次）。JINBAO_SKIP_SHORTCUT=1 可跳过。
+ if(process.env.JINBAO_SKIP_SHORTCUT!=='1'){
+  try{
+   const result=await promisify(execFile)('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',join(root,'tools/cloud-desktop/update-shortcuts.ps1'),'-BuildDir',out],{windowsHide:true});
+   if(result?.stdout?.trim())console.log(result.stdout.trim());
+  }catch(error){console.error('shortcut update skipped: '+(error?.message??error));}
+ }
 }
 
