@@ -50,7 +50,7 @@ export function buildFactsBlock(facts = {}) {
   return lines.join('\n');
 }
 
-export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, insight = '', trends = [], now = Date.now(), echo = '' }) {
+export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, insight = '', trends = [], topics = [], now = Date.now(), echo = '' }) {
   const topic = decision?.topicLabel ?? TOPIC_LABEL[decision?.topic] ?? '今天';
   const min = Number(decision?.min) || 150, max = Number(decision?.max) || 280;
   const openings = (Array.isArray(recent) ? recent : []).map(item => String(item ?? '').slice(0, 30)).filter(Boolean).slice(0, 3);
@@ -81,7 +81,8 @@ export function buildPrompt({ day, facts, decision, role = '金宝', recent = []
     '允许不完整：可以省略主语、可以半句话、可以用括号补一句（比如「（算了）」）、可以写错再改。',
     '至少有一个具体到不像总结的细节：几点、第几局、哪件装备、哪次死法。',
     tone,
-    trends.length ? '本周网上在传这些说法：' + trends.slice(0, 5).map(term => '「' + term + '」').join('') + '。只在你觉得完全贴合时用一处，绝不解释这个说法，也别硬塞；用不上就不用。' : '',
+    trends.length ? '本周网上在传这些说法：' + trends.slice(0, 5).map(term => '「' + term + '」').join('') + '。只在你觉得完全贴合时用一处，绝不解释这个说法，也别硬塞；用不上就不用。' : '',
+    topics.length ? '这周网上在聊：' + topics.join('；') + '。只当背景，别复述比分或输赢；不确定就别提。' : '',
     insight ? `你可以提一句你的发现（用你自己的话说，别写成数据）：${insight}` : '',
     weekly ? '这一周的事合成一段，不要一天一段地报；只挑这一周最想说的一两处。' : '',
     letter ? '开头要有称呼（一句短的就够），结尾要有落款，别写落款日期以外的东西。' : '',
@@ -146,12 +147,12 @@ export function parseDiaryReply(reply, { min = 150, max = 280 } = {}) {
 }
 
 // 交给调用方的 ask 只负责「问一句话、拿回一段文字」，模型路由由上层决定。
-export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, insight = '', trends = [], echo = '' }) {
+export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, insight = '', trends = [], topics = [], echo = '' }) {
   if (typeof ask !== 'function') throw Error('缺少模型调用');
   const errors = [];
   for (const strict of [false, true]) {
     const at = now();
-    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, insight, trends, now: at, echo });
+    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, insight, trends, topics, now: at, echo });
     let reply;
     try { reply = await ask(prompt); } catch (error) { errors.push(error?.message ?? String(error)); if (error?.status === 409 || error?.status === 401) break; continue; }
     try {

@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {defineTool} from '@deepseek-ai/dsh-tools';
+import {captureFacts,maybeSavePair} from './eval-capture.js';
 const exec=promisify(execFile);
 export function createScreenInspector({stateDir,game,match,getToken,fetchImpl=fetch,capture,now=Date.now}){
  let running=null,last=null;
@@ -19,6 +20,9 @@ export function createScreenInspector({stateDir,game,match,getToken,fetchImpl=fe
     if(!frame.available)return {status:'unavailable',reason:frame.reason??'capture_failed',note:'未看到画面，请继续依据日志回答'};
     if(frame.game!==game||after.game!==game||after.match!==match||after.ended||now()-frame.capturedAt>10000||frame.capturedAt>now()+1000)return {status:'unavailable',reason:'stale_or_changed_match'};
     if(frame.mediaType!=='image/jpeg'||typeof frame.data!=='string'||Buffer.from(frame.data,'base64').length>524288)return {status:'unavailable',reason:'image_budget'};
+    // Evaluation-only: JINBAO_EVAL_CAPTURE=1 persists this exact frame with the facts that
+    // were true for it. Off by default; a production build never writes screenshots.
+    try{maybeSavePair({stateDir,image:Buffer.from(frame.data,'base64'),facts:captureFacts(after,{game,match}),at:frame.capturedAt,source:'host'});}catch{}
     const link=new URL((await readFile(join(stateDir,'settings-link.txt'),'utf8')).trim());
     if(link.protocol!=='http:'||link.hostname!=='127.0.0.1')throw Error('local endpoint');
     const token=await getToken();if(!token)throw Error('local authentication');

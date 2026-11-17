@@ -1,7 +1,7 @@
 ﻿// 每周查一次「网上在传什么说法」，只留像梗的短词，宁可这周没有，也不硬塞。
 // 全部是纯函数；真正的联网搜索由上层注入（本机只走一个固定来源，不把玩家数据发出去）。
 const BLOCK = /(政治|主席|总统|选举|两会|外交|军队|战争|死亡|去世|逝世|坠|爆炸|枪|袭击|地震|台风|洪水|疫情|病毒|癌|自杀|抑郁|强奸|色情|赌|毒|失业|裁员|彩礼|离婚|出轨|未成年|学生|校园|明星|恋情|官宣|法院|判刑|维权|涨价|股价|A股|币)/;
-const NOISE = /(广告|点击|下载|微信|公众号|来源|版权|登录|注册|APP|app下载|搜索|百度|知乎|微博|小红书|抖音|哔哩|B站|单曲|新歌|首发|MV|直播|视频|解说|合集|特辑|预告|片段|完整版|花絮|上线|发布|专访|盘点|测评)/;
+const NOISE = /(广告|点击|下载|微信|公众号|来源|版权|登录|注册|APP|app下载|搜索|百度|知乎|微博|小红书|抖音|哔哩|B站|单曲|新歌|首发|MV|直播|视频|解说|合集|特辑|预告|片段|完整版|花絮|专访|盘点|测评)/;
 
 // 用 ISO 周：同一周内只查一次，失败也不重试到这个礼拜结束。
 export function weekKey(at) {
@@ -53,7 +53,8 @@ export function extractTerms(texts = []) {
 // 存下来的一周记录；items 为空也要存，避免这一周反复去查。
 export function summarize(record) {
   const items = Array.isArray(record?.items) ? record.items.filter(term => acceptTerm(term)) : [];
-  return { week: record?.week ?? '', items: items.slice(0, 5), at: Number(record?.at) || 0 };
+  const topics = Array.isArray(record?.topics) ? record.topics.map(acceptTopic).filter(Boolean) : [];
+  return { week: record?.week ?? '', items: items.slice(0, 5), topics: topics.slice(0, 2), at: Number(record?.at) || 0 };
 }
 
 // 热榜原样倒进来是新闻，不是梗：只留带「梗味」的短词，其余全丢。
@@ -99,4 +100,26 @@ export function trendPrompt(texts = []) {
   return '下面是这周的热榜词。挑出其中真正是「网络梗 / 流行说法」的（一个年轻玩家会认得、能自然说出口的），最多 3 个，每个 2—6 个字。'
     + '宁缺勿滥：新闻、赛事、球队、明星、时政、灾难一律不要；拿不准就不要挑。只输出 JSON 数组，例如 ["泰裤辣"]，一个都没有就输出 []。\n'
     + unique.join('、');
+}
+
+// 「这周网上在聊什么游戏话题」：热梗挑不出来时的补充。
+// 只当背景用，所以允许长一点（4—20 字），但比分、输赢这类会被当成事实的东西一律不要。
+const RESULT_LIKE = /(\d+\s*[:：]\s*\d+)|(\d+\s*比\s*\d+)|(夺冠|卫冕|横扫|捧杯|首胜|惨败|淘汰|止步)/;
+
+export function acceptTopic(value) {
+  const term = String(value ?? '').replace(/[\r\n\t]+/g, ' ').replace(/[「」“”"']/g, '').trim();
+  const length = [...term].length;
+  if (length < 4 || length > 14) return null;
+  if (!/[\u4e00-\u9fa5]/.test(term)) return null;
+  if (BLOCK.test(term) || NOISE.test(term) || RESULT_LIKE.test(term)) return null;
+  return term;
+}
+
+export function topicPrompt(texts = []) {
+  // 比分、胜负这类「像事实」的词连进提示词都不进，免得模型顺手复述。
+  const pool = [...new Set((Array.isArray(texts) ? texts : []).map(promptTerm).filter(term => term && !RESULT_LIKE.test(term)))].slice(0, 30);
+  if (!pool.length) return null;
+  return '下面还是这周的热榜词。这次挑「这周网上在聊的游戏话题」，比如版本更新、新英雄、玩法、赛事开赛之类，'
+    + '最多 2 个，每个 4—14 字。不要挑比分、胜负、谁夺冠这类结果，也不要挑新闻标题。只输出 JSON 数组，例如 ["新英雄上线"]，没有就输出 []。\n'
+    + pool.join('、');
 }

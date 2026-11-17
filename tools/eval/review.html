@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>评估集审核</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.5 "Segoe UI", system-ui, sans-serif; background: #14161a; color: #d8dee9; display: flex; height: 100vh; }
+  #left { flex: 1 1 62%; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid #262b33; }
+  #right { flex: 1 1 38%; display: flex; flex-direction: column; min-width: 380px; }
+  header { display: flex; gap: 8px; align-items: center; padding: 8px 10px; background: #1b1f26; border-bottom: 1px solid #262b33; flex-wrap: wrap; }
+  header .grow { flex: 1; }
+  .badge { padding: 1px 7px; border-radius: 10px; font-size: 11px; background: #2a3140; color: #9fb3d1; }
+  .badge.labeled { background: #1f3b2a; color: #7ee2a8; }
+  .badge.unlabeled { background: #3b2f1f; color: #e2c07e; }
+  .badge.superseded { background: #3b1f24; color: #e28a95; }
+  #stage { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 10px; background: #0f1115; }
+  #stage img { max-width: 100%; max-height: 100%; image-rendering: auto; box-shadow: 0 4px 24px #0008; }
+  #stage.zoom img { max-width: none; max-height: none; cursor: zoom-out; }
+  footer { padding: 6px 10px; font-size: 11px; color: #7d8899; border-top: 1px solid #262b33; display: flex; gap: 10px; }
+  .pane { padding: 10px; overflow: auto; }
+  label { display: block; margin: 10px 0 4px; color: #93a1b5; font-size: 12px; }
+  input[type=text], textarea, select { width: 100%; background: #111418; color: #d8dee9; border: 1px solid #2c333d; border-radius: 6px; padding: 6px 8px; font: inherit; }
+  textarea { resize: vertical; min-height: 90px; font-family: Consolas, monospace; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .actions { display: flex; gap: 8px; margin-top: 14px; position: sticky; bottom: 0; padding-top: 10px; background: linear-gradient(transparent, #14161a 30%); }
+  button { background: #2b5cff; color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font: inherit; cursor: pointer; }
+  button.ghost { background: #232a34; color: #c9d3e3; }
+  button:disabled { opacity: .45; cursor: default; }
+  kbd { background: #232a34; border-radius: 4px; padding: 0 4px; font-size: 11px; }
+  .hint { color: #6b7686; font-size: 11px; margin-top: 4px; }
+  #empty { color: #6b7686; padding: 20px; }
+  .pill { cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="left">
+  <header>
+    <span id="counter" class="badge">0 / 0</span>
+    <span id="taskBadge" class="badge">-</span>
+    <span id="statusBadge" class="badge">-</span>
+    <span class="grow"></span>
+    <select id="filter" title="筛选">
+      <option value="unlabeled">待标注</option>
+      <option value="all">全部</option>
+      <option value="augment-recognition">海克斯</option>
+      <option value="hero-recognition">英雄</option>
+      <option value="strategy-advice">策略</option>
+    </select>
+    <button class="ghost" id="zoom">缩放 <kbd>Z</kbd></button>
+  </header>
+  <div id="stage"><div id="empty">没有可显示的用例</div></div>
+  <footer>
+    <span id="fileMeta">-</span>
+    <span class="grow"></span>
+    <span>← → 切换 · S 保存 · Z 缩放 · X 跳过</span>
+  </footer>
+</div>
+
+<div id="right">
+  <div class="pane">
+    <div id="promptBox"></div>
+
+    <label for="task">任务类型</label>
+    <select id="task">
+      <option value="hero-recognition">英雄识别</option>
+      <option value="augment-recognition">海克斯识别</option>
+      <option value="strategy-advice">策略建议</option>
+      <option value="scene-understanding">场景理解</option>
+    </select>
+
+    <label for="status">状态</label>
+    <select id="status">
+      <option value="unlabeled">待标注</option>
+      <option value="labeled">已标注</option>
+      <option value="superseded">已过期</option>
+    </select>
+
+    <div id="editor"></div>
+
+    <label for="note">备注（为什么改）</label>
+    <textarea id="note" rows="3" placeholder="例如：第 3 个称号被遮挡，按对局日志补为“扭曲树精”"></textarea>
+
+    <div class="actions">
+      <button id="save">保存 <kbd>Ctrl+S</kbd></button>
+      <button class="ghost" id="prev">上一条</button>
+      <button class="ghost" id="next">下一条</button>
+      <button class="ghost" id="skip">跳过</button>
+    </div>
+    <div class="hint" id="savedHint"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let all = [], view = [], index = 0, current = null, zoomed = false;
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function load() {
+  all = await (await fetch('/api/cases')).json();
+  applyFilter();
+}
+
+function applyFilter() {
+  const mode = $('filter').value;
+  view = mode === 'all' ? all.slice()
+    : mode === 'unlabeled' ? all.filter(c => !c.status || c.status === 'unlabeled')
+    : all.filter(c => c.task === mode);
+  view.sort((a, b) => (a.status === 'unlabeled' ? 0 : 1) - (b.status === 'unlabeled' ? 0 : 1));
+  index = Math.min(index, Math.max(0, view.length - 1));
+  render();
+}
+
+function render() {
+  current = view[index] ?? null;
+  $('counter').textContent = view.length ? `${index + 1} / ${view.length}` : '0 / 0';
+  $('taskBadge').textContent = current?.task ?? '-';
+  $('statusBadge').textContent = current?.status ?? '-';
+  $('statusBadge').className = 'badge ' + (current?.status ?? '');
+  $('stage').innerHTML = current?.image
+    ? `<img id="shot" src="/img?p=${encodeURIComponent(current.image)}" alt="${esc(current.id)}">`
+    : '<div id="empty">这条用例没有图片</div>';
+  $('fileMeta').textContent = current ? `${current.file} · ${current.id}` : '-';
+  $('task').value = current?.task === 'unlabeled' ? 'hero-recognition' : (current?.task ?? 'hero-recognition');
+  $('status').value = current?.status ?? 'unlabeled';
+  $('note').value = current?.note ?? '';
+  renderEditor();
+}
+
+function renderEditor() {
+  const gt = current?.ground_truth ?? {};
+  const task = $('task').value;
+  if (task === 'augment-recognition') {
+    const opts = Array.isArray(gt.options) ? gt.options : ['', '', ''];
+    $('editor').innerHTML = `
+      <label>三个选项（左 → 右）</label>
+      <div class="row3">
+        <input type="text" id="opt0" value="${esc(opts[0] ?? '')}" placeholder="左">
+        <input type="text" id="opt1" value="${esc(opts[1] ?? '')}" placeholder="中">
+        <input type="text" id="opt2" value="${esc(opts[2] ?? '')}" placeholder="右">
+      </div>
+      <div class="hint">看不清的留空；保存后自动写入 ground_truth.options</div>`;
+  } else if (task === 'hero-recognition') {
+    const list = Array.isArray(gt.displayed) ? gt.displayed : [];
+    $('editor').innerHTML = `
+      <label>英雄称号 / 名称（每行一个，按画面顺序）</label>
+      <textarea id="heroes" rows="11">${esc(list.join('\n'))}</textarea>
+      <div class="hint">上排 5 个、下排 5 个；写称号或正式名都算对（评分时走 aliases）</div>`;
+  } else {
+    $('editor').innerHTML = `
+      <label>真值（JSON）</label>
+      <textarea id="json" rows="11">${esc(JSON.stringify(gt, null, 2))}</textarea>`;
+  }
+}
+
+function collectPatch() {
+  const task = $('task').value;
+  const status = $('status').value;
+  const note = $('note').value.trim();
+  let ground_truth = current?.ground_truth ?? {};
+  if (task === 'augment-recognition') {
+    ground_truth = { ...ground_truth, options: [0, 1, 2].map(i => ($(`opt${i}`)?.value ?? '').trim()), roll: ground_truth.roll ?? null };
+  } else if (task === 'hero-recognition') {
+    const lines = ($('heroes').value || '').split('\n').map(s => s.trim()).filter(Boolean);
+    ground_truth = { ...ground_truth, displayed: lines, rows: { top: lines.slice(0, 5), bottom: lines.slice(5) } };
+  } else {
+    try { ground_truth = JSON.parse($('json').value || '{}'); } catch { alert('JSON 格式不对'); return null; }
+  }
+  return { task, status, note, ground_truth };
+}
+
+async function save() {
+  if (!current) return;
+  const patch = collectPatch();
+  if (!patch) return;
+  const body = {
+    file: current.file, id: current.id,
+    patch: { ground_truth: patch.ground_truth, status: patch.status, task: patch.task, note: patch.note },
+  };
+  const res = await fetch('/api/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) { $('savedHint').textContent = '保存失败：' + (await res.json()).error; return; }
+  current.status = patch.status; current.task = patch.task; current.ground_truth = patch.ground_truth; current.note = patch.note;
+  $('savedHint').textContent = `已保存 ${new Date().toLocaleTimeString()}`;
+  const wasUnlabeled = $('filter').value === 'unlabeled';
+  if (wasUnlabeled && patch.status !== 'unlabeled') next();
+  else render();
+}
+
+function next() { if (index < view.length - 1) { index++; render(); } }
+function prev() { if (index > 0) { index--; render(); } }
+function skip() { next(); }
+
+$('save').onclick = save;
+$('next').onclick = next;
+$('prev').onclick = prev;
+$('skip').onclick = skip;
+$('filter').onchange = () => { index = 0; applyFilter(); };
+$('task').onchange = renderEditor;
+$('zoom').onclick = () => { zoomed = !zoomed; $('stage').classList.toggle('zoom', zoomed); };
+
+document.addEventListener('keydown', event => {
+  if (event.target.matches('input, textarea, select')) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); save(); }
+    return;
+  }
+  if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); save(); }
+  else if (event.key === 'ArrowRight') next();
+  else if (event.key === 'ArrowLeft') prev();
+  else if (event.key.toLowerCase() === 's') save();
+  else if (event.key.toLowerCase() === 'x') skip();
+  else if (event.key.toLowerCase() === 'z') $('zoom').click();
+});
+
+load();
+</script>
+</body>
+</html>

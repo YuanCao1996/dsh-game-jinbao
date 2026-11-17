@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "jinbao eval case",
+  "type": "object",
+  "required": ["id", "task"],
+  "properties": {
+    "id": { "type": "string" },
+    "task": { "enum": ["augment-recognition", "hero-recognition", "strategy-advice", "scene-understanding", "unlabeled"] },
+    "status": { "enum": ["labeled", "unlabeled", "superseded"] },
+    "prompt": { "type": "string" },
+    "image": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": { "path": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "bytes": { "type": "integer" } }
+    },
+    "ground_truth": { "type": ["object", "null"] },
+    "meta": { "type": "object" },
+    "scoring": {
+      "type": ["object", "null"],
+      "properties": {
+        "type": { "enum": ["exact-set", "field-match", "rubric"] },
+        "fields": { "type": "array", "items": { "type": "string" } },
+        "partial_credit": { "type": "boolean" },
+        "aliases": { "type": "object" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "标注完成的用例必须有提示词、真值与评分规则；候选用例三者皆可缺省。",
+      "if": { "properties": { "status": { "const": "labeled" } }, "required": ["status"] },
+      "then": { "required": ["prompt", "scoring", "ground_truth"] }
+    }
+  ]
+}

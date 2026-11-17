@@ -1,4 +1,4 @@
-// 日记的调度：什么时候写、写哪一天、失败就静默。
+﻿// 日记的调度：什么时候写、写哪一天、失败就静默。
 // 三类内容共用一套存储：每天一篇（daily）、每周一段回顾（weekly）、节日一封信（letter）。
 import { readFile, writeFile } from 'node:fs/promises';
 
@@ -9,7 +9,7 @@ import { decide, dayKey, shiftDay, dayRange, stableRoll } from '../lol-companion
 import { writeDiary, openingOf } from '../lol-companion/diary-write.mjs';
 import { absenceLevel, festivalOn, timeBand, anniversaryOf, toneGuidance } from '../lol-companion/diary-mood.mjs';
 import { promiseThreads, lineThread, mergeThreads, dueThreads, insightFor } from '../lol-companion/diary-threads.mjs';
-import { weekKey, isStale, rankCandidates, summarize, trendPrompt, acceptTerm } from '../lol-companion/diary-trends.mjs';
+import { weekKey, isStale, rankCandidates, summarize, trendPrompt, topicPrompt, acceptTerm, acceptTopic } from '../lol-companion/diary-trends.mjs';
 
 async function readRows(stateDir) {
   let text;
@@ -59,27 +59,40 @@ export function createDiary({ store, stateDir, query, ask, trendSource = null, r
     // 手工覆盖优先：想指定本周的说法时，改这个文件即可（{week,items}）。
     const manual = await readJson(join(stateDir, 'diary', 'trends-manual.json')).catch(() => null);
     if (manual?.week === weekKey(now()) && Array.isArray(manual.items)) {
-      const record = { week: manual.week, at: now(), items: rankCandidates(manual.items), source: 'manual' };
+      const record = { week: manual.week, at: now(), items: rankCandidates(manual.items), topics: (Array.isArray(manual.topics) ? manual.topics : []).map(acceptTopic).filter(Boolean).slice(0, 2), source: 'manual' };
       await store.saveTrends(record).catch(() => {});
       return summarize(record);
     }
     let texts = [];
     if (typeof trendSource === 'function') { try { texts = await trendSource(); } catch { texts = []; } }
     const prompt = trendPrompt(texts);
-    let items = [];
+    let items = [], topics = [];
+    const parseList = reply => {
+      const match = /\[[^\]]*\]/.exec(String(reply ?? ''));
+      try { const parsed = match ? JSON.parse(match[0]) : []; return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+    };
     if (prompt) {
       try {
-        const reply = await ask(prompt);
-        const match = /\[[^\]]*\]/.exec(String(reply ?? ''));
-        const parsed = match ? JSON.parse(match[0]) : [];
-        items = (Array.isArray(parsed) ? parsed : []).map(acceptTerm).filter(Boolean).slice(0, 3);
+        items = parseList(await ask(prompt)).map(acceptTerm).filter(Boolean).slice(0, 3);
       } catch (error) {
         // 教练正忙就下个 tick 再试，别把这一周记成「没有梗」。
         if (error?.status === 409) return summarize(saved);
         items = [];
       }
     }
-    const record = { week: weekKey(now()), at: now(), items };
+    // 没有热梗时补一条「这周网上在聊的游戏话题」：比硬塞过气梗安全，也更可能是真事。
+    if (!items.length) {
+      const second = topicPrompt(texts);
+      if (second) {
+        try {
+          topics = parseList(await ask(second)).map(acceptTopic).filter(Boolean).slice(0, 2);
+        } catch (error) {
+          if (error?.status === 409) return summarize(saved);
+          topics = [];
+        }
+      }
+    }
+    const record = { week: weekKey(now()), at: now(), items, topics };
     await store.saveTrends(record).catch(() => {});
     trace({ event: 'diary_trends', week: record.week, count: items.length });
     return summarize(record);
@@ -111,7 +124,7 @@ export function createDiary({ store, stateDir, query, ask, trendSource = null, r
     await store.saveThreads(threads);
   }
 
-  async function writeDaily(day, { rows, band, festival, anniversary, recent, trends = [] }) {
+  async function writeDaily(day, { rows, band, festival, anniversary, recent, trends = [], topics = [] }) {
     // 缺席按「那一天」算：隔了十天回来，回来那天的日记才该是委屈的。
     const absence = absenceFor(day, rows);
     const facts = await collectDay({ stateDir, day, query });
@@ -123,7 +136,7 @@ export function createDiary({ store, stateDir, query, ask, trendSource = null, r
     }
     const tone = toneGuidance({ absence, festival, band, anniversary });
     const echo = await echoFor(day);
-    const entry = await writeDiary({ day, facts, decision, role: role(), recent, ask, now, tone, trends, echo });
+    const entry = await writeDiary({ day, facts, decision, role: role(), recent, ask, now, tone, trends, topics, echo });
     const saved = await store.save(entry);
     await remember(saved, facts);
     trace({ event: 'diary_written', day, chars: saved.chars, topic: saved.topic, score: decision.score });
@@ -151,7 +164,8 @@ export function createDiary({ store, stateDir, query, ask, trendSource = null, r
         const anniversary = anniversaryOf({ today, first });
         const festival = festivalOn(today);
         const recent = () => recentOpenings();
-        const trends = (await refreshTrends()).items;
+        const trendsRecord = await refreshTrends();
+        const trends = trendsRecord.items, topics = trendsRecord.topics ?? [];
 
         // 1) 节日信：上午九点之后才发，一天一封，比日记正式。
         if (festival && !existing.has(today) && new Date(now()).getHours() >= 9 && written.length < maxWritesPerTick) {
@@ -204,7 +218,7 @@ export function createDiary({ store, stateDir, query, ask, trendSource = null, r
           if (existing.has(day)) continue;
           const facts = await collectDay({ stateDir, day, query });
           if (!facts.matches.length && !facts.selfChats.length && !facts.appChats) continue; // 那天没玩，没有可写的
-          const saved = await writeDaily(day, { rows, band, festival, anniversary, recent: recent(), trends });
+          const saved = await writeDaily(day, { rows, band, festival, anniversary, recent: recent(), trends, topics });
           if (saved) written.push(saved);
         }
       } catch (error) {

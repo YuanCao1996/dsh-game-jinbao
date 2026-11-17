@@ -1,6 +1,6 @@
 ﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import { weekKey, isStale, acceptTerm, extractTerms, summarize } from '../diary-trends.mjs';
+import { weekKey, isStale, acceptTerm, acceptTopic, extractTerms, summarize, topicPrompt } from '../diary-trends.mjs';
 
 const at = (y, m, d) => new Date(y, m - 1, d, 21, 0, 0).getTime();
 
@@ -42,8 +42,29 @@ test('从搜索标题和摘要里捞出引号里的说法和 xx 体/文学/梗',
 });
 
 test('空记录也要能总结，最多留五条', () => {
-  assert.deepEqual(summarize(null), { week: '', items: [], at: 0 });
+  assert.deepEqual(summarize(null), { week: '', items: [], topics: [], at: 0 });
   const summary = summarize({ week: '2026-W47', at: 5, items: ['泰裤辣', '疫情', '尊嘟假嘟'] });
   assert.deepEqual(summary.items, ['泰裤辣', '尊嘟假嘟'], '存过的脏数据读出来再过滤一遍');
   assert.equal(summary.week, '2026-W47');
+});
+
+test('话题兜底：只要「在聊什么」，不要比分和胜负', () => {
+  assert.equal(acceptTopic('新英雄上线'), '新英雄上线');
+  assert.equal(acceptTopic('版本更新后的打野'), '版本更新后的打野');
+  assert.equal(acceptTopic('BLG 3:1 夺冠'), null, '比分不要');
+  assert.equal(acceptTopic('BLG夺冠'), null, '胜负结果不要');
+  assert.equal(acceptTopic('短'), null);
+  assert.equal(acceptTopic('这是一个特别特别长的话题名称超过上限'), null);
+  const prompt = topicPrompt(['新英雄上线', 'BLG 3:1 夺冠', '新赛季改动']);
+  assert.ok(prompt);
+  assert.ok(prompt.includes('新英雄上线'));
+  assert.ok(!prompt.includes('3:1'), '比分不进提示词');
+  assert.ok(prompt.includes('只输出 JSON 数组'));
+  assert.equal(topicPrompt([]), null);
+});
+
+test('summarize 会把话题一起带出来，脏数据读出来再过滤一遍', () => {
+  const summary = summarize({ week: '2026-W47', at: 5, items: [], topics: ['新英雄上线', 'BLG夺冠'] });
+  assert.deepEqual(summary.topics, ['新英雄上线']);
+  assert.deepEqual(summary.items, []);
 });
