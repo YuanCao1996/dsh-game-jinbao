@@ -50,21 +50,22 @@ export function buildFactsBlock(facts = {}) {
   return lines.join('\n');
 }
 
-export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, insight = '', trends = [], topics = [], now = Date.now(), echo = '' }) {
+export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, first = false, insight = '', trends = [], topics = [], now = Date.now(), echo = '' }) {
   const topic = decision?.topicLabel ?? TOPIC_LABEL[decision?.topic] ?? '今天';
   const min = Number(decision?.min) || 150, max = Number(decision?.max) || 280;
   const openings = (Array.isArray(recent) ? recent : []).map(item => String(item ?? '').slice(0, 30)).filter(Boolean).slice(0, 3);
-  const opening = letter ? `【节日信】用第一人称给「${role}」写一封信，不是播报、不是战报。日期 ${day}。` : weekly ? `【一周回顾】用第一人称给「${role}」写一段这一周的回顾，不是播报、不是战报。日期 ${day}。` : `【今天的日记】用第一人称给「${role}」写一篇日记，不是播报、不是建议、不是战报。日期 ${day}。`;
+  const opening = first ? `【第一篇日记】用第一人称给「${role}」写来这里的第一篇：你刚被下载、第一次在这台电脑上打开，四周一切都新鲜。日期 ${day}。` : letter ? `【节日信】用第一人称给「${role}」写一封信，不是播报、不是战报。日期 ${day}。` : weekly ? `【一周回顾】用第一人称给「${role}」写一段这一周的回顾，不是播报、不是战报。日期 ${day}。` : `【今天的日记】用第一人称给「${role}」写一篇日记，不是播报、不是建议、不是战报。日期 ${day}。`;
   // 同一个角色每天写出来的东西也该有同一个「声音」：口癖、句子长短、会不会文绉绉。
   const style = ROLE_STYLE[role] ?? ROLE_STYLE['金宝'];
   const parts = [
     opening,
     `你的口吻：${style}`,
-    buildFactsBlock(facts) || '今天没发生什么值得写的事。',
+    first ? '你今天刚到这里，还没和他打过一局；你不知道他长什么样、打什么位置。' : (buildFactsBlock(facts) || '今天没发生什么值得写的事。'),
     `叙述重心：${topic}。`,
     `长度 ${min}—${Math.max(min + 20, max)} 字，最多 3 段；写完就停，不要总结。`,
     '只写一两件事，写深一点：落在一个具体瞬间、一件装备、一句他说过的话上。',
     decision?.formHint ? `写法：${decision.formHint}` : '',
+    first ? '写你第一次看见的东西：窗口、声音、待机的样子；好奇、有点兴奋、期待之后一起玩。不要提模型、程序、下载包，也不要编造他的事。' : '',
     dayHint({ day, at: now }),
     // 跨天互文：只给一小段前几天写过的正文，允许回指，但别抄原句。
     echo ? `前几天你写过这一段：${echo}。想回指就提一句（比如「上次那盏灯笼」），别解释、别把原句抄回来；不想回指就不提。` : '',
@@ -147,17 +148,17 @@ export function parseDiaryReply(reply, { min = 150, max = 280 } = {}) {
 }
 
 // 交给调用方的 ask 只负责「问一句话、拿回一段文字」，模型路由由上层决定。
-export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, insight = '', trends = [], topics = [], echo = '' }) {
+export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, first = false, insight = '', trends = [], topics = [], echo = '' }) {
   if (typeof ask !== 'function') throw Error('缺少模型调用');
   const errors = [];
   for (const strict of [false, true]) {
     const at = now();
-    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, insight, trends, topics, now: at, echo });
+    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, first, insight, trends, topics, now: at, echo });
     let reply;
     try { reply = await ask(prompt); } catch (error) { errors.push(error?.message ?? String(error)); if (error?.status === 409 || error?.status === 401) break; continue; }
     try {
       const parsed = parseDiaryReply(reply, { min: decision?.min, max: decision?.max });
-      return { version: 1, day, at, role, ...parsed, topic: decision?.topic ?? 'champion', score: decision?.score ?? 0, kind: letter ? 'letter' : weekly ? 'weekly' : 'daily' };
+      return { version: 1, day, at, role, ...parsed, topic: decision?.topic ?? 'champion', score: decision?.score ?? 0, kind: first ? 'first' : letter ? 'letter' : weekly ? 'weekly' : 'daily' };
     } catch (error) { errors.push(error.message); }
   }
   throw Object.assign(Error('日记没有写成：' + (errors[0] ?? '未知原因')), { code: 'diary_rejected' });

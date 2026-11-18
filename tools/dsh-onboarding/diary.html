@@ -396,7 +396,7 @@ function renderEntry(entry){
   $('diaryTitle').textContent=String(entry.title||'').trim()||'没有标题';
   const metaTime=$('diaryMetaTime');
   if(parseDay(day))metaTime.dateTime=day;else metaTime.removeAttribute('datetime');
-  const kindLabel={weekly:'一周回顾',letter:'节日信'}[String(entry.kind||'')]||'';
+  const kindLabel={weekly:'一周回顾',letter:'节日信',first:'第一篇'}[String(entry.kind||'')]||'';
   metaTime.textContent=(kindLabel?kindLabel+' · ':'')+fmtFull(day);
   const mood=String(entry.mood||'').trim();
   $('diaryMood').textContent=mood;

@@ -76,7 +76,7 @@ export function createDiaryStore({ stateDir }) {
         line: String(entry.line ?? '').trim().slice(0, 20),
         chars: [...body.replace(/\s+/g, '')].length,
         edited: entry.edited === true || /<del>/.test(body),
-        kind: ['daily','weekly','letter'].includes(entry.kind) ? entry.kind : 'daily',
+        kind: ['daily','weekly','letter','first'].includes(entry.kind) ? entry.kind : 'daily',
         role: String(entry.role ?? '金宝').slice(0, 12),
         topic: String(entry.topic ?? '').slice(0, 24),
         score: Number(entry.score) || 0,

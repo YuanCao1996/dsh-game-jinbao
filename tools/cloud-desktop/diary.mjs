@@ -1,4 +1,4 @@
-﻿// 日记的调度：什么时候写、写哪一天、失败就静默。
+// 日记的调度：什么时候写、写哪一天、失败就静默。
 // 三类内容共用一套存储：每天一篇（daily）、每周一段回顾（weekly）、节日一封信（letter）。
 import { readFile, writeFile } from 'node:fs/promises';
 
@@ -166,6 +166,25 @@ export function createDiary({ store, stateDir, query, ask, trendSource = null, r
         const recent = () => recentOpenings();
         const trendsRecord = await refreshTrends();
         const trends = trendsRecord.items, topics = trendsRecord.topics ?? [];
+
+        // 0) 第一篇：她刚来到这台电脑。只写一次，日期取「最早那篇的前一天」，没有旧篇就用今天。
+        const hasFirst = index.some(row => row.kind === 'first');
+        if (!hasFirst && written.length < maxWritesPerTick) {
+          // 她到这台电脑的时间：早于「最早一篇日记」和「最早一次对局」，取更早的那天再往前一天。
+          const playedDays = [...new Set(rows.map(row => dayKey(Number(row.at))))].sort();
+          const earliest = [playedDays[0], index.map(row => row.day).sort()[0]].filter(Boolean).sort()[0];
+          const firstDay = earliest ? shiftDay(earliest, -1) : today;
+          const tone = toneGuidance({ band, festival, anniversary });
+          const entry = await writeDiary({
+            day: firstDay,
+            facts: { day: firstDay, matches: [], selfChats: [], herLines: [] },
+            decision: { min: 150, max: 300, topic: 'first', score: 0, topicLabel: '刚到这里' },
+            role: role(), recent: await recent(), ask, now, tone, first: true,
+          });
+          const saved = await store.save(entry);
+          trace({ event: 'diary_first', day: firstDay, chars: saved.chars });
+          written.push(saved);
+        }
 
         // 1) 节日信：上午九点之后才发，一天一封，比日记正式。
         if (festival && !existing.has(today) && new Date(now()).getHours() >= 9 && written.length < maxWritesPerTick) {
