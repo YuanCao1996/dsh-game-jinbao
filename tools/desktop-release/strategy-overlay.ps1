@@ -1236,7 +1236,19 @@ try{
     $entries=@($controls.RichContent.Children|Where-Object {$_ -is [Windows.Controls.Border]})
     $names=0
     foreach($entry in $entries){foreach($node in @($entry.Child.Children[0].Children)){if([string]$node.Text -eq '金宝'){$names++}}}
-    $script:testResult.consecutiveSpeakerGrouped=($entries.Count -eq 3) -and ($names -eq 1)
+    # 单人对局：她的消息不再逐条标「金宝」（正文三条都在，只是没有说话人标签）。
+    $script:testResult.soloHidesCoachSpeaker=($entries.Count -eq 3) -and ($names -eq 0)
+    # 队伍群聊：仍然要标出谁在说话。
+    $script:snapshot=[pscustomobject]@{game='lol';advice='对局 08:32 · 安妮';teamChatMode='team';chatRows=@();thread=@(
+      [pscustomobject]@{role='assistant';origin='coach';text='群里的建议';at=1793717799000;dimension=''},
+      [pscustomobject]@{role='user';origin='team';displayName='阿伟';champion='盲僧';text='收到';at=1793717800000;dimension=''})}
+    Set-Tab 'advice';Update-OverlaySurface $true;$window.UpdateLayout()
+    $teamEntries=@($controls.RichContent.Children|Where-Object {$_ -is [Windows.Controls.Border]})
+    $teamNames=@()
+    foreach($entry in $teamEntries){foreach($node in @($entry.Child.Children[0].Children)){if(@('金宝','阿伟 · 盲僧') -contains [string]$node.Text){$teamNames+=[string]$node.Text}}}
+    $script:testResult.teamTimelineKeepsSpeaker=($teamNames -contains '金宝') -and ($teamNames -contains '阿伟 · 盲僧')
+    # 复原单人对局，后面的用例不受影响
+    $script:snapshot=$groupFixture;Set-Tab 'advice';Update-OverlaySurface $true;$window.UpdateLayout()
     # 类别标签：优先看阶段，其次按措辞归类，颜色各不相同。
     $script:testResult.categoryFromStage=((Get-OverlayCategory ([pscustomobject]@{stage='purchase';text='x'})).label -eq '出装') -and ((Get-OverlayCategory ([pscustomobject]@{stage='ace';text='x'})).label -eq '团战') -and ((Get-OverlayCategory ([pscustomobject]@{stage='augment';text='x'})).label -eq '符文')
     $script:testResult.categoryFromText=(Get-OverlayCategory ([pscustomobject]@{stage='';text='先补一件法穿鞋再打团'})).label -eq '出装' -and (Get-OverlayCategory ([pscustomobject]@{stage='';text='我们阵容要换线'})).label -eq '阵容'

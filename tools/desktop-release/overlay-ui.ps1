@@ -240,11 +240,14 @@ if(!$controls.RichContent){return}
     $timeText.Margin='0,0,6,3';$timeText.VerticalAlignment='Center'
     $header.Children.Add($timeText)|Out-Null
     # 说话人（同一个人连续说话时只说一次）。
-    $speakerName=if($row.origin -eq 'team' -and $row.displayName){[string]$row.displayName+$(if($row.champion){' · '+[string]$row.champion}else{''})}elseif($user){if($row.origin -eq 'phone'){'你 · 手机'}else{'你 · 电脑'}}elseif($row.failed){'本次未完成'}else{'金宝'}
+    # 单人对局里只有「你」和「她」两个说话人，面板本身就是她的：她的消息不再逐条标「金宝」。
+    # 队伍群聊必须知道谁在说话，所以那里照旧显示。
+    $soloTimeline=-not ([string]$script:snapshot.teamChatMode -eq 'team')
+    $speakerName=if($row.origin -eq 'team' -and $row.displayName){[string]$row.displayName+$(if($row.champion){' · '+[string]$row.champion}else{''})}elseif($user){if($row.origin -eq 'phone'){'你 · 手机'}else{'你 · 电脑'}}elseif($row.failed){'本次未完成'}elseif($soloTimeline){''}else{'金宝'}
     $speakerColor=if($row.failed){'#F5AD91'}elseif($highlight){'#E7BE79'}else{'#8FA0B0'}
     $repeatSpeaker=(-not $highlight) -and ($speakerName -eq $lastSpeaker)
     $lastSpeaker=if($highlight){''}else{$speakerName}
-    if(-not $repeatSpeaker){
+    if(-not $repeatSpeaker -and $speakerName){
      $speaker=New-OverlayLabel $speakerName 11 $speakerColor;$speaker.FontWeight='SemiBold';$speaker.Margin='0,0,6,3';$speaker.VerticalAlignment='Center'
      $header.Children.Add($speaker)|Out-Null
     }
