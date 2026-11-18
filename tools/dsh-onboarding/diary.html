@@ -1,4 +1,4 @@
-﻿<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金宝日记</title><style>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金宝日记</title><style>
 /* ── 物理层：纸色、墨色、赭石、发丝线。颜色锁定在这里，其余只用变量。 ── */
 :root{
   color-scheme:light;
@@ -421,7 +421,7 @@ function renderEntry(entry){
   }
 
   const edited=entry.edited===true||/<del>/.test(String(entry.body||''));
-  const editedNote=diaryEdited;
+  const editedNote=$('diaryEdited');
   if(editedNote)editedNote.hidden=!edited;
   const line=String(entry.line||'').trim();
   const lineBox=$('diaryLine');

@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -71,4 +71,34 @@ test('页面支持涂改、去年今天和动笔时间', async () => {
   assert.match(html, /diaryEdited/);
   assert.match(html, /<del>\$1<\/del>/);
   assert.match(html, /<style>/);
+});
+
+test('renderEntry 在最小 DOM 桩上能完整跑完（0.2.36–0.2.42 的「日记暂时读不出来」就是这么漏掉的）', async () => {
+  const html = await readFile(new URL('../diary.html', import.meta.url), 'utf8');
+  // 一个裸变量引用（editedNote=diaryEdited）只有真跑一遍函数才抓得到，字符串检查永远漏。
+  const script = /function renderEntry\(entry\)\{[\s\S]*?\r?\n\}\r?\n/.exec(html)?.[0];
+  assert.ok(script, '找不到 renderEntry');
+  const element = () => ({ hidden: true, textContent: '', innerHTML: '', dateTime: '', childElementCount: 0,
+    removeAttribute() {}, append() { this.childElementCount++; }, replaceChildren() { this.childElementCount = 0; } });
+  const ids = new Map();
+  const byId = id => { if (!ids.has(id)) ids.set(id, element()); return ids.get(id); };
+  const context = {
+    $: byId,
+    selected: '2026-11-15',
+    parseDay: () => new Date('2026-11-15T12:00:00'),
+    fmtFull: () => '2026年11月15日',
+    setPanel: () => {},
+    escape: value => String(value).replace(/&/g, '&amp;'),
+    toDate: () => new Date('2026-11-15T12:13:00'),
+    fmtWhen: () => '2026-11-15 12:13',
+    document: { createElement: () => element() },
+  };
+  vm.runInNewContext(script, context);
+  // 坏版本在这一行抛 ReferenceError；好版本走到底。
+  vm.runInNewContext('renderEntry({day:"2026-11-15",title:"测试",mood:"想念",paragraphs:["一段。"],edited:true,line:"明天见",at:1,role:"金宝",kind:"daily"})', context);
+  assert.equal(byId('diaryTitle').textContent, '测试');
+  assert.equal(byId('diaryAt').textContent, '2026-11-15 12:13');
+  assert.equal(byId('diaryEdited').hidden, false, 'edited=true 时涂改标记要显示');
+  assert.equal(byId('diaryLine').textContent, '明天见');
+  assert.ok(!/editedNote\s*=\s*diaryEdited;/.test(html), '不许再出现裸变量引用');
 });
