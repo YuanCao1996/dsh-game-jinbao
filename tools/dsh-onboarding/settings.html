@@ -20,7 +20,7 @@
 <details><summary>其他登录方式</summary><button id="wechat" hidden>微信扫码登录</button><label for="activationCode">已有电脑激活码</label><input id="activationCode" type="password" autocomplete="off" placeholder="JB-…"><button id="activate">激活并登录</button></details></section>
 <section><h2>模型服务</h2><label for="mode">调用方式</label><select id="mode"><option value="cloud">金宝官方服务（默认）</option><option id="byokChoice" value="byok">使用自己的 API Key</option><option value="demo">仅查看日志（不调用模型）</option></select><p id="official">使用邮箱登录后调用官方服务，无需自己提供模型密钥。已有账号沿用原额度。</p><div id="byok" hidden><label for="baseUrl">OpenAI 兼容 API 地址</label><input id="baseUrl" placeholder="https://模型厂商地址/v1"><label for="model">模型 ID</label><input id="model" autocomplete="off"><label for="apiKey">API Key</label><input id="apiKey" type="password" autocomplete="new-password" placeholder="已保存时留空即可"><p>密钥按当前 Windows 用户加密保存，不经金宝模型服务器。需安装 DSH Desktop；无需另开 DSH 窗口。</p><button id="installDsh" class="secondary" hidden>下载并安装 DSH 官方引擎</button><p id="nativeInstallStatus"></p><details><summary>DSH 自定义安装路径（可选）</summary><label for="desktopPath">DeepSeek Harness.exe 路径</label><input id="desktopPath" placeholder="自动检测已安装的 DSH Desktop"></details></div><button id="save" hidden>保存设置</button></section>
 <section id="genericPanel" hidden><h2>其他电脑游戏</h2><p>LoL 继续自动检测。其他游戏可选择一个窗口，允许金宝在该窗口前台时截图；官方模式按需上传给云端模型，自有密钥模式发给你配置的模型。DSH 会尝试识别游戏和模式，识别不确定时会说明。</p><button id="listWindows">查找游戏窗口</button><select id="gameWindow"></select><button id="startObservation">允许并开始观察此窗口</button><button id="stopObservation" class="secondary">停止观察</button><p id="observationStatus"></p><p id="genericIdentityStatus" role="status"></p><details><summary>核对游戏身份与对局</summary><p>多帧印证仍是画面观察。识别不准时可手动修正；自动阶段变化只在重复观察支持时分局。未观察到结算时，可手动开始新一局，旧日志保留。</p><label for="genericGameName">游戏名</label><input id="genericGameName" maxlength="80" placeholder="留空则确认当前可见推测"><label for="genericGameMode">模式（可选）</label><input id="genericGameMode" maxlength="80"><button id="confirmGenericIdentity" class="secondary">确认游戏与模式</button><button id="newGenericRound" class="secondary">当前窗口开始新一局</button></details><details><summary>读取已有游戏日志（无需 ADB）</summary><p>可读取本机游戏的 .log / .jsonl 文件；已标记 LoL 或王者的事件沿用对应页面，其余日志由 DSH 按需检索并尝试识别游戏与模式。所选路径会保存在本机。</p><label for="logFile">游戏日志文件完整路径</label><input id="logFile" placeholder="D:\Games\example\game.log"><button id="startLogSource">读取此日志</button><button id="stopLogSource" class="secondary">停止读取</button><p id="logSourceStatus"></p></details></section><section><h2>连接手机 App</h2><p>点击生成 8 位纯数字配对码。在手机金宝 App 的「我 → 连接电脑」中输入并确认，随后打开「电脑对局」。电脑邮箱和手机微信账号不用一致；配对不改变电脑模型账号或额度。</p><button id="login">首次配对 / 连接其他手机</button><div id="code" class="code" style="user-select:all" role="status" aria-live="polite"></div><p id="syncStatus">正在检查连接状态…</p><button id="syncEnable">恢复同步</button><button id="syncUnlink" class="secondary" hidden>暂停同步</button><button id="syncForget" class="secondary" hidden>解除配对</button><p>同一设备只需首次输入一次配对码。配对码 5 分钟内有效；重启、更新、切换模型账号和暂停同步都保留设备配对，恢复同步时自动连接。解除配对或清除本机数据后才需重新配对，电脑需保持在线。旧版 App 已支持此配对码，无需更换安装包。</p><a id="mobileLink" hidden></a></section>
-<section><h2>用户偏好记忆</h2><p>保存你在聊天中明确要求记住的偏好，新对局可继续使用；按游戏分别管理，存放在当前 Windows 用户的数据目录。</p><select id="memoryGame"><option value="lol">英雄联盟</option><option value="wzry">王者荣耀</option><option value="generic">通用游戏</option></select><button id="memoryRead">查看已保存偏好</button><p id="memoryStatus"></p><div id="memoryRows"></div></section><section><h2>测试功能</h2><p>下面这些还没做完实战验收，默认关闭。改动在<strong>下次启动</strong>金宝后生效。</p><label class="check"><input type="checkbox" id="teamRoomsToggle"> 开黑队伍（测试）</label><p id="teamRoomsStatus">读取中…</p></section>
+<section><h2>用户偏好记忆</h2><p>保存你在聊天中明确要求记住的偏好，新对局可继续使用；按游戏分别管理，存放在当前 Windows 用户的数据目录。</p><select id="memoryGame"><option value="lol">英雄联盟</option><option value="wzry">王者荣耀</option><option value="generic">通用游戏</option></select><button id="memoryRead">查看已保存偏好</button><p id="memoryStatus"></p><div id="memoryRows"></div></section><section><h2>测试功能</h2><p>下面这些还没做完实战验收，默认关闭。<strong>改动立即生效</strong>，不用重启。</p><label class="check"><input type="checkbox" id="teamRoomsToggle"> 开黑队伍（测试）</label><p id="teamRoomsStatus">读取中…</p></section>
 <section><h2>版本与更新</h2><p id="version"></p><h3 id="updateTitle">自动更新</h3><p id="updateStatus" role="status" aria-live="polite"></p><progress id="updateProgress" max="100" value="0" style="width:100%" hidden></progress><p id="updateDetail"></p><button id="checkUpdate">检查更新</button><button id="applyUpdate" hidden>准备安装更新</button><button id="cancelUpdate" class="secondary" hidden>取消自动安装</button><div id="applyConfirm" hidden><p>金宝将退出，下载和设置会保留。请先保存 DSH 中的工作并正常退出 DSH；关闭后金宝会自动安装并重新启动，无需再点启动脚本。</p><button id="confirmApply">确认准备安装</button><button id="dismissApply" class="secondary">暂不安装</button></div><section id="installedRelease"><h3 id="installedReleaseTitle">当前版本更新日志</h3><pre id="installedReleaseNotes"></pre><a href="https://github.com/YuanCao1996/dsh-jinbao-desktop/releases" target="_blank" rel="noopener noreferrer">查看历史版本更新日志</a></section><details id="releaseDetails" hidden><summary id="releaseSummary">新版本更新内容</summary><pre id="releaseNotes"></pre></details><p>后台下载不影响游戏，对局中暂不安装。也可以下次正常启动时自动更新。</p></section>
 <details class="panel"><summary>维护与诊断</summary><p>日常操作均可在此完成。修复会等待你正常退出 DSH，不会强制结束工作。</p><button id="check" class="secondary">刷新检测</button><button id="repair" class="secondary">修复扩展</button><button id="exit" class="secondary">退出金宝</button><p id="maintenance"></p><p id="teamCacheStatus" hidden></p><p id="teamUsageStatus" hidden></p><pre id="diagnostics"></pre><div id="testDiagnostics" hidden><p id="recordingStatus"></p><p>诊断只存本机，不含聊天正文、玩家名、凭据或截图。发现问题时先标记，测试后导出。导出包含最近三次启动的诊断记录，重启后也可导出。</p><select id="diagnosticKind"><option value="battle">战况不更新</option><option value="chat">聊天问题</option><option value="augments">海克斯识别</option><option value="overlay">窗口闪烁或消失</option><option value="shortcuts">快捷键问题</option><option value="other">其他问题</option></select><button id="markIssue" class="secondary">标记问题时间</button><button id="exportDiagnostics" class="secondary">导出诊断记录</button><p id="diagnosticFeedback" role="status" aria-live="polite"></p></div></details>
 
@@ -186,13 +186,23 @@ async function loadMemory(){const game=el('memoryGame').value,result=await api('
 el('memoryRead').onclick=()=>run(loadMemory);el('memoryGame').onchange=()=>run(loadMemory);
 el('syncEnable').onclick=()=>run(async()=>{await api('sync/enable',{});await refresh();message('已开启手机同步。',true);});el('syncUnlink').onclick=()=>run(async()=>{await api('sync/disable',{});await refresh();message('已暂停手机同步。',true);});
 let teamToggleLoaded=false;
+// 开关一变，侧栏入口立刻跟着可用/禁用，不用刷新页面。
+function syncTeamNav(enabled){
+  const nav=document.getElementById('navTeamRoom');
+  if(!nav)return;
+  nav.classList.toggle('nav-disabled',!enabled);
+  nav.setAttribute('aria-disabled',enabled?'false':'true');
+  nav.title=enabled?'':'需要先在「更新与诊断 → 测试功能」里打开';
+  if(typeof latest==='object'&&latest)latest.teamSupported=enabled;
+}
 async function refreshTeamToggle(){
  const toggle=document.getElementById('teamRoomsToggle'),status=document.getElementById('teamRoomsStatus');
  if(!toggle||!status)return;
  try{
   const tr=await api('team/settings');
   toggle.checked=tr.enabled===true;
-  status.textContent=tr.enabled===true?(tr.active===true?'已开启。':'已保存，重启金宝后生效。'):'未开启。（开启后需要重启金宝）';
+  status.textContent=tr.enabled===true?(tr.active===true?'已开启，立即可用。':'已保存，但没启动成功，稍后再试一次。'):'未开启。';
+  syncTeamNav(tr.active===true);
  }catch(_){ status.textContent='开关状态读取失败，可稍后重试。'; }
 }
 function renderUpdate(s){const u=s.update||{},a=s.updateApply||{},r=s.updateResult,applying=['requested','waiting-host','applying'].includes(a.state)&&Date.now()-a.at<31*60*1000,busy=['checking','downloading','verifying','extracting'].includes(u.state);
@@ -342,14 +352,15 @@ document.getElementById('teamRoomsToggle')?.addEventListener('change',event=>{
  const input=event.currentTarget; const next=input.checked; input.disabled=true;
  api('team/settings',{enabled:next}).then(r=>{
   const status=document.getElementById('teamRoomsStatus');
-  if(status)status.textContent=r.enabled?'已保存，重启金宝后生效。':'已关闭，重启金宝后生效。';
+  if(status)status.textContent=r.enabled?(r.active?'已开启，立即可用。':'已保存，但没启动成功，稍后再试一次。'):'未开启。';
+  syncTeamNav(r.active===true);
  }).catch(()=>{ input.checked=!next; const status=document.getElementById('teamRoomsStatus'); if(status)status.textContent='保存失败，请稍后重试。'; }).finally(()=>{ input.disabled=false; });
 });
 document.getElementById('navTeamRoom')?.addEventListener('click',event=>{
  if(event.currentTarget.getAttribute('aria-disabled')!=='true')return;
  event.preventDefault();
  const box=document.getElementById('message');
- if(box){box.className='ok';box.textContent='开黑队伍还在测试：到「更新与诊断 → 测试功能」勾选，重启金宝后生效。';}
+ if(box){box.className='ok';box.textContent='开黑队伍还在测试：到「更新与诊断 → 测试功能」勾选，立即生效。';}
 });
 // 首次使用仍然自动打开一次引导；弹窗被拦截时把侧边栏入口加粗提示。
 const autoKey='jinbao-welcome-auto';

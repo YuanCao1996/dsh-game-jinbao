@@ -316,10 +316,17 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
  });
  const phoneSync=await createPhoneSync({stateDir,view:overlay.view,ask:overlay.ask,getToken:syncToken,serviceBaseUrl:service,fetchImpl});
  const memories=userMemory??createUserMemory({stateDir});
- const team=teamRooms?await createTeamBridge({stateDir,serviceBaseUrl:service,getToken:()=>resolve('cloud'),getFacts:()=>overlay.getTeamFacts(),fetchImpl,
+ // 开黑桥可以随时建/拆：设置页打开开关就立刻生效，不用重启。
+ const teamOptions={stateDir,serviceBaseUrl:service,getToken:()=>resolve('cloud'),getFacts:()=>overlay.getTeamFacts(),fetchImpl,
   localHost:teamHostPreview&&runtimeId==='standalone'?{credentials,getConfig:async()=>({...config}),getKey:()=>resolve('byok'),cacheStore:teamCacheStore,cacheReports:teamCacheReports,usageOutbox:teamUsageOutbox}:undefined,
-  applyConfirmation:input=>input.dismiss||input.timeoutDefault?overlay.confirm(input):overlay.confirmTeamSelection(input)}):null;
- const teamRoutes=team?createTeamLocalRoutes(team):null;
+  applyConfirmation:input=>input.dismiss||input.timeoutDefault?overlay.confirm(input):overlay.confirmTeamSelection(input)};
+ let team=null,teamRoutes=null;
+ async function setTeamEnabled(enabled){
+  if(enabled&&!team){team=await createTeamBridge(teamOptions);teamRoutes=createTeamLocalRoutes(team);}
+  else if(!enabled&&team){const previous=team;team=null;teamRoutes=null;try{await previous.close();}catch{}}
+  return !!team;
+ }
+ if(teamRooms)await setTeamEnabled(true);
  const server=http.createServer(async(req,res)=>{
   const expectedHost='127.0.0.1:'+server.address().port;
   if(req.headers.host!==expectedHost){send(res,403,{error:'invalid_host'});return;}
@@ -428,7 +435,12 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
     const value=await body(req,512);
     if(typeof value.enabled!=='boolean'||Object.keys(value).length!==1)throw error(400);
     const flag=await writeTeamFlag(stateDir,{enabled:value.enabled});
-    send(res,200,{...flag,active:!!team,requiresRestart:flag.enabled!==!!team});return;
+    let live=!!team;
+    if(flag.enabled!==live){
+      try{live=await setTeamEnabled(flag.enabled);}
+      catch(error){send(res,503,{...flag,active:!!team,error:'开黑队伍启动失败，稍后重试或重启金宝。'});return;}
+    }
+    send(res,200,{...flag,active:live,requiresRestart:false});return;
    }
    if(teamRoutes&&await teamRoutes(req,res))return;
    // 登录剩余有效期：设置页据此提示「还剩 X 小时，重启应用会自动续期」。
