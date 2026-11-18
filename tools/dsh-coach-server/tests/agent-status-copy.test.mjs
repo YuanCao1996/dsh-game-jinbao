@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -34,7 +34,7 @@ test('an unknown tool still speaks instead of falling back to "organising an ans
 });
 
 test('the opening step and the completion step are distinct', async () => {
-  assert.equal(await labelFor('start'), '正在想这局该怎么打');
+  assert.equal(await labelFor('start'), '思考中');
   assert.equal(await labelFor('complete'), '');
 });
 

@@ -1,4 +1,4 @@
-import {writeFile,rename,mkdir,rm} from 'node:fs/promises';
+﻿import {writeFile,rename,mkdir,rm} from 'node:fs/promises';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -29,7 +29,7 @@ export function createAgentStatus(stateDir,game,match){
  let last=Promise.resolve();
  return (phase,name)=>{
   // 失败原因必须原样透出：它比任何文案优化都重要。
-  const label=phase==='start'?'正在想这局该怎么打' :phase==='error'?'模型请求失败，等待恢复；可在设置查看诊断' :phase==='complete'?'' :phase==='tool'||name?copy(ACTIONS[name]??FALLBACK_ACTION)+'…' :'理一下思路';
+  const label=phase==='start'?'思考中' :phase==='error'?'模型请求失败，等待恢复；可在设置查看诊断' :phase==='complete'?'' :phase==='tool'||name?copy(ACTIONS[name]??FALLBACK_ACTION)+'…' :'理一下思路';
   const value={game,match,phase,label,at:Date.now()};
   last=(queues.get(stateDir)??last).catch(()=>{}).then(async()=>{await mkdir(stateDir,{recursive:true});const file=join(stateDir,'agent-status.json'),tmp=file+'.'+randomUUID()+'.tmp';try{await writeFile(tmp,JSON.stringify(value),{mode:0o600});for(let attempt=0;;attempt++){try{await rename(tmp,file);break;}catch(error){if(attempt>=2||!['EPERM','EACCES','EBUSY'].includes(error.code))throw error;await sleep(20);}}}finally{await rm(tmp,{force:true}).catch(()=>{});}}).catch(()=>{});
   queues.set(stateDir,last);const task=last;void task.finally(()=>{if(queues.get(stateDir)===task)queues.delete(stateDir);});return last;
