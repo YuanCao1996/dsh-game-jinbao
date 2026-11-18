@@ -67,7 +67,7 @@ export function buildPrompt({ day, facts, decision, role = '金宝', recent = []
     decision?.formHint ? `写法：${decision.formHint}` : '',
     first ? '写你第一次看见的东西：窗口、声音、待机的样子；好奇、有点兴奋、期待之后一起玩。不要提模型、程序、下载包，也不要编造他的事。' : '',
     first && machine ? `你第一次打量这台电脑，看到：${machine}。可以挑一两样说你的印象（宽敞还是挤、风扇声、屏幕亮不亮），但不要列参数表。` : '',
-    dayHint({ day, at: now }),
+    dayHint({ day, at: first ? 0 : now }),
     // 跨天互文：只给一小段前几天写过的正文，允许回指，但别抄原句。
     echo ? `前几天你写过这一段：${echo}。想回指就提一句（比如「上次那盏灯笼」），别解释、别把原句抄回来；不想回指就不提。` : '',
     '最多可以有一处涂改：写成 <del>原本写的</del>改成这样；不是每篇都要有。',

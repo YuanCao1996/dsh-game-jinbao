@@ -1,4 +1,4 @@
-// 语气档：她今天是什么心情，取决于「多久没见」「最近是不是来得少了」「今天是什么日子」「现在几点」。
+﻿// 语气档：她今天是什么心情，取决于「多久没见」「最近是不是来得少了」「今天是什么日子」「现在几点」。
 // 全部是纯函数，方便单测，也保证同一天重跑得到同一个档位。
 export const FESTIVALS = [
   { key: 'new-year', month: 1, day: 1, label: '元旦' },
@@ -101,7 +101,7 @@ export function clockHint(at) {
 export function dayHint({ day, at }) {
   const weekday = weekdayOf(day);
   const season = seasonOf(day);
-  const clock = clockHint(at);
+  const clock = at ? clockHint(at) : '';
   const pieces = [weekday, season && season + '了'].filter(Boolean).join('、');
   return [pieces ? '今天是' + pieces : '', clock ? '你动笔时是 ' + clock : ''].filter(Boolean).join('；');
 }

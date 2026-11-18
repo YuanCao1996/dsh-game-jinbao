@@ -115,3 +115,11 @@ test('涂改只放行一处 <del>，其它标签一律扒掉', () => {
   assert.equal(parsed.edited, true);
   assert.ok(parsed.chars <= 450);
 });
+
+test('第一篇不带「动笔时是几点」（它是补写的，写的是那一天）', () => {
+  const decision = decide({ facts, day: facts.day });
+  const prompt = buildPrompt({ day: facts.day, facts, decision, first: true, now: Date.parse('2026-11-18T21:00:00') });
+  assert.match(prompt, /第一篇/);
+  assert.ok(!prompt.includes('动笔时是'), '第一篇不写当前钟点：' + prompt);
+  assert.match(prompt, /周日/, '星期仍然来自那一天');
+});
