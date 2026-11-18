@@ -9,6 +9,7 @@ import{createWebSearch}from'./web-search.mjs';
 import{createStandaloneUpdates}from'./updates.mjs';
 import{createDiary}from'./diary.mjs';
 import{createDiaryStore}from'../dsh-onboarding/diary-store.mjs';
+import{readTeamFlag}from'../team-room/settings-flag.mjs';
 import{dayKey}from'../lol-companion/diary-day.mjs';
 import{roleById}from'./roles.mjs';
 import{createDesktopObservation}from'./observation.mjs';
@@ -97,7 +98,11 @@ const countDiaryQuestion=async()=>{try{await mkdir(join(stateDir,'diary'),{recur
 const agent={...rawAgent,ask:request=>pacing.run(request,async admitted=>{if(admitted.topic==='chat')void countDiaryQuestion();const role=speech.role(),answer=await rawAgent.ask({...admitted,role});if(role!==speech.role())throw Object.assign(Error('Role changed'),{status:409,code:'agent_preempted'});if(admitted.topic==='chat')speech.chat({...admitted,text:answer});return answer;})};
 let restartRequested=false;
 const updates=createStandaloneUpdates({root,stateDir,restart:process.connected?async()=>{await writeFile(join(stateDir,'overlay-control.json'),JSON.stringify({action:'exit',at:Date.now()}));restartRequested=true;setTimeout(()=>void stop(),500);}:null});
-setup=await createSetupServer({credentials,stateDir,port,cloudAgent:agent,localAgent:agent,runtimeId:'standalone',teamRooms:args.includes('--team-rooms'),teamHostPreview:args.includes('--team-byok-host')&&!!teamCacheStore&&!!teamCacheReports&&!!teamUsageOutbox,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError:!teamUsageOutbox,teamCacheError:!teamCacheStore||!teamCacheReports,activity,diagnostics,speech,canAutoRequest:pacing.canRequest,prepareModel:async config=>{if(config.mode==='byok')try{await locateNativeModules({stateDir,desktopPath:config.desktopPath});const validation=await createLocalAgent({stateDir,getConfig:()=>config,getKey:async()=>'',getContext:async()=>({})});await validation.close();}catch{throw Object.assign(Error('Local DSH unavailable'),{status:409,code:'local_dsh_unavailable'});}},onModelChange:()=>agent.reconfigure(),updateController:updates,observation,nativeInstaller,logSource,userMemory,diary});
+// 测试功能开关：命令行参数优先（测试用），其次看设置页写的 team-rooms.json，下次启动生效。
+const teamFlag=await readTeamFlag(stateDir).catch(()=>({enabled:false,byokHost:false}));
+const teamRoomsEnabled=args.includes('--team-rooms')||teamFlag.enabled;
+const teamByokEnabled=args.includes('--team-byok-host')||teamFlag.byokHost;
+setup=await createSetupServer({credentials,stateDir,port,cloudAgent:agent,localAgent:agent,runtimeId:'standalone',teamRooms:teamRoomsEnabled,teamHostPreview:teamByokEnabled&&!!teamCacheStore&&!!teamCacheReports&&!!teamUsageOutbox,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError:!teamUsageOutbox,teamCacheError:!teamCacheStore||!teamCacheReports,activity,diagnostics,speech,canAutoRequest:pacing.canRequest,prepareModel:async config=>{if(config.mode==='byok')try{await locateNativeModules({stateDir,desktopPath:config.desktopPath});const validation=await createLocalAgent({stateDir,getConfig:()=>config,getKey:async()=>'',getContext:async()=>({})});await validation.close();}catch{throw Object.assign(Error('Local DSH unavailable'),{status:409,code:'local_dsh_unavailable'});}},onModelChange:()=>agent.reconfigure(),updateController:updates,observation,nativeInstaller,logSource,userMemory,diary});
 const version=JSON.parse(await readFile(join(root,'package.json'),'utf8')).version+' (独立预览)';
 // Reuse the server's existing IP-based trial seats. A remembered login or an
 // explicit local-mode choice always wins; exhausted seats fall back to email UI.

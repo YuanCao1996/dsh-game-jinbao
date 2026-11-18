@@ -21,6 +21,7 @@ import { createPhoneSync } from './phone-sync.mjs';
 import {chatFailureMessage} from './chat-errors.mjs';
 import {createUserMemory} from '../cloud-desktop/user-memory.mjs';
 import { createTeamBridge } from '../team-room/bridge.mjs';
+import { readTeamFlag, writeTeamFlag } from '../team-room/settings-flag.mjs';
 import { createTeamLocalRoutes, serveTeamPage } from '../team-room/local-routes.mjs';
 import { createDesktopExploration } from './exploration.mjs';
 import { currentHeroSuggestion, currentModeSuggestion } from './exploration-evidence.mjs';
@@ -419,6 +420,15 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
    }
    if(!same(req.headers['x-jinbao-setup'],nonce)){send(res,403,{error:'设置页面已失效，请从金宝重新打开设置页面。'});return;}
    if(req.headers.origin&&req.headers.origin!=='http://'+expectedHost)throw error(403);
+   // 测试功能开关：写文件，下次启动生效；这里只负责读写，不改变当前进程是否已启用。
+   if(req.url==='/api/team/settings'&&(req.method==='GET'||req.method==='POST')){
+    if(req.method==='GET'){send(res,200,{...await readTeamFlag(stateDir),active:!!team});return;}
+    if(!String(req.headers['content-type']).startsWith('application/json'))throw error(400);
+    const value=await body(req,512);
+    if(typeof value.enabled!=='boolean'||Object.keys(value).length!==1)throw error(400);
+    const flag=await writeTeamFlag(stateDir,{enabled:value.enabled});
+    send(res,200,{...flag,active:!!team,requiresRestart:flag.enabled!==!!team});return;
+   }
    if(teamRoutes&&await teamRoutes(req,res))return;
    // 登录剩余有效期：设置页据此提示「还剩 X 小时，重启应用会自动续期」。
    if(req.url==='/api/login-lifetime'&&req.method==='GET'){
