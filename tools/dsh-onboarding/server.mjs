@@ -22,6 +22,7 @@ import {chatFailureMessage} from './chat-errors.mjs';
 import {createUserMemory} from '../cloud-desktop/user-memory.mjs';
 import { createTeamBridge } from '../team-room/bridge.mjs';
 import { readTeamFlag, writeTeamFlag } from '../team-room/settings-flag.mjs';
+import { savePort } from '../shared/port-preference.mjs';
 import { createTeamLocalRoutes, serveTeamPage } from '../team-room/local-routes.mjs';
 import { createDesktopExploration } from './exploration.mjs';
 import { currentHeroSuggestion, currentModeSuggestion } from './exploration-evidence.mjs';
@@ -848,7 +849,20 @@ if(input.clickThrough!==undefined&&typeof input.clickThrough!=='boolean')throw e
    send(res,200,value);
   }catch(e){if(res.headersSent){res.destroy();return;}if(e.code==='local_dsh_unavailable'){send(res,409,{error:'未找到兼容的 DSH 原生引擎。请使用此页的官方安装按钮安装或更新 DSH，或填写正确的程序路径；官方云端仍可使用。'});return;}const status=[400,401,403,404,409,410,413,429,502,503].includes(e.status)?e.status:503;send(res,status,{error:status===401?'请登录或配置模型密钥':status===403?'配置访问被拒绝':status===409?'请先配置模型或重新生成配对码':status===410?'配对码已过期':status===429?'首批体验名额已满或请求过于频繁':status===400?'配置格式不正确':'连接失败，请稍后重试'},status===429&&e.retryAfter?{'Retry-After':e.retryAfter}:undefined);}
  });
- await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});
+  const listenOn = preferred => new Promise((resolve, reject) => {
+    const onError = error => { server.off('listening', onListening); reject(error); };
+    const onListening = () => { server.off('error', onError); resolve(); };
+    server.once('error', onError); server.once('listening', onListening);
+    server.listen(preferred, '127.0.0.1');
+  });
+  try { await listenOn(port); }
+  catch (error) {
+    // 端口被别的程序占了就退回随机，不让金宝因为一个端口起不来。
+    if (error?.code !== 'EADDRINUSE' || !port) throw error;
+    await listenOn(0);
+  }
+  // 只有真的用上期望端口才记下来：临时被占用的那次不要污染下次的选择。
+  if (!port || server.address().port === port) await savePort(stateDir, server.address().port);
  const url='http://127.0.0.1:'+server.address().port+'/#'+nonce;
  await writeFile(join(stateDir,'settings-link.txt'),url,{mode:0o600});
  // Renew on a timer so the session no longer depends on someone opening the settings page.

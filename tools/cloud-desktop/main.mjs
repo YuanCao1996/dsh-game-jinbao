@@ -10,6 +10,7 @@ import{createStandaloneUpdates}from'./updates.mjs';
 import{createDiary}from'./diary.mjs';
 import{createDiaryStore}from'../dsh-onboarding/diary-store.mjs';
 import{readTeamFlag}from'../team-room/settings-flag.mjs';
+import{preferredPort,readSavedPort}from'../shared/port-preference.mjs';
 import{dayKey}from'../lol-companion/diary-day.mjs';
 import{roleById}from'./roles.mjs';
 import{createDesktopObservation}from'./observation.mjs';
@@ -32,7 +33,8 @@ import{createSupervisor}from'../jinbao-launcher/supervisor.mjs';import{createAge
 import{resolve,join}from'node:path';import{homedir}from'node:os';import{fileURLToPath}from'node:url';import{execFile}from'node:child_process';
 const root=fileURLToPath(new URL('../../',import.meta.url));const args=process.argv.slice(2);
 const stateDir=resolve(args.includes('--state')?args[args.indexOf('--state')+1]:join(homedir(),'.jinbao-cloud-preview'));
-const port=args.includes('--port')?Number(args[args.indexOf('--port')+1]):0;
+const portArg=args.includes('--port')?Number(args[args.indexOf('--port')+1]):null;
+const port=preferredPort({arg:portArg,saved:await readSavedPort(stateDir)});
 const instance=await claimInstance(stateDir);
 if(!instance.owned){
  if(!args.includes('--headless')){
