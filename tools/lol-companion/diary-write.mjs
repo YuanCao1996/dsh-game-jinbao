@@ -50,7 +50,7 @@ export function buildFactsBlock(facts = {}) {
   return lines.join('\n');
 }
 
-export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, first = false, insight = '', trends = [], topics = [], now = Date.now(), echo = '' }) {
+export function buildPrompt({ day, facts, decision, role = '金宝', recent = [], strict = false, tone = '', weekly = false, letter = false, first = false, machine = '', insight = '', trends = [], topics = [], now = Date.now(), echo = '' }) {
   const topic = decision?.topicLabel ?? TOPIC_LABEL[decision?.topic] ?? '今天';
   const min = Number(decision?.min) || 150, max = Number(decision?.max) || 280;
   const openings = (Array.isArray(recent) ? recent : []).map(item => String(item ?? '').slice(0, 30)).filter(Boolean).slice(0, 3);
@@ -66,6 +66,7 @@ export function buildPrompt({ day, facts, decision, role = '金宝', recent = []
     '只写一两件事，写深一点：落在一个具体瞬间、一件装备、一句他说过的话上。',
     decision?.formHint ? `写法：${decision.formHint}` : '',
     first ? '写你第一次看见的东西：窗口、声音、待机的样子；好奇、有点兴奋、期待之后一起玩。不要提模型、程序、下载包，也不要编造他的事。' : '',
+    first && machine ? `你第一次打量这台电脑，看到：${machine}。可以挑一两样说你的印象（宽敞还是挤、风扇声、屏幕亮不亮），但不要列参数表。` : '',
     dayHint({ day, at: now }),
     // 跨天互文：只给一小段前几天写过的正文，允许回指，但别抄原句。
     echo ? `前几天你写过这一段：${echo}。想回指就提一句（比如「上次那盏灯笼」），别解释、别把原句抄回来；不想回指就不提。` : '',
@@ -148,12 +149,12 @@ export function parseDiaryReply(reply, { min = 150, max = 280 } = {}) {
 }
 
 // 交给调用方的 ask 只负责「问一句话、拿回一段文字」，模型路由由上层决定。
-export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, first = false, insight = '', trends = [], topics = [], echo = '' }) {
+export async function writeDiary({ day, facts, decision, role = '金宝', recent = [], ask, now = Date.now, tone = '', weekly = false, letter = false, first = false, machine = '', insight = '', trends = [], topics = [], echo = '' }) {
   if (typeof ask !== 'function') throw Error('缺少模型调用');
   const errors = [];
   for (const strict of [false, true]) {
     const at = now();
-    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, first, insight, trends, topics, now: at, echo });
+    const prompt = buildPrompt({ day, facts, decision, role, recent, strict, tone, weekly, letter, first, machine, insight, trends, topics, now: at, echo });
     let reply;
     try { reply = await ask(prompt); } catch (error) { errors.push(error?.message ?? String(error)); if (error?.status === 409 || error?.status === 401) break; continue; }
     try {

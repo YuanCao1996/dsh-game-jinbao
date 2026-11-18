@@ -16,7 +16,7 @@ const GOOD = JSON.stringify({ title: '改口三次', body: BODY, mood: '心虚',
 // 让 now 落在 targetDay 的第二天中午：这样 tick 补写的正好是 targetDay。
 const nowFor = day => dayStart(day) + 86400e3 + 12 * 3600e3;
 
-async function fixture({ days = [], now, settings, chats = true, seedFirst = true, chatLines = ['打野来下路', '别急我来了', '这波我C', '你等我', '换线了', '走了'], trendSource = null } = {}) {
+async function fixture({ days = [], now, settings, chats = true, seedFirst = true, machineProfile = null, chatLines = ['打野来下路', '别急我来了', '这波我C', '你等我', '换线了', '走了'], trendSource = null } = {}) {
   const stateDir = await mkdtemp(join(tmpdir(), 'jinbao-diary-'));
   await mkdir(join(stateDir, 'game-memory'), { recursive: true });
   const rows = [];
@@ -34,7 +34,7 @@ async function fixture({ days = [], now, settings, chats = true, seedFirst = tru
   if (seedFirst) await store.save({ day: shiftDay(dayKey(now), -60), title: '第一篇', body: '我刚到这里。', mood: '平静', kind: 'first' });
   const clock = { at: now };
   const diary = createDiary({
-    store, stateDir, query, trendSource,
+    store, stateDir, query, trendSource, machineProfile,
     ask: async prompt => {
       asked.push(1); prompts.push(prompt);
       // 挑梗请求返回 JSON 数组，日记请求返回正常正文
@@ -240,6 +240,29 @@ test('跨天互文：从几天前那篇里挑一句话喂给模型', async () =>
   } finally { await rm(f.stateDir, { recursive: true, force: true }); }
 });
 
+test('第一篇会把这台电脑的配置讲给她听（也允许采集失败）', async () => {
+  const day = '2026-11-15';
+  const f = await fixture({
+    days: [], now: nowFor(day), seedFirst: false,
+    machineProfile: async () => ({ cpu: '12th Gen Intel(R) Core(TM) i5-12490F', cores: 6, threads: 12, memoryGb: 16, gpus: ['NVIDIA GeForce RTX 4060 Ti'], disks: [{ letter: 'C:', totalGb: 150, freeGb: 10 }], screen: '1920x1080', os: 'Microsoft Windows 11 家庭中文版' }),
+  });
+  try {
+    await f.diary.tick();
+    const prompt = f.prompts.find(item => item.includes('第一篇'));
+    assert.ok(prompt, '应当有第一篇的提示词');
+    assert.match(prompt, /i5-12490F/);
+    assert.match(prompt, /RTX 4060 Ti/);
+    assert.match(prompt, /不要列参数表/);
+  } finally { await rm(f.stateDir, { recursive: true, force: true }); }
+
+  const broke = await fixture({ days: [], now: nowFor(day), seedFirst: false, machineProfile: async () => { throw Error('boom'); } });
+  try {
+    const written = await broke.diary.tick();
+    assert.ok(written.some(entry => entry.kind === 'first'), '采集失败也要能写第一篇');
+    const prompt = broke.prompts.find(item => item.includes('第一篇'));
+    assert.ok(!prompt.includes('你第一次打量这台电脑'), '采集失败就不带配置那一段');
+  } finally { await rm(broke.stateDir, { recursive: true, force: true }); }
+});
 test('第一篇：空日记会写一篇「刚来到这里」，只写一次', async () => {
   const day = '2026-11-15';
   const f = await fixture({ days: [], now: nowFor(day), seedFirst: false });

@@ -1,4 +1,4 @@
-// 日记的调度：什么时候写、写哪一天、失败就静默。
+﻿// 日记的调度：什么时候写、写哪一天、失败就静默。
 // 三类内容共用一套存储：每天一篇（daily）、每周一段回顾（weekly）、节日一封信（letter）。
 import { readFile, writeFile } from 'node:fs/promises';
 
@@ -10,6 +10,7 @@ import { writeDiary, openingOf } from '../lol-companion/diary-write.mjs';
 import { absenceLevel, festivalOn, timeBand, anniversaryOf, toneGuidance } from '../lol-companion/diary-mood.mjs';
 import { promiseThreads, lineThread, mergeThreads, dueThreads, insightFor } from '../lol-companion/diary-threads.mjs';
 import { weekKey, isStale, rankCandidates, summarize, trendPrompt, topicPrompt, acceptTerm, acceptTopic } from '../lol-companion/diary-trends.mjs';
+import { collectMachineProfile, describeMachine } from '../lol-companion/machine-profile.mjs';
 
 async function readRows(stateDir) {
   let text;
@@ -23,7 +24,7 @@ async function readRows(stateDir) {
   return rows.filter(row => Number.isFinite(Number(row?.at)));
 }
 
-export function createDiary({ store, stateDir, query, ask, trendSource = null, role = () => '金宝', isIdle = () => true, now = Date.now, trace = () => {}, backfillDays = 3, retryMs = 60 * 1000, maxWritesPerTick = 2 }) {
+export function createDiary({ store, stateDir, query, ask, trendSource = null, machineProfile = null, role = () => '金宝', isIdle = () => true, now = Date.now, trace = () => {}, backfillDays = 3, retryMs = 60 * 1000, maxWritesPerTick = 2 }) {
   let running = false, lastAttempt = 0;
   const decided = new Set(); // 同一天的决定是确定的，别每次 tick 都重复记日志
 
@@ -175,11 +176,13 @@ export function createDiary({ store, stateDir, query, ask, trendSource = null, r
           const earliest = [playedDays[0], index.map(row => row.day).sort()[0]].filter(Boolean).sort()[0];
           const firstDay = earliest ? shiftDay(earliest, -1) : today;
           const tone = toneGuidance({ band, festival, anniversary });
+          let machine = '';
+          try { machine = describeMachine(await (machineProfile ?? collectMachineProfile)({ stateDir })); } catch { machine = ''; }
           const entry = await writeDiary({
             day: firstDay,
             facts: { day: firstDay, matches: [], selfChats: [], herLines: [] },
             decision: { min: 150, max: 300, topic: 'first', score: 0, topicLabel: '刚到这里' },
-            role: role(), recent: await recent(), ask, now, tone, first: true,
+            role: role(), recent: await recent(), ask, now, tone, first: true, machine,
           });
           const saved = await store.save(entry);
           trace({ event: 'diary_first', day: firstDay, chars: saved.chars });
