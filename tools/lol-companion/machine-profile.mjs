@@ -1,4 +1,4 @@
-// 第一篇日记里，她想「打量」一下这台电脑。只取粗粒度配置，不取序列号/MAC/用户名/路径。
+﻿// 第一篇日记里，她想「打量」一下这台电脑。只取粗粒度配置，不取序列号/MAC/用户名/路径。
 // 采集失败就当作不知道，不要让第一篇写不出来。
 import { execFile } from 'node:child_process';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
@@ -7,9 +7,36 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 
-const moduleDir = fileURLToPath(new URL('.', import.meta.url));
-const script = join(moduleDir, 'machine-profile.ps1');
 const exec = promisify(execFile);
+
+// 内嵌而不是外部 .ps1：构建时只会跟着 import 图走，外部脚本很容易漏进包里（漏过一次）。
+// -EncodedCommand 用 UTF-16LE base64，避免中文和引号在命令行上被拆坏。
+const PROFILE_SCRIPT = String.raw`
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
+function Safe([scriptblock]$block, $fallback) { try { & $block } catch { $fallback } }
+$cpu = Safe { Get-CimInstance Win32_Processor | Select-Object -First 1 } $null
+$cs = Safe { Get-CimInstance Win32_ComputerSystem } $null
+$os = Safe { Get-CimInstance Win32_OperatingSystem } $null
+$gpus = Safe { @(Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name }) } @()
+$disks = Safe { @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { [pscustomobject]@{ letter = $_.DeviceID; totalGb = [math]::Round($_.Size / 1GB); freeGb = [math]::Round($_.FreeSpace / 1GB) } }) } @()
+$screen = Safe { $v = Get-CimInstance Win32_VideoController | Where-Object { $_.CurrentHorizontalResolution -gt 0 } | Select-Object -First 1; if ($v) { '{0}x{1}' -f $v.CurrentHorizontalResolution, $v.CurrentVerticalResolution } else { $null } } $null
+$profile = [pscustomobject]@{
+  cpu = if ($cpu) { $cpu.Name } else { $null }
+  cores = if ($cpu) { $cpu.NumberOfCores } else { $null }
+  threads = if ($cpu) { $cpu.NumberOfLogicalProcessors } else { $null }
+  memoryGb = if ($cs) { [math]::Round($cs.TotalPhysicalMemory / 1GB) } else { $null }
+  manufacturer = if ($cs) { $cs.Manufacturer } else { $null }
+  model = if ($cs) { $cs.Model } else { $null }
+  os = if ($os) { $os.Caption } else { $null }
+  gpus = $gpus
+  disks = $disks
+  screen = $screen
+}
+[Console]::Out.Write(($profile | ConvertTo-Json -Compress -Depth 4))
+`;
+const encodedScript = () => Buffer.from(PROFILE_SCRIPT, 'utf16le').toString('base64');
 
 const GPU_NOISE = /(oray|idd|remote|basic|virtual|mirror|parsec|vmware|hyper-v|citrix|microsoft basic)/i;
 
@@ -104,7 +131,7 @@ export async function collectMachineProfile({ stateDir, run = exec, platform = p
   if (platform !== 'win32') return null;
   try {
     const ps = join(process.env.SystemRoot ?? 'C:/Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
-    const { stdout } = await run(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true, timeout: 20000, maxBuffer: 65536 });
+    const { stdout } = await run(ps, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedScript()], { windowsHide: true, timeout: 20000, maxBuffer: 65536 });
     const profile = sanitizeProfile(JSON.parse(String(stdout ?? '').trim()));
     if (profile) {
       await mkdir(stateDir, { recursive: true }).catch(() => {});
