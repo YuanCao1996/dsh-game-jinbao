@@ -436,15 +436,34 @@ function renderEntry(entry){
   if(roleName)$('diaryRole').textContent=roleName;
 }
 
+// 凭证随每次重启变化：旧标签页里的那串会 403。这里负责「要一个新的，再试一次」。
+let nonceBoot=null;
+async function ensureNonce(force){
+  if(!force&&/^[a-f0-9]{64}$/.test(nonce))return nonce;
+  if(nonceBoot)return nonceBoot;
+  nonceBoot=fetch('/api/setup-nonce',{cache:'no-store'}).then(r=>r.ok?r.json():{}).then(info=>{
+    const value=String((info&&info.nonce)||'');
+    if(/^[a-f0-9]{64}$/.test(value)){nonce=value;try{sessionStorage.setItem('jinbao-settings-setup',value);}catch(_){}}
+    return nonce;
+  }).catch(()=>nonce).finally(()=>{nonceBoot=null;});
+  return nonceBoot;
+}
 async function request(path,options){
   const init={method:(options&&options.method)||'GET',headers:{'X-Jinbao-Setup':nonce}};
   if(options&&options.body!=null){
     init.headers['Content-Type']='application/json';
     init.body=options.body;
   }
-  const response=await fetch(path,init);
+  await ensureNonce(false);
+  let response=await fetch(path,{...init,headers:{...init.headers,'X-Jinbao-Setup':nonce}});
+  if(response.status===403){
+    // 凭证随每次重启变化：换一个再试，别让用户只看到「读不出来」。
+    await ensureNonce(true);
+    response=await fetch(path,{...init,headers:{...init.headers,'X-Jinbao-Setup':nonce}});
+  }
   let data=null;
   try{data=await response.json()}catch(_){}
+  $('back').href='/#'+nonce;
   return {response,data};
 }
 
