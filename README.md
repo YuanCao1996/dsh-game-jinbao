@@ -42,10 +42,10 @@
 <div align="center">
 
 <a href="https://www.jinbaoai.top/assets/jinbao-demo-lol.mp4">
-<img src="docs/media/jinbao-demo-lol.gif" alt="英雄联盟海克斯大乱斗：三选一自动识别与推荐" width="760">
+<img src="docs/media/jinbao-demo-lol-detail.gif" alt="英雄联盟海克斯大乱斗：三张卡自动识别 + 金宝给出建议" width="1000">
 </a>
 
-<sub><b>实战录屏 · LOL 海克斯大乱斗</b>：三张卡自己认出来，结合已经拿到的强化说选哪个；点图看完整视频（含语音播报）。</sub>
+<sub><b>实战录屏 · LOL 海克斯大乱斗</b>：左＝三张卡自动认出来（放大），右＝金宝同时给出该选哪个；点图看完整视频（含语音播报）。</sub>
 
 </div>
 
