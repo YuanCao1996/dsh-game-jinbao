@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';
+﻿import test from 'node:test';import assert from 'node:assert/strict';
 import {createAutomaticPacing} from '../automatic-pacing.mjs';
 import {createCloudCoach} from '../auto-coach.mjs';
 import {agentQuestion} from '../cloud-agent.mjs';
@@ -29,5 +29,6 @@ test('blocked automatic coach does not read context, consume stages or invoke it
  let allowed=false,calls=0,reads=0;const current={game:'lol',match:'one',phase:'InProgress',gameSeconds:100,me:{champion:'安妮',level:5},enemies:[],offers:[],ownedAugments:[]};
  const coach=createCloudCoach({now:()=>10000,view:()=>({game:'lol',match:'one',updatedAt:10000}),canRequest:()=>allowed,getContext:async()=>{reads++;return {current};},agent:{ask:async()=>{calls++;return '先清线。';}},publish:async()=>{}});
  await coach.tick();assert.equal(reads,0);assert.equal(calls,0);allowed=true;await coach.tick();assert.equal(calls,1);coach.close();
- assert.match(agentQuestion({question:'当前建议',automatic:true,topic:'advice'}),/40—60字/);
+ assert.match(agentQuestion({question:'当前建议',automatic:true,topic:'advice'}),/2~3 个短句/);
+ assert.match(agentQuestion({question:'当前建议',automatic:true,topic:'advice'}),/每句不超过 20 字/);
 });

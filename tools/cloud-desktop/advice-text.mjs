@@ -1,4 +1,4 @@
-// 播报正文的收口：模型经常忽略"最多两句"的指令，真实数据里平均 167 字、最长 533 字，
+﻿// 播报正文的收口：模型经常忽略"最多两句"的指令，真实数据里平均 167 字、最长 533 字，
 // 35/66 条带段落。这里做确定性收敛——去 Markdown、去段落、只留两句话、上限 68 字。
 // 玩家不需要引用来源：实测模型会附上「来源Hexdata Patch 16.21，版本未经核实，仅供参考」
 // 和 hexdata.com.cn 链接。这两类尾巴一律在渲染前剥掉。
@@ -28,46 +28,64 @@ export function noiseBroadcast(text) {
 
 const SENTENCE_END = /[。！？!?.]/;
 
-export function condenseAdvice(text, { maxChars = 68, maxSentences = 2 } = {}) {
+// 玩家反馈（2026-11-19）：整段一次说完看着累，也不像真人说话。
+// 现在收敛成 2~3 个小节，每节一行、一句口语短句（默认 20 字内），像边想边说。
+const BEAT_END = /[。！？!?.；;]/;
+function splitClauses(value) {
+  const clauses = [];
+  let buffer = '';
+  for (const ch of value) {
+    buffer += ch;
+    if (BEAT_END.test(ch)) { if (buffer.trim()) clauses.push(buffer.trim()); buffer = ''; }
+  }
+  if (buffer.trim()) clauses.push(buffer.trim());
+  return clauses;
+}
+
+function clipBeat(text, limit) {
+  const chars = Array.from(text);
+  if (chars.length <= limit) return text.trim();
+  const clipped = chars.slice(0, limit).join('');
+  const cut = Math.max(clipped.lastIndexOf('，'), clipped.lastIndexOf('、'), clipped.lastIndexOf(','), clipped.lastIndexOf(' '));
+  const body = cut >= Math.floor(limit * 0.5) ? clipped.slice(0, cut) : clipped;
+  return body.replace(/[，,、\s；;。．.]+$/, '');
+}
+
+export function condenseAdvice(text, { beatChars = 20, maxBeats = 3, maxChars = 72 } = {}) {
   let value = stripSources(text);
   if (!value.trim()) return '';
-  // Markdown 与常见排版噪音
   value = value
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/\*\*|__|`/g, '')
     .replace(/^[\s>*#\-\u2022]+/gm, '')
-    .replace(/\r\n?/g, '\n');
-  // 段落压成一句话之间：换行/多空白一律变单个空格
-  value = value.replace(/\s+/g, ' ').trim();
+    .replace(/\r\n?/g, '\n')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!value) return '';
 
-  // 取前 maxSentences 句（以中文/西文句末标点切分，分号也算一句的边界）
-  const sentences = [];
-  let buffer = '';
-  for (const ch of value) {
-    buffer += ch;
-    if (SENTENCE_END.test(ch)) {
-      sentences.push(buffer.trim());
-      buffer = '';
-      if (sentences.length >= maxSentences) break;
+  const clauses = splitClauses(value);
+  const beats = [];
+  for (const clause of clauses) {
+    if (beats.length >= maxBeats) break;
+    if (Array.from(clause).length > beatChars) {
+      // 长句按标点切成小节；一刀切会丢信息，所以剩下的继续进下一节，直到用完 maxBeats。
+      let rest = clause;
+      while (rest && beats.length < maxBeats) {
+        const head = clipBeat(rest, beatChars);
+        if (!head) break;
+        beats.push(head);
+        const used = Array.from(head).length;
+        rest = Array.from(rest).slice(used).join('').replace(/^[，,、\s；;。．.]+/, '');
+      }
+      continue;
     }
+    beats.push(clause);
   }
-  if (sentences.length < maxSentences && buffer.trim()) sentences.push(buffer.trim());
-  // 中文句末不需要空格，西文句末需要，否则会粘成一个词
-  let result = sentences.reduce((acc, s, i) => (i && /^[A-Za-z]/.test(s) ? acc + ' ' : acc) + s, '');
 
-  if (result.length > maxChars) {
-    const chars = Array.from(result);
-    const clipped = chars.slice(0, maxChars).join('');
-    let cut = Math.max(clipped.lastIndexOf('，'), clipped.lastIndexOf('；'), clipped.lastIndexOf('、'), clipped.lastIndexOf(','));
-    let body = cut >= Math.floor(maxChars * 0.5) ? clipped.slice(0, cut) : clipped;
-    body = body.replace(/[，、；,;.。！？!?\s]+$/, '');
-    result = body + '。';
-  }
-  return result.trim();
+  const kept = beats.filter(Boolean);
+  while (kept.length && Array.from(kept.join('')).length > maxChars) kept.pop();
+  return kept.join('\n').trim();
 }
-
-
 // 「同一句话反复播」是真实事故（2026-11-18 一个海克斯回合连播三条同义建议）：
 // 2-gram Jaccard 只用来兜底「几乎逐字重复」，语义重复靠提示词里带上一句让它自己换说法。
 export function adviceSimilarity(a, b) {
