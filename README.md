@@ -39,6 +39,16 @@
 </tr>
 </table>
 
+<div align="center">
+
+<a href="https://www.jinbaoai.top/assets/jinbao-demo-lol.mp4">
+<img src="docs/media/jinbao-demo-lol.gif" alt="英雄联盟海克斯大乱斗：三选一自动识别与推荐" width="760">
+</a>
+
+<sub><b>实战录屏 · LOL 海克斯大乱斗</b>：三张卡自己认出来，结合已经拿到的强化说选哪个；点图看完整视频（含语音播报）。</sub>
+
+</div>
+
 ## 它长什么样
 
 它不是一个网页后台，而是贴着游戏窗口的一条悬浮窗。四种形态，随时收起：
