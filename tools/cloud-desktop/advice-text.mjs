@@ -71,3 +71,15 @@ export function adviceSimilarity(a, b) {
   for (const item of left) if (right.has(item)) shared++;
   return shared / (left.size + right.size - shared);
 }
+
+// 任务接口对单条 message 有上限，超了直接 413（2026-11-19 一晚连挂 102 次）。
+// 先丢掉末尾的可选提示（日记/上一句/情绪），再兜底截断——不能让整条建议因为一句提示作废。
+export function fitPromptBudget(value, limit = 2200) {
+  let text = String(value ?? '');
+  if (text.length <= limit) return text;
+  text = text
+    .replace(/\n（你昨天在日记里写过：[^\n]*）/g, '')
+    .replace(/\n（[^\n]{0,120}只在这一句里透一点情绪[^\n]*）/g, '')
+    .replace(/\n刚才你已经说过：[^\n]*/g, '');
+  return text.length > limit ? text.slice(0, limit) : text;
+}

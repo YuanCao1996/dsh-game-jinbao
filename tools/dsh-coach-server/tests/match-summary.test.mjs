@@ -1,6 +1,6 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { summarizeMatch, summaryKey, createMatchSummaryStore } from '../lib/match-summary.js';
@@ -69,4 +69,27 @@ test('matchWin 布尔值也要落成胜负（客户端只写这个字段）', ()
   assert.equal(summarizeMatch({ ...finished(), matchWin: false }).result, 'loss');
   assert.equal(summarizeMatch(finished()).result, null, '不知道就不要编');
   assert.equal(summarizeMatch({ ...finished(), matchWin: true, result: 'loss' }).result, 'loss', '显式 result 优先');
+});
+
+test('先落盘没有胜负、之后拿到 GameEnd 结果时补写回同一行', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'jinbao-summary-backfill-'));
+  try {
+    const store = createMatchSummaryStore(dir);
+    const early = summarizeMatch({ ...finished(), matchWin: null });
+    assert.equal(early.result, null);
+    assert.ok(store.record(early), '第一次先记下来（还没有胜负）');
+    assert.equal(store.record(early), null, '重复的不再追加');
+
+    const later = summarizeMatch({ ...finished(), matchWin: true });
+    assert.equal(later.result, 'win');
+    assert.ok(store.record(later), '拿到胜负后应当补写');
+
+    const rows = (await readFile(join(dir, 'match-history.jsonl'), 'utf8')).trim().split('\n');
+    assert.equal(rows.length, 1, '补写不能再加一行');
+    assert.equal(JSON.parse(rows[0]).result, 'win');
+
+    const again = createMatchSummaryStore(dir);
+    assert.equal(again.record(summarizeMatch({ ...finished(), matchWin: false })), null, '已有胜负就不再改写');
+    assert.equal(JSON.parse((await readFile(join(dir, 'match-history.jsonl'), 'utf8')).trim()).result, 'win');
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

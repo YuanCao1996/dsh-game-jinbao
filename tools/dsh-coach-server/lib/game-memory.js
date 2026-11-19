@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile, rename, appendFile, open, realpath } from 'node:fs/promises';
+﻿import { mkdir, readdir, readFile, writeFile, rename, appendFile, open, realpath } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { eventWindow } from './event-window.mjs';
@@ -119,7 +119,7 @@ export function createGameMemory(stateDir) {
     snapshot(state, knowledge = []) {
       if (!state?.game || !state.match) return Promise.resolve();
       const key = id(state.game, state.match);
-      const value = cleanGameData({ game: state.game, mode: state.mode, match: state.match, at: state.at, gameplayAt:state.gameplayAt, matchStartedAt: state.matchStartedAt,
+      const value = cleanGameData({ game: state.game, mode: state.mode, match: state.match, at: state.at, gameplayAt:state.gameplayAt, matchStartedAt: state.matchStartedAt, matchWin: state.matchWin === true ? true : state.matchWin === false ? false : null,
         gameSeconds: state.gameSeconds, ended: state.ended, phase: state.phase, me: state.me,
         allies: state.allies, enemies: state.enemies, bench: state.bench, offers: state.offers,
         offerHistory: state.offerHistory, ownedAugments: state.ownedAugments, revealedAugments: state.revealedAugments ?? [], augmentRounds:state.augmentRounds,

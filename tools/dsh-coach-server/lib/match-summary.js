@@ -7,7 +7,7 @@
 //
 // Both product lines write through game-memory, so this file is shared.
 
-import { readFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, appendFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 
 const list = value => Array.isArray(value) ? value : [];
@@ -74,7 +74,28 @@ export function createMatchSummaryStore(root) {
       if (!summary?.match) return null;
       const known = load();
       const key = summaryKey(summary);
-      if (known.has(key)) return null;
+      if (known.has(key)) {
+        // 第一次落盘时可能还没拿到胜负（阶段先变 EndOfGame，GameEnd 事件随后才到）。
+        // 后来知道了就把那一行的 result 补上，否则 148 局全是 null。
+        if (summary.result == null) return null;
+        try {
+          const text = readFileSync(file, 'utf8');
+          const lines = text.split('\n');
+          let changed = false;
+          for (let i = 0; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            let row; try { row = JSON.parse(lines[i]); } catch { continue; }
+            if (summaryKey(row) !== key) continue;
+            if (row.result == null) { lines[i] = JSON.stringify({ ...row, result: summary.result }); changed = true; }
+            break;
+          }
+          if (!changed) return null;
+          const temporary = file + '.tmp-' + process.pid;
+          writeFileSync(temporary, lines.join('\n'), { mode: 0o600 });
+          renameSync(temporary, file);
+          return { ...summary, patched: true };
+        } catch { return null; }
+      }
       try {
         mkdirSync(root, { recursive: true });
         appendFileSync(file, JSON.stringify(summary) + '\n', { mode: 0o600 });
