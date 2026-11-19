@@ -1,4 +1,4 @@
-import {createHash,randomUUID} from 'node:crypto';
+﻿import {createHash,randomUUID} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {serviceUrl,limitedJson} from '../dsh-game-services/client.mjs';
 import {equipmentContext} from '../dsh-onboarding/equipment-context.mjs';
@@ -9,7 +9,7 @@ export function agentQuestion(request){
  let message=request.question;
  if(request.topic==='equipment'&&typeof message==='string'&&message.includes('【装备决策事实 JSON】'))message=message.split('【装备决策事实 JSON】')[0].replace('只用 coach_reply 提交','直接提交')+'\n按需读取当前事实中的 equipment_decision；区分 confirmedAugments 与 assumedAugments，推测不当作已拥有。';
  if(typeof message!=='string'||!message.trim()||message.length>2000)throw fail(413,'Agent message exceeds the bounded task budget');
- const role=[roleInstruction(request.role,request.game,request.automatic===true),...(request.game==='generic'?['通用识别中，identityEvidence的tentative只是推测，corroborated只是多帧印证，source=user才是用户确认；分别核实游戏名、模式和版本。按需看图或检索日志，不从窗口标题猜规则。处于between阶段时不延续上一局操作建议；搜索使用当前gameName、gameMode及可用版本，资料不匹配则说明未知。']:[]),...(request.automatic===true?['低频短播报：只给当前最重要的一条结论，40—60字，最多两句；省略铺垫和重复信息，不为凑字数编造内容。']:[])].filter(Boolean).join('\n');
+ const role=[roleInstruction(request.role,request.game,request.automatic===true),...(request.game==='generic'?['通用识别中，identityEvidence的tentative只是推测，corroborated只是多帧印证，source=user才是用户确认；分别核实游戏名、模式和版本。按需看图或检索日志，不从窗口标题猜规则。处于between阶段时不延续上一局操作建议；搜索使用当前gameName、gameMode及可用版本，资料不匹配则说明未知。']:[]),...(request.automatic===true?['低频短播报：只给当前最重要的一条结论，40—60字，最多两句；省略铺垫和重复信息，不为凑字数编造内容。','当前对局状态、阵容、装备与海克斯已经在上下文里：不要为了看局势反复调用 get_current_match_state，只有上下文缺字段时才查一次。']:[])].filter(Boolean).join('\n');
  if(role&&message.length+role.length+1>2000)throw fail(413,'Agent message exceeds the bounded task budget');
  return role?message+'\n'+role:message;
 }
