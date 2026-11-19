@@ -63,3 +63,10 @@ test('different matches are appended in order', async () => {
   assert.equal(store.count(), 2);
   assert.equal(summaryKey({ game: 'lol', match: 'a' }), 'lol:a');
 });
+
+test('matchWin 布尔值也要落成胜负（客户端只写这个字段）', () => {
+  assert.equal(summarizeMatch({ ...finished(), matchWin: true }).result, 'win');
+  assert.equal(summarizeMatch({ ...finished(), matchWin: false }).result, 'loss');
+  assert.equal(summarizeMatch(finished()).result, null, '不知道就不要编');
+  assert.equal(summarizeMatch({ ...finished(), matchWin: true, result: 'loss' }).result, 'loss', '显式 result 优先');
+});

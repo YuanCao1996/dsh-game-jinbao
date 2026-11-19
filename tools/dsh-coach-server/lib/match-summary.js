@@ -1,4 +1,4 @@
-// Per-match summary store: the data foundation for progression ("养成").
+﻿// Per-match summary store: the data foundation for progression ("养成").
 //
 // DSH's message-feedback service only records ratings when a UI collects them, and the
 // overlay has no like/dislike yet. What we can do today without inventing UI is record
@@ -24,7 +24,14 @@ export function summarizeMatch(state = {}) {
     game: state.game ?? null,
     champion: typeof me.champion === 'string' ? me.champion : null,
     seconds: int(state.gameSeconds),
-    result: typeof state.result === 'string' ? state.result : (typeof me.result === 'string' ? me.result : null),
+    // 客户端只写 matchWin（布尔），从来没写过 result 字符串——148 局全是 null 就是这里漏接的。
+    result: (() => {
+      if (typeof state.result === 'string' && state.result) return state.result;
+      if (typeof me.result === 'string' && me.result) return me.result;
+      if (state.matchWin === true) return 'win';
+      if (state.matchWin === false) return 'loss';
+      return null;
+    })(),
     kda: { k: int(me.k), d: int(me.d), a: int(me.a) },
     gold: int(me.gold),
     level: int(me.level),

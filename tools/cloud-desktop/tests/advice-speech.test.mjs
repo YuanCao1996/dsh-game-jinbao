@@ -45,3 +45,21 @@ test('朗读前去掉分类前缀与间隔符，界面文本不变', async () =>
   assert.equal(stripSpokenPrefixes('【装备决策事实 JSON】先补虚空之杖'), '先补虚空之杖');
   assert.equal(stripSpokenPrefixes('这波他们技能交完了，值'), '这波他们技能交完了，值');
 });
+
+test('两句话在 60 字内就都念（不再只念首句，把「下次购买」切掉）', () => {
+  const text = '先用雪球贴脸，技能命中让蜜蜂炸开，小法要留雪球先手；跟祖安狂人往前压吧。下次购买优先帽子、中亚呀。';
+  const line = briefSpeech(text);
+  assert.equal(line, text);
+  assert.ok(line.includes('购买'), line);
+});
+
+test('短句组合不再只剩前半句（赢啦！这波开得漂亮）', () => {
+  assert.equal(briefSpeech('赢啦！这波开得漂亮'), '赢啦！这波开得漂亮');
+});
+
+test('首句过长时优先念「买什么」那一句，可执行信息不被丢', () => {
+  const text = '这波对面打野在下路露头了我们中野可以直接推中线然后等下一波兵线到了再一起动手打先锋别急。下次购买优先帽子、中亚呀。';
+  const line = briefSpeech(text);
+  assert.ok(line.includes('购买'), line);
+  assert.ok(Array.from(line).length <= 60, line);
+});

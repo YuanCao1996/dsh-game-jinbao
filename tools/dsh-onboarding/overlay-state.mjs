@@ -1,4 +1,4 @@
-import {activityLine} from './activity-line.mjs';
+﻿import {activityLine} from './activity-line.mjs';
 import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
 import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId, leaderboardRowData } from './leaderboard-pages.mjs';
 import { mkdir, readdir, stat, open, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
@@ -855,7 +855,7 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
     return {alliesAlive:alive(state.allies)+(me.dead?0:1),enemiesAlive:alive(state.enemies)};
   })();
   return {
-    game: state.game, mode:state.mode, match: state.match, matchStartedAt:state.matchStartedAt, gameTime: state.game==='generic'?(state.phase==='CapturePaused'?'观察已停止':'观察中'):clock(state.gameSeconds), phase:state.phase, ended: state.ended,
+    game: state.game, mode:state.mode, match: state.match, matchStartedAt:state.matchStartedAt, matchWin: state.matchWin === true ? true : state.matchWin === false ? false : null, gameTime: state.game==='generic'?(state.phase==='CapturePaused'?'观察已停止':'观察中'):clock(state.gameSeconds), phase:state.phase, ended: state.ended,
     ...(sideAlive??{}),
     selfChampion: shortChampion(me.champion),
     // The coach needs to know the player is dead before it decides whether it may spend a

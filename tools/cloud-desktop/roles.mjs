@@ -1,4 +1,4 @@
-export { roles, roleById, roleInstruction } from '../shared/game-roles.mjs';
+﻿export { roles, roleById, roleInstruction } from '../shared/game-roles.mjs';
 export function speechSegments(value,limit=6){
  const text=String(value??'').slice(0,6000).replace(/```[\s\S]*?```/g,'').replace(/\[([^\]]+)\]\([^)]*\)/g,'$1').replace(/https?:\/\/\S+/g,'').replace(/\b(?:Bearer\s+|(?:api[_ -]?key|token|secret|password)\s*[:=]\s*)\S+/gi,'凭据已隐藏').replace(/\bsk-[\w-]+/g,'凭据已隐藏').replace(/[*#`>|]/g,'').trim();
  const parts=[];let pending='';
@@ -71,20 +71,39 @@ export function stripSpokenPrefixes(value){
   .trim();
 }
 
-export function briefSpeech(value,maxChars=60){
- // 三条规则（都有真实事故支撑）：
- // 1. 只念屏幕上的「开头」，听到的和看到的才对得上（旧实现会跳过超长首句去念后面那句，
- //    实测 113→65、524→58）。
- // 2. 首句过长时在标点处截断加省略号，不再整句丢弃。
- // 3. 完全没有任何句读的超长文本（例如 200 个同字）视为噪声，不念 —— 避免把一坨文字塞给 TTS。
- const limit=Math.max(12,maxChars);
- const text=speechSegments(speakable(stripSpokenPrefixes(buildSpeechLine(value))),80).join('').trim();
- if(!text)return '';
- const first=(text.match(/^[^。！？!?]*[。！？!?]?/)??[''])[0].trim()||text;
- if(first.length<=limit)return first;
- if(!/[。！？!?]/.test(text))return '';
- const head=first.slice(0,limit-1);
- const cut=Math.max(head.lastIndexOf('，'),head.lastIndexOf('、'),head.lastIndexOf('；'),head.lastIndexOf(','));
+// 「下一步买什么」这类可执行句子比描述性首句更该被听到（2026-11-18 实测：
+// 「先用雪球贴脸…往前压吧。下次购买优先帽子、中亚呀。」念到分句就停，购买建议整条丢了）。
+const ACTIONABLE=/(?:购买|下一件|买|合成|出装|先出|攒钱|攒|换装|替换)/;
+function speechChars(value){return Array.from(String(value??""));}
+function trimTo(value,limit){
+ const all=speechChars(value).join("");
+ const chars=speechChars(all).slice(0,Math.max(1,limit)).join("");
+ if(chars.length>=speechChars(all).length)return chars;
+ const head=chars.slice(0,Math.max(1,limit-1));
+ const cut=Math.max(head.lastIndexOf("，"),head.lastIndexOf("、"),head.lastIndexOf("；"),head.lastIndexOf(","));
  const keep=cut>=Math.max(8,Math.floor(limit*0.35))?head.slice(0,cut):head;
- return keep.replace(/[，,、；;\s]+$/,'')+'…';
+ return keep.replace(/[，,、；;\s]+$/,"")+"…";
+}
+export function briefSpeech(value,maxChars=60){
+ // 优先级（都有真实事故支撑）：
+ // 1. 一两个短句能一口气念完就都念 —— 只念首句会把「下次购买…」这种关键信息切掉。
+ // 2. 首句太长时，若后一句是「买什么/合什么」的短句，优先把它念出来。
+ // 3. 首句过长则在标点处截断加省略号，不再整句丢弃。
+ // 4. 完全没有句读的超长文本视为噪声，不念。
+ const limit=Math.max(12,maxChars);
+ const text=speechSegments(speakable(stripSpokenPrefixes(buildSpeechLine(value))),80).join("").trim();
+ if(!text)return "";
+ const sentences=(text.match(/[^。！？!?]+[。！？!?]?/g)??[text]).map(s=>s.trim()).filter(Boolean);
+ const joined=sentences.slice(0,2).join("");
+ if(joined&&speechChars(joined).length<=limit)return joined;
+ const actionable=sentences.slice(1).find(s=>ACTIONABLE.test(s))??"";
+ if(actionable&&speechChars(actionable).length<=Math.max(12,Math.round(limit*0.7))){
+  const room=limit-speechChars(actionable).length;
+  const head=room>=10?trimTo(sentences[0]??"",room).replace(/…$/,"，"):"";
+  return (head+actionable).trim();
+ }
+ const first=sentences[0]??text;
+ if(speechChars(first).length<=limit)return first;
+ if(!/[。！？!?]/.test(text))return "";
+ return trimTo(first,limit);
 }
