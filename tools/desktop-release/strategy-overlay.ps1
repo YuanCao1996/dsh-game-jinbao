@@ -198,7 +198,9 @@ $controls.PlayersTable=$window.FindName('PlayersTable');$controls.LeaderboardTab
 $controls.UpdateText=$window.FindName('UpdateText')
 foreach($name in @('ResizeGrip','AppearancePanel','FontSlider','FontText')){$controls[$name]=$window.FindName($name)}
 foreach($name in @('NarrowText','PreviousSubtitle','OutgoingSubtitle')){$controls[$name]=$window.FindName($name)}
-foreach($name in @('ConfirmationPanel','ConfirmationTitle','ConfirmationChoices')){$controls[$name]=$window.FindName($name)}
+ # 字幕条本身的高度只由文字决定：形象再大也只让窗口变高，气泡保持文字高度并垂直居中，
+ # 这样在设置里调形象大小不会把「条子」撑粗。
+ try{$bubble=$window.FindName('NarrowBubble');if($bubble){$bubble.VerticalAlignment=[Windows.VerticalAlignment]::Center}}catch{}foreach($name in @('ConfirmationPanel','ConfirmationTitle','ConfirmationChoices')){$controls[$name]=$window.FindName($name)}
 $script:confirmationId=''
 $script:renderedTab=$null
 $script:interactiveMode=[bool]$Interactive
