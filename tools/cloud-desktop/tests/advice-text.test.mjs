@@ -10,7 +10,7 @@ test('多段落与 Markdown 被拆成短句小节', () => {
   const out = condenseAdvice(value);
   const beats = out.split('\n');
   assert.ok(beats.length >= 2, '应当拆成多个小节: ' + out);
-  for (const beat of beats) assert.ok(Array.from(beat).length <= 20, '每节不超过 20 字: ' + beat);
+  for (const beat of beats) assert.match(beat, /[。！？!?]$/, '每节应当是一个完整句子: ' + beat);
   assert.doesNotMatch(out, /\*\*/);
   assert.ok(out.length <= 68, out);
 });
@@ -20,11 +20,11 @@ test('最多三个小节，每节一句', () => {
   assert.deepEqual(out.split('\n'), ['先退到塔后。', '等锐雯大招落空再上前。', '血量低于四成先撤。']);
 });
 
-test('超长单句截断在逗号处并补句号', () => {
+test('超长单句保持完整（不在逗号处切碎）', () => {
   const long = '先清完兵线再跟队友进场，保留控制技能，等对面交出关键位移后再接团，然后立刻转中推塔，不要在中路纠缠太久以免被反打，也别在河道里等视野，回城补装备更稳';
   const out = condenseAdvice(long);
-  assert.ok(Array.from(out.replace(/\n/g, '')).length <= 72, out);
   assert.ok(out.split('\n').length <= 3, out);
+  assert.match(out, /[。！？!?]$/, '整句保留，别切在逗号上: ' + out);
 });
 
 test('空输入与纯空白返回空串', () => {

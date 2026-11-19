@@ -29,29 +29,9 @@ export function noiseBroadcast(text) {
 const SENTENCE_END = /[。！？!?.]/;
 
 // 玩家反馈（2026-11-19）：整段一次说完看着累，也不像真人说话。
-// 现在收敛成 2~3 个小节，每节一行、一句口语短句（默认 20 字内），像边想边说。
-const BEAT_END = /[。！？!?.；;]/;
-function splitClauses(value) {
-  const clauses = [];
-  let buffer = '';
-  for (const ch of value) {
-    buffer += ch;
-    if (BEAT_END.test(ch)) { if (buffer.trim()) clauses.push(buffer.trim()); buffer = ''; }
-  }
-  if (buffer.trim()) clauses.push(buffer.trim());
-  return clauses;
-}
-
-function clipBeat(text, limit) {
-  const chars = Array.from(text);
-  if (chars.length <= limit) return text.trim();
-  const clipped = chars.slice(0, limit).join('');
-  const cut = Math.max(clipped.lastIndexOf('，'), clipped.lastIndexOf('、'), clipped.lastIndexOf(','), clipped.lastIndexOf(' '));
-  const body = cut >= Math.floor(limit * 0.5) ? clipped.slice(0, cut) : clipped;
-  return body.replace(/[，,、\s；;。．.]+$/, '');
-}
-
-export function condenseAdvice(text, { beatChars = 20, maxBeats = 3, maxChars = 72 } = {}) {
+// 收敛规则：按句子切开，最多 3 句、每句单独一行；不在逗号/括号中间硬切——
+// 碎成「下一件优先买」「：智慧末刃（2900」这种反而更难读。
+export function condenseAdvice(text, { maxBeats = 3, maxChars = 90 } = {}) {
   let value = stripSources(text);
   if (!value.trim()) return '';
   value = value
@@ -63,28 +43,18 @@ export function condenseAdvice(text, { beatChars = 20, maxBeats = 3, maxChars = 
     .trim();
   if (!value) return '';
 
-  const clauses = splitClauses(value);
-  const beats = [];
-  for (const clause of clauses) {
-    if (beats.length >= maxBeats) break;
-    if (Array.from(clause).length > beatChars) {
-      // 长句按标点切成小节；一刀切会丢信息，所以剩下的继续进下一节，直到用完 maxBeats。
-      let rest = clause;
-      while (rest && beats.length < maxBeats) {
-        const head = clipBeat(rest, beatChars);
-        if (!head) break;
-        beats.push(head);
-        const used = Array.from(head).length;
-        rest = Array.from(rest).slice(used).join('').replace(/^[，,、\s；;。．.]+/, '');
-      }
-      continue;
-    }
-    beats.push(clause);
+  const sentences = [];
+  let buffer = '';
+  for (const ch of value) {
+    buffer += ch;
+    if (SENTENCE_END.test(ch)) { if (buffer.trim()) sentences.push(buffer.trim()); buffer = ''; }
   }
+  if (buffer.trim()) sentences.push(buffer.trim());
 
-  const kept = beats.filter(Boolean);
-  while (kept.length && Array.from(kept.join('')).length > maxChars) kept.pop();
-  return kept.join('\n').trim();
+  const beats = sentences.slice(0, maxBeats);
+  while (beats.length > 1 && Array.from(beats.join('')).length > maxChars) beats.pop();
+  if (beats.length) beats[beats.length - 1] = beats.at(-1).replace(/[，,、；;\s]+$/, '') + (/[。！？!?.…]$/.test(beats.at(-1)) ? '' : '。');
+  return beats.join('\n').trim();
 }
 // 「同一句话反复播」是真实事故（2026-11-18 一个海克斯回合连播三条同义建议）：
 // 2-gram Jaccard 只用来兜底「几乎逐字重复」，语义重复靠提示词里带上一句让它自己换说法。
