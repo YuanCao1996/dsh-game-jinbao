@@ -24,6 +24,7 @@ public static class JinbaoAugmentCapture {
  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr hwnd,ref Point point);
  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int key);
+ [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int max);
 }
 '@
  }
@@ -88,7 +89,15 @@ public static class JinbaoChatSignature {
  $handle=[JinbaoAugmentCapture]::GetForegroundWindow();$gamePid=[uint32]0
  [JinbaoAugmentCapture]::GetWindowThreadProcessId($handle,[ref]$gamePid) | Out-Null
  $process=Get-Process -Id $gamePid -ErrorAction SilentlyContinue
- if(!$process -or $process.ProcessName -ne 'League of Legends'){Write-Output '{"available":true,"foreground":false,"reason":"game_not_foreground"}';exit 0}
+ if(!$process -or $process.ProcessName -ne 'League of Legends'){
+  # 玩家可能正在金宝悬浮窗里打字：那不是「游戏不在前台」，仍然可以抓游戏窗口（PrintWindow 不需要前台）。
+  $title=[Text.StringBuilder]::new(256)
+  [void][JinbaoAugmentCapture]::GetWindowText($handle,$title,256)
+  if($title.ToString() -notmatch '金宝'){Write-Output '{"available":true,"foreground":false,"reason":"game_not_foreground"}';exit 0}
+  $game=Get-Process -Name 'League of Legends' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+  if(!$game){Write-Output '{"available":true,"foreground":false,"reason":"game_not_foreground"}';exit 0}
+  $handle=$game.MainWindowHandle
+ }
  if(([JinbaoAugmentCapture]::GetAsyncKeyState(9) -band 0x8000) -ne 0){
   @{available=$true;ocrAvailable=$engineReady;foreground=$true;panelOccluded=$true;capturedAt=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();focus=$Focus;method='scoreboard-occluded';reason='scoreboard_visible';lines=@();titleLines=@()}|ConvertTo-Json -Compress;exit 0
  }
@@ -332,6 +341,20 @@ public static class JinbaoChatSignature {
     }
    }catch{}
   }
+    # 评估采集（仅内测 JINBAO_EVAL_CAPTURE=1）：无论这次 OCR 成功与否都留一张聊天区原图，
+    # 供离线评估转写准确率；生产环境该开关永不打开。
+    if($env:JINBAO_EVAL_CAPTURE -eq '1' -and $Focus -eq 'full' -and $StateDir){
+     try{
+      $evalDir=Join-Path $StateDir 'capture-pairs\chat'
+      New-Item -ItemType Directory -Force -Path $evalDir | Out-Null
+      $evalRect=[Drawing.Rectangle]::new($ccx,$ccy,$ccw,$cch)
+      $evalBmp=$inputBitmap.Clone($evalRect,$inputBitmap.PixelFormat)
+      try{
+       $evalBmp.Save((Join-Path $evalDir ('chat-'+[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()+'.png')),[Drawing.Imaging.ImageFormat]::Png)
+      }finally{$evalBmp.Dispose()}
+     }catch{}
+    }
+
     $chatMergeMs=$captureWatch.ElapsedMilliseconds-$mergeT0
    }
   }

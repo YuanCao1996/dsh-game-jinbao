@@ -25,6 +25,7 @@ public static class JinbaoCardWatch {
  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+ [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int max);
 
  // 32x12 灰度缩略图：足以体现缩放/发光动画，又便宜到可以 20Hz 跑。
  public static byte[] Signature(Bitmap source) {
@@ -194,7 +195,7 @@ function Invoke-JinbaoCardWatch {
   [scriptblock]$Sleep={ param($ms) Start-Sleep -Milliseconds $ms },
   [switch]$KeepFrames
 )
- $baseline=$null;$previous=$null;$picked=$null;$candidate=$null;$streak=0;$frames=0;$baselineFrames=$null;$lastFrames=$null
+ $baseline=$null;$previous=$null;$picked=$null;$candidate=$null;$streak=0;$frames=0;$baselineFrames=$null;$lastFrames=$null;$baselineAt=0;$closedStreak=0
  $peak=@(0.0,0.0,0.0)
  $startedAt=& $Clock
  $reason='undecided'
@@ -241,12 +242,15 @@ function Invoke-JinbaoCardWatch {
     # 唯一一张在动：悬停或点击的动画。必须连续两帧都指向同一张才锁定 —— 单帧的
     # 高亮/入场动画不足以说明玩家选了哪张，实况里选中卡与第二名的峰值只差 1.6 倍。
     if($candidate -eq $argmax){ $streak++ } else { $candidate=$argmax;$streak=1 }
+    $closedStreak=0
     if($streak -ge 2){ $picked=$candidate }
-   }elseif($max -ge $Threshold -and $quiet -eq 0){
-    # 三张一起大改：面板在关闭/淡出。停止，沿用此前锁定的结果。
-    $reason='panel-closed';break
+         }elseif($max -ge $Threshold -and $quiet -eq 0){
+    # 三张一起大改：面板可能在关闭/淡出——也可能只是开局镜头、入场动画或整屏光照变化。
+    # 必须连续两帧都如此、且基线已稳定一会儿，才认作真关闭（2026-11-19 第一次海克斯就死在单帧误判）。
+    $closedStreak++
+    if($closedStreak -ge 2 -and ((& $Clock)-$baselineAt) -gt 900){ $reason='panel-closed';break }
    }else{
-    $candidate=$null;$streak=0
+    $candidate=$null;$streak=0;$closedStreak=0
    }
   }finally{
    if($frame){
@@ -296,6 +300,17 @@ function Invoke-JinbaoCardWatchSelfTest {
  $results.globalChangeUndecided=($null -eq $all.picked)
  $results.globalChangeReason=$all.reason
 
+ # 开局镜头让三张卡整体变一帧、随后正常悬停 → 仍然应该识别出来（2026-11-19 第一次海克斯的失败形态）
+ $script:transientFrame=0
+ $transient=Invoke-JinbaoCardWatch -TimeoutMs 5000 -SleepMs 0 -Sleep $quiet -Capture {
+  $script:transientFrame++
+  $shade=if($script:transientFrame -eq 3){200}else{90}
+  $mark=($script:transientFrame -ge 5 -and $script:transientFrame -le 9)
+  ,@((New-JinbaoTestCard $shade $false),(New-JinbaoTestCard $shade $mark),(New-JinbaoTestCard $shade $false))
+ }
+ $results.transientGlobalKeepsWatching=($transient.picked -eq 1)
+ $results.transientGlobalReason=$transient.reason
+ 
  # 全程静止 → 不应判定
  $static=Invoke-JinbaoCardWatch -TimeoutMs 400 -SleepMs 0 -Sleep $quiet -Capture {
   ,@((New-JinbaoTestCard 90 $false),(New-JinbaoTestCard 90 $false),(New-JinbaoTestCard 90 $false))
@@ -326,7 +341,17 @@ if($MyInvocation.InvocationName -ne '.'){
    $gamePid=[uint32]0
    [JinbaoCardWatch]::GetWindowThreadProcessId($handle,[ref]$gamePid) | Out-Null
    $process=Get-Process -Id $gamePid -ErrorAction SilentlyContinue
-   if(-not $process -or $process.ProcessName -ne 'League of Legends'){
+   $isGame = $process -and $process.ProcessName -eq 'League of Legends'
+   if(-not $isGame){
+    # 玩家正在金宝悬浮窗里打字时，前台不是游戏——但面板还在，不能因此放弃这一轮。
+    $title=[Text.StringBuilder]::new(256)
+    [void][JinbaoCardWatch]::GetWindowText($handle,$title,256)
+    if($title.ToString() -match '金宝'){
+     $game=Get-Process -Name 'League of Legends' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+     if($game){ $handle=$game.MainWindowHandle; $isGame=$true }
+    }
+   }
+   if(-not $isGame){
     $payload.reason='game_not_foreground'
    }else{
     $rect=New-Object JinbaoCardWatch+Rect
