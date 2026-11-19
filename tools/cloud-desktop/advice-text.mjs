@@ -66,3 +66,20 @@ export function condenseAdvice(text, { maxChars = 68, maxSentences = 2 } = {}) {
   }
   return result.trim();
 }
+
+
+// 「同一句话反复播」是真实事故（2026-11-18 一个海克斯回合连播三条同义建议）：
+// 2-gram Jaccard 只用来兜底「几乎逐字重复」，语义重复靠提示词里带上一句让它自己换说法。
+export function adviceSimilarity(a, b) {
+  const grams = value => {
+    const text = String(value ?? '').replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, '');
+    const set = new Set();
+    for (let i = 0; i < text.length - 1; i++) set.add(text.slice(i, i + 2));
+    return set;
+  };
+  const left = grams(a), right = grams(b);
+  if (!left.size || !right.size) return 0;
+  let shared = 0;
+  for (const item of left) if (right.has(item)) shared++;
+  return shared / (left.size + right.size - shared);
+}

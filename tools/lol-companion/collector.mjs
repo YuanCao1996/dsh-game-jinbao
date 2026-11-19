@@ -1,4 +1,4 @@
-// Lightweight log collection with native Windows OCR; no strategy database or model credential.
+﻿// Lightweight log collection with native Windows OCR; no strategy database or model credential.
 import { readCredentials } from './lockfile.mjs';
 import { lcuRequest } from './lcu.mjs';
 import { getAllGameData,compactState,diffEvents } from './live.mjs';
@@ -72,6 +72,7 @@ const captureReport=async value=>{
 };
 // 视觉判定：面板出现时另起一个进程，20Hz 采样三张卡，找出"只有它在变"的那张。
 // 必须是独立进程——它要跑满整个面板期，占用 capture worker 会让采集停摆十几秒。
+import { pickCardWatchDir } from './card-watch-dir.mjs';
 const cardWatchScript=fileURLToPath(new URL('./card-watch.ps1',import.meta.url));
 let cardWatch=null;
 const stopCardWatch=()=>{if(cardWatch){const owned=cardWatch;cardWatch=null;try{owned.kill()}catch{}}};
@@ -79,17 +80,14 @@ const decidedRolls=new Set();
 
  // 把本轮信息写到抓帧目录，事后可核对“帧 ↔ 识别结果”。
  const writeCardWatchMeta=async meta=>{
-  try{
-   const root=process.env.JINBAO_STATE_DIR??dirname(folder);
-   const entries=await readdir(root,{withFileTypes:true});
-   for(const e of entries){
-    if(!e.isDirectory()||!e.name.startsWith('card-watch-'))continue;
-    const dirPath=join(root,e.name);
-    try{const info=await stat(dirPath);if(info.mtimeMs<meta.startedAt-2000)continue;}catch{continue;}
-    await writeFile(join(dirPath,'meta.json'),JSON.stringify({...meta,endedAt:Date.now(),dir:e.name}));
-   }
-  }catch{}
- };
+ try{
+  const root=process.env.JINBAO_STATE_DIR??dirname(folder);
+  const entries=await readdir(root,{withFileTypes:true});
+  const chosen=pickCardWatchDir(entries.filter(e=>e.isDirectory()).map(e=>e.name),meta.startedAt);
+  if(!chosen)return;
+  await writeFile(join(root,chosen,'meta.json'),JSON.stringify({...meta,endedAt:Date.now(),dir:chosen}));
+ }catch{}
+};
 const startCardWatch=offer=>{
  stopCardWatch();
  // 抓帧元数据：这一轮开始时刻 + 当时识别到的名字，事后可核对帧与识别结果。
