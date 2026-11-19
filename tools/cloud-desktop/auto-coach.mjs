@@ -144,7 +144,7 @@ let deathTurns=0;
     const answer=await agent.ask({game:v.game,match:v.match,question:prompt,topic:'advice',automatic:true,timeCritical:plan?.stage==='coordination'||plan?.stage==='death'}),current=(await getContext(v.game,v.match)).current;
     if(!stillCurrent(v)||!current||!adviceIsValid(validity,current,now())){note(v,'reply_discarded','context_changed');return;}
     if(typeof answer!=='string'||!answer.trim())throw Error('Empty automatic reply');
-    const situationText=stripSources(String(answer));
+    const situationText=condenseAdvice(stripSources(String(answer)));
     if(noiseBroadcast(situationText)){note(v,'skip','roster_noise',{stage:'situation'});return;}
     await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:'situation',dimension:'now',broadcast:situationText,validity});rememberAdvice(situationText,'situation');await published(v,{stage:'situation'});store={signature,lastAt:now(),lastValidity:validity};return;
    }
@@ -206,7 +206,7 @@ let deathTurns=0;
    // 刚说过的话：既用来在提示词里要求「别重复」，也用来兜住几乎逐字重复的兜底过滤。
    let actionable=message+'\n'+workflow+'这是口头播报，要像真人在语音里说话：每条至少带一个语气助词（啦、呀、呢、哦、嘛、吧、啊），最多两个，别每句都加；整条播报最多一个叹词，放在最带情绪那句的开头——顺利或赢团用嘿嘿、嘻嘻、哇塞，失误或被反杀用啊这、哎呦、天呐；中娅、出装、活命这类紧急提醒不加叹词，但仍带一个语气助词；避免书面语与长定语句；不要用「第一次」「首次」开头播报。像这样说话：别急呀，等兵线过来再打哦；哎呀这波亏了，回头补个人头嘛。这是战况即时播报：分成 2~3 个短句，每句不超过 20 字，用换行分开——先说现在做什么，再补一句为什么或注意什么；像边想边说，不必一次说全。不要复述时钟、等级、比分、KDA或整套装备清单；不播报「我方N人已就位/到齐」这类人数清点，不写泛泛的注意走位/配合队友。不编造冷却、价格、排名或未知技能状态；缺资料时依据已确认事实给保守建议，避免用整段工具错误说明占据正文。没核实的东西不要写进播报：不出现「待统计、待确认、未知、未查到」这类占位词，缺资料就换一个站得住的说法，实在没有就不提这件事。未确认可购买时，把装备建议安排在下一次可购买时，不说现在先买再上线；不以英雄总胜率解释单件装备强度，省略未核验百分比；不把召唤物挡路说成能够阻断位移，不断言未经核验的技能交互。"'+diaryHint+(()=>{
    const last=recentAdvice();
-   return last?"\n刚才你已经说过：「"+last.slice(0,60)+"」。这次只补充新信息，不要重复同一句建议；没有新东西就说得更具体（买什么、去哪、别做什么），别换个说法讲同一件事。":"";
+   return last?"\n刚才你已经说过：「"+last.slice(0,60)+"」。这次只补充新信息，不要重复同一句建议；没有新东西就说得更具体（买什么、去哪、别做什么），别换个说法讲同一件事。这条提示只给你自己看，播报里不要提「刚才说过」「上次」。":"";
   })();
    actionable=fitPromptBudget(actionable);
   const startedAt=now();
@@ -226,10 +226,11 @@ let deathTurns=0;
     note(v,'coach_late_published',undefined,{stage:plan.stage});
    }
    if(typeof answer!=='string'||!answer.trim())throw Error('Empty automatic reply');
-   if(noiseBroadcast(String(answer))){note(v,'skip','roster_noise',{stage:plan.stage});return;}
+   const stagedText=condenseAdvice(stripSources(String(answer)));
+   if(noiseBroadcast(stagedText)){note(v,'skip','roster_noise',{stage:plan.stage});return;}
    // 几乎逐字重复的兜底：提示词已经要求换说法，这里只拦「换个标点又播一遍」。
-   const previousAdvice=recentAdvice(plan.stage),nextAdvice=String(answer).trim();if(previousAdvice.length>=16&&nextAdvice.length>=16&&adviceSimilarity(previousAdvice,nextAdvice)>=0.8){note(v,'skip','duplicate_advice',{stage:plan.stage});return;}
-   await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:plan.stage,priority:['ace','inhib','augment','death','purchase','enemyChange','objective','turret','coordination'].includes(plan.stage)?2:1,dimension:DIMENSION[plan.stage]??'now',broadcast:answer,validity});rememberAdvice(String(answer),plan.stage);
+   const previousAdvice=recentAdvice(plan.stage),nextAdvice=stagedText.trim();if(previousAdvice.length>=16&&nextAdvice.length>=16&&adviceSimilarity(previousAdvice,nextAdvice)>=0.8){note(v,'skip','duplicate_advice',{stage:plan.stage});return;}
+   await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:plan.stage,priority:['ace','inhib','augment','death','purchase','enemyChange','objective','turret','coordination'].includes(plan.stage)?2:1,dimension:DIMENSION[plan.stage]??'now',broadcast:answer,validity});rememberAdvice(stagedText,plan.stage);
    await published(v,{stage:plan.stage});
    // 补发过一次就清掉，避免同一个窗口反复触发。
    if(plan.stage==='coordination')pendingCoordination=null;
