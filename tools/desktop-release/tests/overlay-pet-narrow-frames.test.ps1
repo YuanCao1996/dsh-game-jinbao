@@ -50,6 +50,16 @@ Check 'talk 没有头部特写就用全身帧' ($pickTalk.Count -eq 2)
 $pickThink = Get-NarrowAction -Root $root -State 'think'
 Check '无素材状态退回待机头部特写' ($pickThink.Count -eq 4)
 
+# 2c) 形态开关：局外全身（跳过 -narrow），局内头肩
+$fullPick = Get-NarrowAction -Root $root -State 'idle' -Frame 'full'
+Check '全身模式跳过头部特写' ($fullPick.Count -eq 3)
+Check '全身模式用 idle 全身帧' (-not [object]::ReferenceEquals($fullPick, $loadedIdleNarrow))
+Check '对局判定: 大厅不算局内' ((Test-NarrowPetInMatch ([pscustomobject]@{ phase = 'Lobby' })) -eq $false)
+Check '对局判定: 选人不算局内' ((Test-NarrowPetInMatch ([pscustomobject]@{ phase = 'ChampSelect' })) -eq $false)
+Check '对局判定: InProgress 是局内' ((Test-NarrowPetInMatch ([pscustomobject]@{ phase = 'InProgress' })) -eq $true)
+Check '对局判定: 已结束不算局内' ((Test-NarrowPetInMatch ([pscustomobject]@{ phase = 'InProgress'; ended = $true; gameSeconds = 10 })) -eq $false)
+Check '对局判定: 只有对局时钟也算局内' ((Test-NarrowPetInMatch ([pscustomobject]@{ phase = ''; gameSeconds = 42 })) -eq $true)
+
 # 3) 头部特写和通用 narrow 都没有时，退回状态自己
 Remove-Item -Recurse -Force (Join-Path $root 'narrow'), (Join-Path $root 'idle-narrow')
 $script:petFrames = @{}
@@ -112,7 +122,7 @@ Stop-NarrowPetAnimation
 
 Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 
-$total = 14
+$total = 21
 if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1

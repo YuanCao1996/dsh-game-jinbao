@@ -92,12 +92,18 @@ function Load-PetAction {
 # 它在目录缺失时会一路回落到全局 icon.png（一张静态图），于是任何没有素材的状态
 # 都会被当成"有一套 1 帧的素材"，动画就退化成静态图标了。
 function Get-NarrowAction {
-  param([string]$Root, [string]$State)
+  param([string]$Root, [string]$State, [string]$Frame = 'head')
   $inRoot = {
     param([string]$name)
     if (-not $name) { return $null }
     if (-not (Test-Path (Join-Path $Root $name))) { return $null }
     return (Load-PetAction -Root $Root -Name $name)
+  }
+  # 全身模式：跳过所有 -narrow 头肩素材，直接用状态自己的全身帧。
+  if ($Frame -eq 'full') {
+    if ($State) { $full = & $inRoot $State; if ($full) { return $full } }
+    $idle = & $inRoot 'idle'; if ($idle) { return $idle }
+    return (Load-PetAction -Root $Root -Name 'icon')
   }
   if ($State) {
     $head = & $inRoot ($State + '-narrow')
@@ -335,6 +341,10 @@ function Stop-PetLayer {
 
 $script:narrowPetVisible = $false
 $script:narrowPetSize = 56
+# 局内/局外两套形象：局内头肩（按设置大小），局外全身（固定大小，44/56 的全身看不清脸）
+$script:narrowPetFrame = ''
+$script:narrowPetDisplay = 0
+$script:fullBodySize = 140
 $script:narrowPetConfigAt = [DateTime]::MinValue
 
 function Get-PetSettings {
@@ -427,6 +437,16 @@ function Write-PetDiag {
   } catch { }
 }
 
+# 未进入对局显示全身，局内显示头肩。局内判定：LCU 阶段在局内，或有对局时钟且未结束。
+function Test-NarrowPetInMatch {
+  param($Snapshot)
+  if (-not $Snapshot) { return $false }
+  if ($Snapshot.ended -eq $true) { return $false }
+  $phase = [string]$Snapshot.phase
+  if ($phase -eq 'InProgress' -or $phase -eq 'GameStart' -or $phase -eq 'Reconnect') { return $true }
+  return ($Snapshot.ended -ne $true -and $null -ne $Snapshot.gameSeconds)
+}
+
 function Update-NarrowPet {
   param($Snapshot, [switch]$Force)
   if (-not $script:narrowPetControl) { Write-PetDiag 'no-control'; return }
@@ -438,12 +458,22 @@ function Update-NarrowPet {
     $settings = Get-PetSettings -StateDir $script:narrowPetStateDir
     $enabled = [bool]$settings.enabled
     $size = [int]$settings.size
-    if ($size -ne $script:narrowPetSize) {
-      $script:narrowPetSize = $size
-      try { $script:narrowPetControl.Width = $size; $script:narrowPetControl.Height = $size } catch { }
-      # 条子高度要跟着形象走，否则调大以后会被窗口裁掉（只改了控件大小等于白改）
-      try { if ($script:displayMode -eq 'narrow') { Set-NarrowMetrics } } catch { }
+    # 局内用头肩（按设置大小），局外用全身（固定尺寸）。
+    $frame = if (Test-NarrowPetInMatch $Snapshot) { 'head' } else { 'full' }
+    $display = if ($frame -eq 'head') { $size } else { $script:fullBodySize }
+    $relayout = $false
+    if ($size -ne $script:narrowPetSize) { $script:narrowPetSize = $size; $relayout = $true }
+    if ($frame -ne $script:narrowPetFrame) {
+      $script:narrowPetFrame = $frame
+      $script:narrowPetState = ''
+      $relayout = $true
     }
+    if ($display -ne $script:narrowPetDisplay) {
+      $script:narrowPetDisplay = $display
+      try { $script:narrowPetControl.Width = $display; $script:narrowPetControl.Height = $display } catch { }
+      $relayout = $true
+    }
+    if ($relayout) { try { if ($script:displayMode -eq 'narrow') { Set-NarrowMetrics } } catch { } }
     if ($enabled -ne $script:narrowPetVisible) {
       $script:narrowPetVisible = $enabled
       try {
@@ -462,7 +492,7 @@ function Update-NarrowPet {
   # 只要不是待机/睡觉就把挂机计时清零：否则打完一局回到大厅再进新局，
   # 旧的 10 分钟会立刻把它判成睡觉，新局一开始就趴着。
   if ($desired -ne 'idle' -and $desired -ne 'sleep') { $script:petIdleSince = [DateTime]::Now }
-  $frames = Get-NarrowAction -Root $script:petRoot -State $desired
+  $frames = Get-NarrowAction -Root $script:petRoot -State $desired -Frame $script:narrowPetFrame
   if (-not $frames) { return }
   if ($script:narrowPetState -eq $desired) {
     # 状态没变也要保证动画跟随（例如从 talk 回到 idle）

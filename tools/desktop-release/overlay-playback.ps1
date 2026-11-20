@@ -32,11 +32,15 @@ function Set-NarrowMetrics {
  $script:subtitleRowHeight=[Math]::Ceiling($subtitleSize*1.6+4)
  # 收起时如果是字幕模式，也要排字幕条尺寸（原来收起后不再排版，结果停在 56×56）。
  if($script:displayMode -eq 'narrow' -and (!$script:collapsed -or $script:subtitleMode)){
-  $window.MinWidth=[Math]::Min(260,$area.Width-20);$window.MinHeight=40
+  # 全身模式需要更宽，否则人物会挤掉文字；头肩保持原来的最小宽度。
+  if($script:narrowPetFrame -eq 'full'){$minWidth=[Math]::Min([Math]::Max(300,[double]$script:narrowPetDisplay+200),$area.Width-20)}else{$minWidth=[Math]::Min(260,$area.Width-20)}
+  $window.MinWidth=$minWidth;$window.MinHeight=40
   $window.Width=[Math]::Min([Math]::Max($window.MinWidth,$script:narrowWidth),$area.Width-20)
   $rowHeight=if($script:subtitleMode){2*$script:subtitleRowHeight+24}else{$script:subtitleRowHeight+24}
   # 形象比一行字高：不把窗口撑开的话，调到 56/72 会被条子裁掉一半
-  if($script:narrowPetVisible){$rowHeight=[Math]::Max($rowHeight,[double]$script:narrowPetSize+22)}
+  # 形象高度：局外全身更高，但气泡本身保持文字高度（NarrowBubble 居中）
+  $petHeight=if($script:narrowPetDisplay -gt 0){$script:narrowPetDisplay}else{$script:narrowPetSize}
+  if($script:narrowPetVisible){$rowHeight=[Math]::Max($rowHeight,[double]$petHeight+22)}
   $window.Height=$rowHeight
   $controls.MainBorder.Padding=if($script:subtitleMode){'8,6'}else{'12,8'}
   if($script:subtitleMode){$controls.MainBorder.Background=[Windows.Media.Brushes]::Transparent;$controls.MainBorder.BorderThickness=0}

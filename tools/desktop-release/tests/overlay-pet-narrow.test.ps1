@@ -84,6 +84,8 @@ Check '大厅候场会重置挂机计时' ((([DateTime]::Now - $script:petIdleSi
 
 # 8) 开关形象要触发重排：条子高度跟着可见性走，不然 72/88 会被裁掉一截
 $script:narrowPetSize = 88          # 先假装当前就是 88，避免尺寸变化干扰这个断言
+  $script:narrowPetDisplay = 88   # 内部展示尺寸同步，避免首次同步被当成配置变化
+  $script:narrowPetFrame = 'head'   # 形态也要同步，否则从大厅切回局内会触发一次重排
 [IO.File]::WriteAllText($petFile, '{"enabled":true,"size":88}', [Text.UTF8Encoding]::new($false))
 $script:narrowPetVisible = $true
 $script:narrowPetConfigAt = [DateTime]::MinValue
