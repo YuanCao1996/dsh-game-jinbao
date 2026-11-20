@@ -357,7 +357,7 @@ $script:narrowPetFrame = ''
 $script:narrowPetDisplay = 0
 # 局内头肩 12fps；局外全身 24fps（帧率不够会显得一跳一跳）
 $script:narrowPetFps = 12
-$script:fullBodySize = 420
+$script:fullBodySize = 210
 $script:narrowPetConfigAt = [DateTime]::MinValue
 
 function Get-PetSettings {
