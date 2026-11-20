@@ -33,7 +33,7 @@ function Set-NarrowMetrics {
  # 收起时如果是字幕模式，也要排字幕条尺寸（原来收起后不再排版，结果停在 56×56）。
  if($script:displayMode -eq 'narrow' -and (!$script:collapsed -or $script:subtitleMode)){
   # 全身模式需要更宽，否则人物会挤掉文字；头肩保持原来的最小宽度。
-  if($script:narrowPetFrame -eq 'full'){$minWidth=[Math]::Min([Math]::Max(300,[double]$script:narrowPetDisplay+200),$area.Width-20)}else{$minWidth=[Math]::Min(260,$area.Width-20)}
+  if($script:narrowPetFrame -eq 'full'){$minWidth=[Math]::Min([Math]::Max(300,[double]$script:narrowPetDisplay+300),$area.Width-20)}else{$minWidth=[Math]::Min(260,$area.Width-20)}
   $window.MinWidth=$minWidth;$window.MinHeight=40
   $window.Width=[Math]::Min([Math]::Max($window.MinWidth,$script:narrowWidth),$area.Width-20)
   $rowHeight=if($script:subtitleMode){2*$script:subtitleRowHeight+24}else{$script:subtitleRowHeight+24}
