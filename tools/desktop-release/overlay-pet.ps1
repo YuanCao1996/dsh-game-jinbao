@@ -355,6 +355,8 @@ $script:narrowPetSize = 56
 # 局内/局外两套形象：局内头肩（按设置大小），局外全身（固定大小，44/56 的全身看不清脸）
 $script:narrowPetFrame = ''
 $script:narrowPetDisplay = 0
+# 局内头肩 12fps；局外全身 24fps（帧率不够会显得一跳一跳）
+$script:narrowPetFps = 12
 $script:fullBodySize = 420
 $script:narrowPetConfigAt = [DateTime]::MinValue
 
@@ -396,7 +398,7 @@ function Initialize-NarrowPet {
   $Image.Visibility = 'Collapsed'
   if ($Tail) { $Tail.Visibility = 'Collapsed' }
   # 多帧就转帧动画，只有一张就叠呼吸（否则单帧会一动不动）
-  if ($frames.Count -gt 1) { Start-NarrowPetAnimation } else { Start-PetBreathing -Control $Image }
+  if ($frames.Count -gt 1) { Start-NarrowPetAnimation -Fps $script:narrowPetFps } else { Start-PetBreathing -Control $Image }
   Set-PetPosture -Control $Image -State 'idle'
   return $true
 }
@@ -471,11 +473,13 @@ function Update-NarrowPet {
     $size = [int]$settings.size
     # 局内用头肩（按设置大小），局外用全身（固定尺寸）。
     $frame = if (Test-NarrowPetInMatch $Snapshot) { 'head' } else { 'full' }
+    $script:narrowPetFps = if ($frame -eq 'full') { 24 } else { 12 }
     $display = if ($frame -eq 'head') { $size } else { $script:fullBodySize }
     $relayout = $false
     if ($size -ne $script:narrowPetSize) { $script:narrowPetSize = $size; $relayout = $true }
     if ($frame -ne $script:narrowPetFrame) {
       $script:narrowPetFrame = $frame
+      try { Stop-NarrowPetAnimation } catch { }
       $script:narrowPetState = ''
       $relayout = $true
     }
@@ -515,7 +519,7 @@ function Update-NarrowPet {
   $script:narrowPetFrames = $frames
   $script:narrowPetIndex = 0
   $script:narrowPetControl.Source = $frames[0]
-  if ($frames.Count -gt 1) { Start-NarrowPetAnimation } else { Stop-NarrowPetAnimation }
+  if ($frames.Count -gt 1) { Start-NarrowPetAnimation -Fps $script:narrowPetFps } else { Stop-NarrowPetAnimation }
   Set-PetPosture -Control $script:narrowPetControl -State $desired
   # 结算胜利要有反应：赢了跳两下，离开胜利状态就停并回到呼吸
   if ($desired -eq 'win') { Start-PetCheer -Control $script:narrowPetControl } else { Stop-PetCheer -Control $script:narrowPetControl }
