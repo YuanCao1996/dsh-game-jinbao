@@ -485,7 +485,12 @@ function Update-NarrowPet {
     }
     if ($display -ne $script:narrowPetDisplay) {
       $script:narrowPetDisplay = $display
-      try { $script:narrowPetControl.Width = $display; $script:narrowPetControl.Height = $display } catch { }
+      try {
+        $script:narrowPetControl.Height = $display
+        # 全身素材是紧贴人物的长条（约 105x201），宽度按源比例自适应；
+        # 固定成正方形会在左右留出大片透明，人物看起来离字幕条很远。
+        $script:narrowPetControl.Width = if ($frame -eq 'head') { $display } else { [double]::NaN }
+      } catch { }
       $relayout = $true
     }
     if ($relayout) { try { if ($script:displayMode -eq 'narrow') { Set-NarrowMetrics } } catch { } }

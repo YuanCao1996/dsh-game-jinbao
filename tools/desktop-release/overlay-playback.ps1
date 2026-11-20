@@ -44,6 +44,16 @@ function Set-NarrowMetrics {
   # 形象高度：局外全身更高，但气泡本身保持文字高度（NarrowBubble 居中）
   $petHeight=if($script:narrowPetDisplay -gt 0){$script:narrowPetDisplay}else{$script:narrowPetSize}
   if($script:narrowPetVisible){$rowHeight=[Math]::Max($rowHeight,[double]$petHeight+22)}
+  # 全身模式下气泡贴住人物头部；否则垂直居中会落到腰上，看着离人很远。
+  try {
+    if ($script:narrowPetVisible -and $script:narrowPetFrame -eq 'full') {
+      $controls.NarrowBubble.VerticalAlignment = 'Top'
+      $controls.NarrowBubble.Margin = New-Object Windows.Thickness(0,16,4,0)
+    } else {
+      $controls.NarrowBubble.VerticalAlignment = 'Center'
+      $controls.NarrowBubble.Margin = New-Object Windows.Thickness(0,1,4,1)
+    }
+  } catch {}
   $window.Height=$rowHeight
   $controls.MainBorder.Padding=if($script:subtitleMode){'8,6'}else{'12,8'}
   if($script:subtitleMode){$controls.MainBorder.Background=[Windows.Media.Brushes]::Transparent;$controls.MainBorder.BorderThickness=0}
