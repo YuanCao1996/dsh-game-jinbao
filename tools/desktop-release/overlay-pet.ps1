@@ -168,10 +168,16 @@ function Start-PetBreathing {
     $scale = $parts.Scale
     $move = $parts.Move
 
+    # 大尺寸形象不能按 3% 呼吸：420px 时那是十几像素的起伏，看起来像在抖。
+    # 大图固定约 2px 的幅度，小图保持原来的 3%。
+    $petPx = 0.0
+    try { $petPx = [double]$Control.Width } catch { }
+    $scaleAmp = if ($petPx -ge 200) { 1.0 + (2.0 / $petPx) } else { 1.03 }
+    $liftAmp = if ($petPx -ge 200) { -0.8 } else { -1.5 }
     $duration = [System.Windows.Duration]::new([TimeSpan]::FromMilliseconds(2400))
-    $scaleX = New-Object System.Windows.Media.Animation.DoubleAnimation(1.0, 1.03, $duration)
-    $scaleY = New-Object System.Windows.Media.Animation.DoubleAnimation(1.0, 1.03, $duration)
-    $lift = New-Object System.Windows.Media.Animation.DoubleAnimation(0.0, -1.5, $duration)
+    $scaleX = New-Object System.Windows.Media.Animation.DoubleAnimation(1.0, $scaleAmp, $duration)
+    $scaleY = New-Object System.Windows.Media.Animation.DoubleAnimation(1.0, $scaleAmp, $duration)
+    $lift = New-Object System.Windows.Media.Animation.DoubleAnimation(0.0, $liftAmp, $duration)
     foreach ($animation in @($scaleX, $scaleY, $lift)) {
       $animation.AutoReverse = $true
       $animation.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
