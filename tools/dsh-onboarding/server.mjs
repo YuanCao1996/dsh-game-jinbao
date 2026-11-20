@@ -470,13 +470,13 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
    // 形象层：收起形态旁边的人物形象（默认开启，大小 28~96）
 if(detailUrl.pathname==='/api/pet'&&req.method==='GET'){
  const petFile=join(stateDir,'pet.json');
- let pet={enabled:true,size:44};
- try{const saved=JSON.parse(await readFile(petFile,'utf8'));if(typeof saved?.enabled==='boolean')pet.enabled=saved.enabled;if(Number.isFinite(Number(saved?.size)))pet.size=Math.min(96,Math.max(28,Number(saved.size)));}catch{}
+ let pet={enabled:true,size:56,fullSize:210};
+ try{const saved=JSON.parse(await readFile(petFile,'utf8'));if(typeof saved?.enabled==='boolean')pet.enabled=saved.enabled;if(Number.isFinite(Number(saved?.size)))pet.size=Math.min(96,Math.max(28,Number(saved.size)));if(Number.isFinite(Number(saved?.fullSize)))pet.fullSize=Math.min(260,Math.max(120,Number(saved.fullSize)));}catch{}
  send(res,200,pet);return;
 }
 if(detailUrl.pathname==='/api/pet'&&req.method==='POST'){
  const value=await body(req,1024);
- const pet={enabled:value.enabled!==false,size:Number.isFinite(Number(value.size))?Math.min(96,Math.max(28,Math.round(Number(value.size)))):44};
+ const pet={enabled:value.enabled!==false,size:Number.isFinite(Number(value.size))?Math.min(96,Math.max(28,Math.round(Number(value.size)))):56,fullSize:Number.isFinite(Number(value.fullSize))?Math.min(260,Math.max(120,Math.round(Number(value.fullSize)))):210};
  await writeFile(join(stateDir,'pet.json'),JSON.stringify(pet),{mode:0o600});
  send(res,200,{ok:true,...pet});return;
 }

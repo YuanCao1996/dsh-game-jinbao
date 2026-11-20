@@ -357,13 +357,15 @@ $script:narrowPetFrame = ''
 $script:narrowPetDisplay = 0
 # 局内头肩 12fps；局外全身 24fps（帧率不够会显得一跳一跳）
 $script:narrowPetFps = 12
+$script:narrowPetProcAt = [DateTime]::MinValue
+$script:narrowPetProcInGame = $false
 $script:fullBodySize = 210
 $script:narrowPetConfigAt = [DateTime]::MinValue
 
 function Get-PetSettings {
   param([string]$StateDir)
   # 默认 56：44 那会儿脸只有十几像素，眨眼/口型根本看不出来（用户反馈"人物太小看不到效果"）
-  $settings = @{ enabled = $true; size = 56 }
+$settings = @{ enabled = $true; size = 56; fullSize = 210 }
   if (-not $StateDir) { return $settings }
   $file = Join-Path $StateDir 'pet.json'
   try {
@@ -374,6 +376,10 @@ function Get-PetSettings {
         $size = [int]$raw.size
         if ($size -ge 28 -and $size -le 96) { $settings.size = $size }
       }
+        if ($null -ne $raw.fullSize) {
+          $fullSize = [int]$raw.fullSize
+          if ($fullSize -ge 120 -and $fullSize -le 260) { $settings.fullSize = $fullSize }
+        }
     }
   } catch { }
   return $settings
@@ -456,6 +462,16 @@ function Test-NarrowPetInMatch {
   if (-not $Snapshot) { return $false }
   if ($Snapshot.ended -eq $true) { return $false }
   $phase = [string]$Snapshot.phase
+  # 兼容老快照：游戏时钟形如 09:50，说明已经在局内（阶段字段偶尔滞后）。
+  if ([string]$Snapshot.gameTime -match '^\d{1,2}:\d{2}$') { return $true }
+  # 进程兜底：LCU 阶段更新慢时，认游戏进程（3 秒缓存，避免每 250ms 扫进程）。
+  try {
+    if (([DateTime]::Now - $script:narrowPetProcAt).TotalSeconds -ge 3) {
+      $script:narrowPetProcAt = [DateTime]::Now
+      $script:narrowPetProcInGame = [bool](Get-Process -Name 'League of Legends' -ErrorAction SilentlyContinue)
+    }
+    if ($script:narrowPetProcInGame) { return $true }
+  } catch { }
   if ($phase -eq 'InProgress' -or $phase -eq 'GameStart' -or $phase -eq 'Reconnect') { return $true }
   return ($Snapshot.ended -ne $true -and $null -ne $Snapshot.gameSeconds)
 }
@@ -466,11 +482,12 @@ function Update-NarrowPet {
   $now = [DateTime]::Now
   $elapsed = 999.0
   try { $elapsed = ($now - $script:narrowPetConfigAt).TotalSeconds } catch { $elapsed = 999.0 }
-  if ($Force -or $elapsed -ge 5) {
+  if ($Force -or $elapsed -ge 1) {
     $script:narrowPetConfigAt = $now
     $settings = Get-PetSettings -StateDir $script:narrowPetStateDir
     $enabled = [bool]$settings.enabled
     $size = [int]$settings.size
+    $script:fullBodySize = [int]$settings.fullSize
     # 局内用头肩（按设置大小），局外用全身（固定尺寸）。
     $frame = if (Test-NarrowPetInMatch $Snapshot) { 'head' } else { 'full' }
     $script:narrowPetFps = if ($frame -eq 'full') { 24 } else { 12 }

@@ -1,4 +1,4 @@
-﻿<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金宝设置</title><link rel="icon" href="/exploration-icon.png" type="image/png">
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>金宝设置</title><link rel="icon" href="/exploration-icon.png" type="image/png">
 <style>
 /* finesse · register=product · existing settings / light-neutral / feedback-only */
 :root{color-scheme:light;--page:#f4f5f2;--surface:#fdfdfb;--inset:#eef0eb;--ink:#292d29;--muted:#626c63;--line:rgba(40,48,40,.12);--accent:#ee9232;--accent-ink:#87490c;--accent-soft:#fff0df;--good:#287149;--bad:#a82e35;--bad-soft:#fceff0;--focus:rgba(238,146,50,.24);--shadow:0 1px 3px rgba(34,45,32,.04)}
@@ -58,6 +58,13 @@
         <option value="56" selected>中（56，默认）</option>
         <option value="72">大（72）</option>
         <option value="88">很大（88）</option>
+      </select>
+    </label>
+    <label>全身大小
+      <select id="petFullSize">
+        <option value="140">小（140）</option>
+        <option value="180">中（180）</option>
+        <option value="210" selected>大（210）</option>
       </select>
     </label>
     <span id="petStatus" class="pill">—</span>
@@ -244,12 +251,12 @@ async function loadPetSettings(){
   try{
     const data=await api('pet');
     const box=el('petEnabled');if(box)box.checked=data.enabled!==false;
-    const size=el('petSize');if(size&&data.size)size.value=String(data.size);
+    const size=el('petSize');if(size&&data.size)size.value=String(data.size);const full=el('petFullSize');if(full&&data.fullSize)full.value=String(data.fullSize);
     const pill=el('petStatus');if(pill)pill.textContent=data.enabled===false?'已关闭':'显示中';
   }catch{}
 }
 async function savePetSettings(){
-  const payload={enabled:el('petEnabled').checked===true,size:Number(el('petSize').value)||56};
+  const payload={enabled:el('petEnabled').checked===true,size:Number(el('petSize').value)||56,fullSize:Number(el('petFullSize').value)||210};
   try{await api('pet',payload);await loadPetSettings();}catch(error){alert('保存失败：'+(error&&error.message||'未知'));}
 }
 async function loadHighlightSettings(){
@@ -303,6 +310,8 @@ if(typeof document!=='undefined'&&document.getElementById){
   if(petBox)petBox.addEventListener('change',savePetSettings);
   const petSize=el('petSize');
   if(petSize)petSize.addEventListener('change',savePetSettings);
+  const petFullSize=el('petFullSize');
+  if(petFullSize)petFullSize.addEventListener('change',savePetSettings);
   loadPetSettings();
   const highlightBox=el('highlightEnabled');
   if(highlightBox)highlightBox.addEventListener('change',async()=>{
