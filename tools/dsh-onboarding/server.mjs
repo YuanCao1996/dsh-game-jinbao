@@ -575,7 +575,7 @@ if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{ena
     if(value.reply!==undefined)next.reply=value.reply===true;
     await locked(async()=>{await saveStream(next);});
     try{await startStream();}catch{}
-    send(res,200,{ok:true,status:streamState.status});
+    send(res,200,{ok:true,status:streamState.status,error:streamState.lastError||''});
     return;
    }
    if(req.url==='/api/speech'&&req.method==='GET'){send(res,200,speech?{...speech.status(),keyConfigured:!!await resolve('speech')}:{supported:false});return;}

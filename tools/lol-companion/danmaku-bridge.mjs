@@ -162,7 +162,14 @@ export function createBilibiliDanmaku({
   let ws = null;
   let timer = null;
   let closed = false;
-  const headers = () => ({ ...BROWSER_HEADERS, ...(cookie ? { cookie } : {}) });
+  let buvid = '';
+  const cookieHeader = () => {
+    const parts = [];
+    if (buvid) parts.push('buvid3=' + buvid);
+    if (cookie) parts.push(String(cookie).trim());
+    return parts.join('; ');
+  };
+  const headers = () => ({ ...BROWSER_HEADERS, ...(cookieHeader() ? { cookie: cookieHeader() } : {}) });
 
   async function resolveRoom() {
     const response = await fetchImpl(`https://api.live.bilibili.com/room/v1/Room/room_init?id=${encodeURIComponent(roomId)}`, { headers: headers() });
@@ -196,6 +203,13 @@ export function createBilibiliDanmaku({
   }
 
   async function open() {
+    if (!buvid) {
+      // B 站 getDanmuInfo 对无 cookie 的请求返回 -352（风控）；匿名取一个 buvid3 即可。
+      try {
+        const spi = await (await fetchImpl('https://api.bilibili.com/x/frontend/finger/spi', { headers: BROWSER_HEADERS })).json();
+        buvid = String(spi?.data?.b_3 ?? '').trim();
+      } catch {}
+    }
     const realRoom = await resolveRoom();
     const { token, host } = await danmuInfo(realRoom);
     onStatus({ state: 'connecting', roomId: realRoom });

@@ -292,7 +292,10 @@ async function saveStreamSettings(){
   try{
     const result=await api('stream',payload);
     await loadStreamSettings();
-    alert(result.status==='error'?'已保存，但连接失败：请检查房间号是否在直播':'已保存');
+    if(result.status==='error'){
+      const reason=result.error==='room_not_found'?'房间不存在：请从直播间地址复制数字房间号（live.bilibili.com/<房间号>）':(result.error?('连接失败：'+result.error):'连接失败，请检查房间号是否在直播');
+      alert('已保存，但'+reason);
+    }
   }catch(error){alert('保存失败：'+(error&&error.message||'未知'));}
 }
 if(typeof document!=='undefined'&&document.getElementById){
