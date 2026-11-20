@@ -88,3 +88,19 @@ test('重置后清空待处理与连击计数', () => {
   assert.equal(state.pendingChoices.length, 0);
   assert.deepEqual(state.choiceStreak, { agree: 0, disagree: 0 });
 });
+
+test('模型说「补 X」也要能认出推荐（真实播报措辞）', () => {
+  const cases = [
+    ['下次能买时直接补狂热，跟无尽、收集者凑满暴击嘛。', '狂热'],
+    ['下次能买时先补夺萃之镰，暴击转冷却更稳呀。', '夺萃之镰'],
+    ['先补十字镐合暴风之剑，两把都在包里呀。', '十字镐'],
+    ['补充斯特拉克的挑战护手，用来扛住暴击爆发。', '斯特拉克的挑战护手'],
+  ];
+  for (const [advice, expected] of cases) {
+    const state = stateWith(advice, Date.now() - 1000);
+    recordChoice(state, { kind: 'item', name: expected, at: Date.now() - 500 });
+    assert.equal(settleChoiceReactions(state, Date.now(), { role: 'jinbao' }), true, '应当给出反馈: ' + advice);
+    const row = state.broadcasts.at(-1);
+    assert.equal(row.agreed, true, '买的就是推荐的那件，应当算听劝: ' + advice + ' -> ' + row.text);
+  }
+});

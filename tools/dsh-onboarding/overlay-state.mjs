@@ -347,6 +347,15 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     // event time, so an escalating chain settles into one praise at its real level.
     if (name === 'Multikill') {
       const killed = whoKilled(state, event);
+      // 诊断：多杀夸奖一直没播出去（2026-11-19 三局 0 条）。这里把「谁杀的、认成谁、
+      // 我方名字有哪些」记一行，下一局就能判断到底是身份没对上还是链没结算。
+      if (Number(event.KillStreak ?? event.killStreak) >= 2) {
+        const levels = { at: Date.now(), eventAt: Number(event.t ?? event.EventTime ?? 0), streak: Number(event.KillStreak ?? event.killStreak) || 0,
+          killer: String(event.killer ?? event.KillerName ?? ''), side: killed.side,
+          meChampion: String(state.me?.champion ?? ''), meRiotId: String(state.me?.riotId ?? ''),
+          meSummoner: String(state.me?.summonerName ?? ''), allyNames: list(state.allies).map(p => String(p?.name ?? '')).filter(Boolean).slice(0, 5) };
+        state.killDiagnostics = [...(state.killDiagnostics ?? []), levels].slice(-20);
+      }
       if (killed.side !== 'other') {
         // 带上“这波杀了谁”，以及其中此前杀过我的敌人（复仇播报用）。
     const killInfo=(killed.side==='self')?killInfoFromEvents({
@@ -1403,6 +1412,14 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       // 实测 3~6 秒），超时没等到才用本地兜底，保证玩家听不到两句重复的播报。
       // 按当前英雄刷新玩家批注（内部节流 30 秒），供提示词即时吸收。
       try { state.userNotes = await loadUserNotes(state.me?.champion); } catch {}
+      // 多杀诊断落盘：下一局结束后直接看 logs/multikill.jsonl 就知道为什么没夸。
+      if (Array.isArray(state.killDiagnostics) && state.killDiagnostics.length) {
+        const drained = state.killDiagnostics.splice(0);
+        try {
+          await mkdir(join(stateDir, 'logs'), { recursive: true });
+          await appendFile(join(stateDir, 'logs', 'multikill.jsonl'), drained.map(row => JSON.stringify(row)).join('\n') + '\n', { mode: 0o600 });
+        } catch {}
+      }
       settlePraise(state, Date.now(), { role: await currentPraiseRole(), cloudGraceMs: praiseCloudGraceMs });
       // 买装备 / 选海克斯之后的即时反馈：同一个角色，同一套语音通道。
       settleChoiceReactions(state, Date.now(), { role: await currentPraiseRole() });
