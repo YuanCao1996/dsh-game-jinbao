@@ -30,6 +30,9 @@ function Set-NarrowMetrics {
  $subtitleSize=[Math]::Min(24,$size+1)
  foreach($name in @('NarrowText','PreviousSubtitle','OutgoingSubtitle')){if($controls[$name]){$controls[$name].FontSize=$subtitleSize}}
  $script:subtitleRowHeight=[Math]::Ceiling($subtitleSize*1.6+4)
+ # 气泡现在垂直居中了，Canvas 必须显式给高度：否则 Canvas 期望高度是 0，
+ # Border 只剩 padding，文字全被 ClipToBounds 裁掉（实测「看不到文字」）。
+ try{$controls.NarrowCanvas.Height=if($script:subtitleMode){2*$script:subtitleRowHeight}else{$script:subtitleRowHeight}}catch{}
  # 收起时如果是字幕模式，也要排字幕条尺寸（原来收起后不再排版，结果停在 56×56）。
  if($script:displayMode -eq 'narrow' -and (!$script:collapsed -or $script:subtitleMode)){
   # 全身模式需要更宽，否则人物会挤掉文字；头肩保持原来的最小宽度。
