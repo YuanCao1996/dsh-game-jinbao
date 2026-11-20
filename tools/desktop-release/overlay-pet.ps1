@@ -101,7 +101,12 @@ function Get-NarrowAction {
   }
   # 全身模式：跳过所有 -narrow 头肩素材，直接用状态自己的全身帧。
   if ($Frame -eq 'full') {
-    if ($State) { $full = & $inRoot $State; if ($full) { return $full } }
+    # 优先高清全身素材（<状态>-full / idle-full），没有再退回 192 的老全身帧。
+    if ($State) {
+      $high = & $inRoot ($State + '-full'); if ($high) { return $high }
+      $full = & $inRoot $State; if ($full) { return $full }
+    }
+    $idleFull = & $inRoot 'idle-full'; if ($idleFull) { return $idleFull }
     $idle = & $inRoot 'idle'; if ($idle) { return $idle }
     return (Load-PetAction -Root $Root -Name 'icon')
   }
@@ -344,7 +349,7 @@ $script:narrowPetSize = 56
 # 局内/局外两套形象：局内头肩（按设置大小），局外全身（固定大小，44/56 的全身看不清脸）
 $script:narrowPetFrame = ''
 $script:narrowPetDisplay = 0
-$script:fullBodySize = 140
+$script:fullBodySize = 420
 $script:narrowPetConfigAt = [DateTime]::MinValue
 
 function Get-PetSettings {

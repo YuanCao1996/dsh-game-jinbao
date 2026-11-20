@@ -66,6 +66,14 @@ $script:petFrames = @{}
 $pickIdle2 = Get-NarrowAction -Root $root -State 'idle'
 Check '都没有时退回 idle 全身' ($pickIdle2.Count -eq 3)
 
+# 3b) 高清全身素材优先：有 idle-full 时 full 用它，head 不受影响
+New-TestFrames $root 'idle-full' 5 ([System.Drawing.Color]::Purple)
+$script:petFrames = @{}
+$fullHi = Get-NarrowAction -Root $root -State 'idle' -Frame 'full'
+Check '全身优先用高清全身素材' ($fullHi.Count -eq 5)
+$headAfter = Get-NarrowAction -Root $root -State 'idle' -Frame 'head'
+Check '局内不受高清全身影响' ($headAfter.Count -eq 3)
+
 # 4) 帧推进：0→1→2→3→0
 $image = New-Object System.Windows.Controls.Image
 $script:narrowPetControl = $image
@@ -122,7 +130,7 @@ Stop-NarrowPetAnimation
 
 Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 
-$total = 21
+$total = 23
 if ($failures.Count) {
   $failures | ForEach-Object { Write-Output ('✖ ' + $_) }
   exit 1
