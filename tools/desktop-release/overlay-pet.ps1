@@ -461,19 +461,19 @@ function Test-NarrowPetInMatch {
   param($Snapshot)
   if (-not $Snapshot) { return $false }
   if ($Snapshot.ended -eq $true) { return $false }
-  $phase = [string]$Snapshot.phase
-  # 兼容老快照：游戏时钟形如 09:50，说明已经在局内（阶段字段偶尔滞后）。
-  if ([string]$Snapshot.gameTime -match '^\d{1,2}:\d{2}$') { return $true }
-  # 进程兜底：LCU 阶段更新慢时，认游戏进程（3 秒缓存，避免每 250ms 扫进程）。
+  # 以游戏进程为准：LCU 阶段在结算后可能还停在 InProgress，只看阶段会一直卡在头肩。
+  # 进程查询 1 秒缓存；异常时退回阶段/时钟判断。
   try {
-    if (([DateTime]::Now - $script:narrowPetProcAt).TotalSeconds -ge 3) {
+    if (([DateTime]::Now - $script:narrowPetProcAt).TotalSeconds -ge 1) {
       $script:narrowPetProcAt = [DateTime]::Now
       $script:narrowPetProcInGame = [bool](Get-Process -Name 'League of Legends' -ErrorAction SilentlyContinue)
     }
-    if ($script:narrowPetProcInGame) { return $true }
-  } catch { }
-  if ($phase -eq 'InProgress' -or $phase -eq 'GameStart' -or $phase -eq 'Reconnect') { return $true }
-  return ($Snapshot.ended -ne $true -and $null -ne $Snapshot.gameSeconds)
+    return $script:narrowPetProcInGame
+  } catch {
+    $phase = [string]$Snapshot.phase
+    if ($phase -eq 'InProgress' -or $phase -eq 'GameStart' -or $phase -eq 'Reconnect') { return $true }
+    return ([string]$Snapshot.gameTime -match '^\d{1,2}:\d{2}$')
+  }
 }
 
 function Update-NarrowPet {
