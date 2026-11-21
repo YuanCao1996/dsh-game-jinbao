@@ -1,4 +1,4 @@
-// 高光截图：每局最多 6 张，由关键事件触发，存在本机，不上传。
+﻿// 高光截图：每局最多 6 张，由关键事件触发，存在本机，不上传。
 //
 // 采集复用已有的 capture-game.ps1（同一份截图能力，返回 image/jpeg + base64）。
 // 索引写在 highlights/index.jsonl，探索页对局详情据此列出缩略图。
@@ -24,11 +24,29 @@ export const HIGHLIGHT_KINDS = Object.freeze({
   FirstBlood: '首杀',
 });
 
-export function shouldCapture(event) {
+// 每类事件的名额与最小间隔：以前只有"每局 6 张、同类间隔 10 秒"，Arena 里敌方团灭来得勤，
+// 6 张全被 Ace 占满，玩家自己的画面反而一张都进不来（11-20 实测：自己 0 张多杀、0 张首杀）。
+export const HIGHLIGHT_KIND_LIMITS = Object.freeze({ Multikill: 3, Ace: 2, FirstBlood: 1, objective: 2 });
+export const HIGHLIGHT_KIND_GAP_MS = Object.freeze({ Ace: 45_000 });
+
+export const HIGHLIGHT_OBJECTIVES = Object.freeze(['InhibKilled', 'BaronKill', 'DragonKill']);
+export const highlightBucket = name => (HIGHLIGHT_OBJECTIVES.includes(name) ? 'objective' : name);
+
+// side: 'self' | 'ally' | 'enemy' | 'unknown'（认不出归属时按"可能是自己"处理，宁可多拍也不误判成敌人）
+// alive: 事件发生时玩家是否存活（死了的画面是黑白复活屏，团灭尤其没意义）
+export function shouldCapture(event, { side = 'unknown', alive = true } = {}) {
   const name = String(event?.name ?? event?.EventName ?? '');
   if (!HIGHLIGHT_KINDS[name]) return false;
-  if (name === 'Multikill' && Number(event?.KillStreak ?? event?.killStreak ?? 0) < 3) return false;
-  return true;
+  const streak = Number(event?.KillStreak ?? event?.killStreak ?? 0);
+  if (side === 'enemy') return false;                      // 敌方的瞬间不进自己的相册
+  if (name === 'Multikill') {
+    if (side === 'self') return streak >= 3;
+    if (side === 'ally') return streak >= 4;               // 队友三杀不拍，四杀/五杀可以留一张
+    return streak >= 3;
+  }
+  if (name === 'FirstBlood') return side !== 'ally';       // 只拍自己拿的首杀
+  if (name === 'Ace') return alive;                        // 团灭必须是"你在场"的
+  return side !== 'enemy';                                 // 水晶/龙
 }
 
 // 对局标识直接当目录名不安全（含 # 与扩展名），统一替换成短哈希式名字
@@ -62,29 +80,39 @@ export function createHighlights({ stateDir, capture, enabled = () => true, now 
 
   return {
     // 由事件驱动：命中关键事件时截一张，超限就跳过
-    async maybeCapture({ event, game, match, gameSeconds }) {
-      if (!enabled() || !shouldCapture(event)) return null;
+    async maybeCapture({ event, game, match, gameSeconds, side = 'unknown', alive = true }) {
+      if (!enabled() || !shouldCapture(event, { side, alive })) return null;
       const key = String(match ?? '');
       if (!key) return null;
-      const state = perMatch.get(key) ?? { count: 0, lastAt: 0 };
+      const kind = String(event?.name ?? event?.EventName ?? 'event');
+      const bucket = highlightBucket(kind);
+      const state = perMatch.get(key) ?? { count: 0, lastAt: 0, buckets: {} };
+      if (!state.buckets) state.buckets = {};
       if (state.count >= limit) return null;
+      if (state.buckets[bucket] >= (HIGHLIGHT_KIND_LIMITS[bucket] ?? limit)) return null;
+      const gap = HIGHLIGHT_KIND_GAP_MS[kind] ?? HIGHLIGHT_MIN_GAP_MS;
       if (now() - state.lastAt < HIGHLIGHT_MIN_GAP_MS) return null;
+      if (now() - (state.bucketAt?.[bucket] ?? 0) < gap) return null;
 
       let frame;
       try { frame = await grab(game); } catch { return null; }
       if (!frame?.available || frame.mediaType !== 'image/jpeg' || !frame.data) return null;
 
-      const kind = String(event?.name ?? event?.EventName ?? 'event');
       const folder = matchFolder(key);
       const dir = join(root, folder);
       await mkdir(dir, { recursive: true });
       const seq = state.count + 1;
+      state.count = seq;
+      state.lastAt = now();
+      state.buckets[bucket] = (state.buckets[bucket] ?? 0) + 1;
+      state.bucketAt = { ...(state.bucketAt ?? {}), [bucket]: now() };
+      perMatch.set(key, state);
       const name = `${String(seq).padStart(2, '0')}-${kind}.jpg`;
       await writeFile(join(dir, name), Buffer.from(frame.data, 'base64'), { mode: 0o600 });
 
       const entry = {
         at: now(), game: String(game ?? 'lol'), match: key, folder,
-        file: name, kind, label: HIGHLIGHT_KINDS[kind] ?? kind,
+        file: name, kind, label: HIGHLIGHT_KINDS[kind] ?? kind, side,
         gameSeconds: Number.isFinite(Number(gameSeconds)) ? Number(gameSeconds) : null,
         bytes: Buffer.from(frame.data, 'base64').length,
       };

@@ -1,4 +1,4 @@
-import {activityLine} from './activity-line.mjs';
+﻿import {activityLine} from './activity-line.mjs';
 import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
 import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId, leaderboardRowData } from './leaderboard-pages.mjs';
 import { mkdir, readdir, stat, open, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
@@ -26,6 +26,20 @@ import {whoKilled,recordMultikill,settlePraise,PRAISE_ROLES,killInfoFromEvents} 
 
 // 高光截图只留我方的：敌方多杀/团灭/大龙/首杀等不记录。
 // 击杀类事件带 killer/Recipient，按敌方名单排除；团灭看 AcingTeam，推塔/水晶看 Team。
+// 事件归属：用来决定「这张画面要不要留」。认不出名字时返回 unknown（按可能是我方处理）。
+export function highlightSide(state, event) {
+  const killer = String(event?.killer ?? event?.KillerName ?? event?.Recipient ?? event?.Acer ?? '').trim();
+  if (!killer) return 'unknown';
+  const who = whoKilled(state, { killer });
+  if (who.side === 'self' || who.side === 'ally') return who.side;
+  const enemies = Array.isArray(state?.enemies) ? state.enemies : [];
+  const hit = enemies.some(e => {
+    const names = [e?.name, e?.riotId, e?.champion, e?.championAlias].map(v => String(v ?? '').trim()).filter(Boolean);
+    return names.some(n => n === killer || (n.length >= 2 && killer.includes(n)) || (killer.length >= 2 && n.includes(killer)));
+  });
+  return hit ? 'enemy' : 'unknown';
+}
+
 export function enemyHighlight(state, event) {
   const norm = v => String(v ?? '').trim();
   const enemies = Array.isArray(state?.enemies) ? state.enemies : [];
@@ -1383,11 +1397,11 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
         updateAugmentRecommendations(state,knowledge.rows??[]);
         const observed = router.apply(event,file);
         // 关键事件留一张画面（同一事件只截一次；上限与间隔由模块控制）。
-        if (event?.kind === 'event' && shouldCapture(event) && !enemyHighlight(state, event)) {
+        if (event?.kind === 'event' && shouldCapture(event, { side: highlightSide(state, event), alive: state?.me?.dead !== true })) {
           const shotKey = String(event.t ?? '') + ':' + String(event.name ?? event.EventName ?? '');
           if (!capturedHighlights.has(shotKey)) {
             capturedHighlights.add(shotKey);
-            void highlights.maybeCapture({ event, game: state?.game, match: state?.match, gameSeconds: state?.gameSeconds }).catch(() => {});
+            void highlights.maybeCapture({ event, game: state?.game, match: state?.match, gameSeconds: state?.gameSeconds, side: highlightSide(state, event), alive: state?.me?.dead !== true }).catch(() => {});
           }
         }
         if(event?.kind==='augment_picked'&&event.roll!=null)decidedRolls.add(String(event.roll));
@@ -1543,4 +1557,3 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     async close() { closed = true; search.close(); equipmentCoach.close(); clearInterval(timer); await writes.catch(() => {}); await memory.flush(); },
   };
 }
-

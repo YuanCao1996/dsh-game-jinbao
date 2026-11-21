@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+﻿import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -63,18 +63,22 @@ test('每局最多 6 张，且相邻两张至少隔 10 秒', async () => {
     now: () => clock,
     capture: async () => ({ available: true, mediaType: 'image/jpeg', data: Buffer.from('jpegdata').toString('base64') }),
   });
-  const event = { name: 'Ace' };
-  const first = await store.maybeCapture({ event, game: 'lol', match: 'm1#1', gameSeconds: 100 });
+  // 2026-11-21 起按类型分配名额（团灭 2 / 多杀 3 / 首杀 1 / 资源 2），这里混着来验证总数上限。
+  const first = await store.maybeCapture({ event: { name: 'Ace' }, game: 'lol', match: 'm1#1', gameSeconds: 100 });
   assert.ok(first, '第一张应当截到');
   clock += 5_000;
-  assert.equal(await store.maybeCapture({ event, game: 'lol', match: 'm1#1', gameSeconds: 120 }), null, '10 秒内不再截');
+  assert.equal(await store.maybeCapture({ event: { name: 'Ace' }, game: 'lol', match: 'm1#1', gameSeconds: 120 }), null, '10 秒内不再截');
   clock += 10_000;
+  const plan = [
+    { name: 'Ace' }, { name: 'Multikill', KillStreak: 3 }, { name: 'Multikill', KillStreak: 4 },
+    { name: 'FirstBlood' }, { name: 'Multikill', KillStreak: 5 },
+    { name: 'Ace' }, { name: 'BaronKill' },
+  ];
   let count = 1;
-  while (count < HIGHLIGHT_LIMIT_PER_MATCH + 2) {
+  for (const event of plan) {
     clock += 11_000;
     const shot = await store.maybeCapture({ event, game: 'lol', match: 'm1#1', gameSeconds: 200 + count });
     if (shot) count += 1;
-    else break;
   }
   assert.equal(count, HIGHLIGHT_LIMIT_PER_MATCH, '上限 6 张');
   const rows = await store.list('m1#1');
