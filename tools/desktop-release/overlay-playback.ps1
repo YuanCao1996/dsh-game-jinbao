@@ -80,13 +80,15 @@ function Set-NarrowBarShown {
   if(-not $script:narrowPetVisible){ return }
   if($show){
     if($script:barHideTimer){try{$script:barHideTimer.Stop()}catch{};$script:barHideTimer=$null}
-    if($script:narrowBarShown){return}
+    # 标记为 true 也要继续重算宽度：标记和窗口可能不同步（active/playing 但停在 126 宽）。
+    $wasShown=[bool]$script:narrowBarShown
     $script:narrowBarShown=$true
     try{
       $controls.NarrowBubble.Visibility='Visible'
       if($script:narrowPetTail){$script:narrowPetTail.Visibility='Visible'}
     }catch{}
     Set-NarrowMetrics
+    if($wasShown){return}
     try{
       $duration=[Windows.Media.Duration]::new([TimeSpan]::FromMilliseconds(240))
       $ease=New-Object Windows.Media.Animation.CubicEase

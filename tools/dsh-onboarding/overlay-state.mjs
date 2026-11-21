@@ -751,7 +751,14 @@ const playerRows = players.map(p => {
         :bestSlot.value>30?'三个排名都在 30 名以外，建议刷新看看':('推荐选 '+bestSlot.entry.name+'（'+bestSlot.entry.rank+(bestSlot.entry.tier?' '+bestSlot.entry.tier:'')+'）');
       // 窄条弹窗用的一行摘要：悬浮窗在空闲时是收起的，靠这条 playback 把排名弹出来。
       state.augmentOfferKey = roundKey;
-      state.augmentOfferText = ['海克斯三选一 · ' + champName, ...lines, offerBrief].join('\n');
+      // 窄条一行放不下 30 个字：标题只给推荐，三张卡按 2+1 拆成短行。
+      const slotLine = entry => entry.slot + '·' + (entry.name || '待识别') + ' ' + entry.rank;
+      const recommend = bestSlot ? bestSlot.entry.name + ' ' + bestSlot.entry.rank : '建议刷新';
+      state.augmentOfferText = [
+        '海克斯三选一 · 推荐 ' + recommend,
+        slots.slice(0, 2).map(slotLine).join(' / '),
+        slots.length > 2 ? slotLine(slots[2]) : '',
+      ].filter(Boolean).join('\n');
       noticeUpsert(state,roundKey,{
         at:Date.now(),stage:'augment',dimension:'augment',
         slots,
