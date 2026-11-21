@@ -1,4 +1,5 @@
-import {isCompletedItem} from '../lol-companion/item-policy.mjs';
+﻿import {isCompletedItem} from '../lol-companion/item-policy.mjs';
+import {recordChoice} from './choice-reactions.mjs';
 const clean=value=>typeof value==='string'?value.trim().slice(0,120):'';
 export function progressSeconds(value,fallback=null){
   if(typeof value==='number'&&Number.isFinite(value)&&value>=0)return value;
@@ -101,6 +102,13 @@ export function observeEquipment(state){
     if(!previous)continue; // First observation is a baseline, never a fabricated purchase.
     const added=[],removed=[];
     for(const [id,item] of current){const n=item.count-(previous.get(id)?.count??0);if(n>0&&item.completed)added.push(item.name+(n>1?' ×'+n:''));}
+    // 买装备的反馈：日志里没有 purchase 事件，只能靠 items 差分发现「多了一件成装」。
+    if(player===state.me&&added.length){
+      for(const name of added){
+        const bare=name.replace(/ ×\d+$/,'');
+        if(bare)recordChoice(state,{kind:'item',name:bare,at:Number(state.at)||Date.now()});
+      }
+    }
     for(const [id,item] of previous){const n=item.count-(current.get(id)?.count??0);if(n>0&&item.completed)removed.push(item.name+(n>1?' ×'+n:''));}
     if(added.length&&state.enemies.includes(player)){
       state.completedEquipmentEvents=[...(state.completedEquipmentEvents??[]),{at:state.at,time:state.gameSeconds,hero:player.champion,items:added}].slice(-12);

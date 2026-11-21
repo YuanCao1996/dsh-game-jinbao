@@ -1,6 +1,7 @@
-import { test } from 'node:test';
+﻿import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { choiceReaction, recordChoice, settleChoiceReactions, resetChoiceReactions, CHOICE_ROLES } from '../choice-reactions.mjs';
+import { applyOverlayEvent, initialOverlayState } from '../overlay-state.mjs';
 
 // 玩家做完选择要立刻有人味反馈：听劝就夸，不听就调侃，且跟着所选导师换语气。
 
@@ -114,4 +115,33 @@ test('教练播报用 broadcast 字段时也能认出推荐（真实落库形态
   recordChoice(state, { kind: 'item', name: '夺萃之镰', at: Date.now() - 500 });
   assert.equal(settleChoiceReactions(state, Date.now(), { role: 'jinbao' }), true, 'broadcast 字段的播报也要参与判断');
   assert.equal(state.broadcasts.at(-1).agreed, true);
+});
+
+// 端到端：日志里根本没有 purchase 事件，买装备只能靠 items 差分发现。
+// 这条用例覆盖「差分 → 记下选择 → 按推荐给反馈」整条链路。
+test('自己买成装（items 差分）会触发选择反馈', () => {
+  const s = initialOverlayState();
+  const t0 = Date.now();
+  applyOverlayEvent(s, { game: 'lol', match: 'm1', t: t0, kind: 'game_start', me: { champion: '安妮', riotId: '我#1', items: [] }, allies: [], enemies: [] }, 'm1');
+  s.broadcasts = [{ at: t0 + 100, broadcast: '下次能买时先补夺萃之镰，暴击转冷却更稳呀。', priority: 1 }];
+  applyOverlayEvent(s, { game: 'lol', match: 'm1', t: t0 + 5000, kind: 'state', me: { champion: '安妮', riotId: '我#1', items: [{ id: 6676, name: '夺萃之镰' }] } }, 'm1');
+  assert.equal((s.pendingChoices ?? []).length, 1, '差分出的新成装应当被记下');
+  assert.equal(s.pendingChoices[0].kind, 'item');
+  assert.equal(settleChoiceReactions(s, t0 + 6000, { role: 'jinbao' }), true);
+  const reaction = (s.broadcasts ?? []).find(b => b.choiceReaction);
+  assert.ok(reaction, '应当有反馈');
+  assert.equal(reaction.agreed, true, '买的就是推荐的那件: ' + reaction.text);
+});
+
+test('选完海克斯也会触发反馈（事件链路）', () => {
+  const s = initialOverlayState();
+  const t0 = Date.now();
+  applyOverlayEvent(s, { game: 'lol', match: 'm1', t: t0, kind: 'game_start', me: { champion: '安妮', riotId: '我#1' }, allies: [], enemies: [] }, 'm1');
+  s.broadcasts = [{ at: t0 + 100, broadcast: '推荐选 小丑学院（No.15 T1）', priority: 1 }];
+  applyOverlayEvent(s, { game: 'lol', match: 'm1', t: t0 + 5000, kind: 'augment_picked', augment: '小丑学院', who: 'self', source: 'vision-click', confidence: 'high', gameTime: 300 }, 'm1');
+  assert.equal((s.pendingChoices ?? []).length, 1);
+  assert.equal(s.pendingChoices[0].kind, 'augment');
+  assert.equal(settleChoiceReactions(s, t0 + 6000, { role: 'jinbao' }), true);
+  const reaction = (s.broadcasts ?? []).find(b => b.choiceReaction);
+  assert.ok(reaction && reaction.agreed === true, '选了推荐的强化应当被肯定');
 });
