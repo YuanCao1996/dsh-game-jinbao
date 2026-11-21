@@ -61,8 +61,10 @@ public static class JinbaoCardWatch {
 }
 
 # 三张卡的矩形：与 OCR 裁剪同一套系数，完全由窗口尺寸推导。
+# 2026-11-21：原来只截到名字条（高 0.11h），卡片美术与选中描边全在框外，三张卡的差分
+# 只剩文字发光（比值 1.2 左右），判不出选中。改成覆盖整张卡：高 0.30h、上移到 0.20h。
 function Get-JinbaoCardRects([int]$width,[int]$height){
- $w=[int]($height*0.302);$h=[int]($height*0.11);$y=[int]($height*0.35)
+ $w=[int]($height*0.302);$h=[int]($height*0.36);$y=[int]($height*0.14)
  $rects=New-Object System.Collections.ArrayList
  for($slot=0;$slot -lt 3;$slot++){
   $x=[int]($width/2+$height*(-0.4713+0.3413*$slot))
@@ -236,7 +238,9 @@ function Invoke-JinbaoCardWatch {
    # 太严，实测明明有明显赢家（76.1 比 28.4）也判不出。改为"领先次大值 1.6 倍且高于 12"。
    $second=0.0
    for($i=0;$i -lt 3;$i++){ if($i -ne $argmax -and $diff[$i] -gt $second){ $second=$diff[$i] } }
-   $uniqueHover=($max -ge $Threshold -and $max -ge 12.0 -and $max -ge ($second*1.6))
+   # 区域改成整张卡后，选中卡与次高卡常只差十几点（实测比值 1.2），只看比值太严：
+ # 「比值达标」或「绝对领先 8 点」任一满足即可。
+ $uniqueHover=($max -ge $Threshold -and $max -ge 12.0 -and (($max - $second) -ge 8.0 -or $max -ge ($second*1.6)))
 
    if($uniqueHover){
     # 唯一一张在动：悬停或点击的动画。必须连续两帧都指向同一张才锁定 —— 单帧的
@@ -262,7 +266,8 @@ function Invoke-JinbaoCardWatch {
  }
 
  if($picked -ne $null){ $reason='sole-deviation' } elseif($reason -eq 'undecided'){ $reason='timeout' }
- return [pscustomobject]@{picked=$picked;reason=$reason;frames=$frames;peak=$peak;ms=((& $Clock)-$startedAt);baselineFrames=$baselineFrames;lastFrames=$lastFrames}
+ $best=0;for($i=1;$i -lt 3;$i++){ if($peak[$i] -gt $peak[$best]){ $best=$i } }
+ return [pscustomobject]@{picked=$picked;reason=$reason;frames=$frames;peak=$peak;guess=$best;ms=((& $Clock)-$startedAt);baselineFrames=$baselineFrames;lastFrames=$lastFrames}
 }
 
 # ---------------------------------------------------------------- 合成帧自检
@@ -368,7 +373,7 @@ if($MyInvocation.InvocationName -ne '.'){
       $result=Invoke-JinbaoCardWatch -TimeoutMs $timeoutMs -Threshold $threshold -SleepMs 50 -KeepFrames -Capture {
        Get-JinbaoCardFrame -width $width -height $height -originX $origin.X -originY $origin.Y -Hwnd $handle -OverlayRect $overlayRect
       }
-      $payload=[ordered]@{picked=$result.picked;reason=$result.reason;frames=$result.frames;ms=$result.ms;peak=$result.peak}
+      $payload=[ordered]@{picked=$result.picked;reason=$result.reason;frames=$result.frames;ms=$result.ms;peak=$result.peak;guess=$result.guess}
       # Undecided rounds are always kept because the tie-break needs the frames. Setting
       # JINBAO_CARD_WATCH_FRAMES=always keeps decided rounds too, which is how a real match
       # gets audited: every panel is reconstructable after the fact.
