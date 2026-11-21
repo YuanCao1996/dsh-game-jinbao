@@ -227,6 +227,7 @@ $script:lastFocusable=$null
 $script:lastControl=0
 $script:closing=$false
 $script:expandedWidth=380.0;$script:expandedHeight=520.0
+$script:lastAugmentOfferKey=''
 $script:tray=$null
 $script:testResult=@{}
 $area=[Windows.SystemParameters]::WorkArea
@@ -649,6 +650,17 @@ function Update-State {
   $changed=(!$script:snapshot -or !$script:renderedTab -or [string]$next.($script:tab) -ne [string]$script:snapshot.($script:tab))
   $enteredSelection=$next.phase -eq 'ChampSelect' -and (!$script:snapshot -or $script:snapshot.phase -ne 'ChampSelect')
   $script:snapshot=$next
+   # 海克斯三选一出现时主动弹一次窄条：空闲时条子是收起的，没有这条就不会“弹”。
+   try{
+    $offerKey=[string]$script:snapshot.augmentOfferKey
+    if($offerKey -and $offerKey -ne [string]$script:lastAugmentOfferKey){
+     $script:lastAugmentOfferKey=$offerKey
+     $offerText=[string]$script:snapshot.augmentOfferText
+     if($offerText -and (Get-Command Add-PlaybackMessage -ErrorAction SilentlyContinue)){
+      Add-PlaybackMessage ([pscustomobject]@{id='augment-offer-'+$offerKey;at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();text=$offerText;priority=1})
+     }
+    }
+   }catch{}
 
   foreach($button in $controls.Tabs.Children){$button.Visibility=if($next.game -eq 'generic' -and $button.Tag -in @('augments','players')){'Collapsed'}else{'Visible'}}
   if($next.game -eq 'generic' -and $script:tab -in @('augments','players')){Set-Tab 'advice'}

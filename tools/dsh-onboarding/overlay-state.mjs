@@ -749,6 +749,9 @@ const playerRows = players.map(p => {
       const bestSlot=rankedSlots.sort((a,b)=>a.value-b.value)[0]??null;
       const offerBrief=!bestSlot?'三个都没进榜，建议刷新换一批'
         :bestSlot.value>30?'三个排名都在 30 名以外，建议刷新看看':('推荐选 '+bestSlot.entry.name+'（'+bestSlot.entry.rank+(bestSlot.entry.tier?' '+bestSlot.entry.tier:'')+'）');
+      // 窄条弹窗用的一行摘要：悬浮窗在空闲时是收起的，靠这条 playback 把排名弹出来。
+      state.augmentOfferKey = roundKey;
+      state.augmentOfferText = ['海克斯三选一 · ' + champName, ...lines, offerBrief].join('\n');
       noticeUpsert(state,roundKey,{
         at:Date.now(),stage:'augment',dimension:'augment',
         slots,
@@ -1001,6 +1004,8 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
       (offered.length?'\n\n本轮已见 '+state.offerHistory.length+'/6':'\n\n'+captureHint)+'\n\n本局已选\n'+(state.ownedAugments.join('、')||'尚未收到强化选择日志')+(augmentUpdates?'\n\n强化动态\n'+augmentUpdates:''),
     // 英雄专属排名用表格渲染（三列等宽），文本里不再重复这段列表。
     augmentsRankingRows: augmentRankingRows,
+    augmentOfferKey: (state.offers?.length ? state.augmentOfferKey : '') ?? '',
+    augmentOfferText: (state.offers?.length ? state.augmentOfferText : '') ?? '',
     augmentsIsRanking: augmentRankingRows.length>0,
     players: (teamWinRates?teamWinRates+'\n\n':'')+'英雄胜率 ↓\n'+(roster.join('\n') || '等待双方英雄数据。'),
     teamWinRates,
