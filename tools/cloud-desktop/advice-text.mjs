@@ -72,9 +72,9 @@ export function adviceSimilarity(a, b) {
   return shared / (left.size + right.size - shared);
 }
 
-// 任务接口对单条 message 的硬上限是 2000 字（服务端 1..2000，超了直接 400/413）。
+// 任务接口对单条 message 的硬上限：2026-11-21 起放宽到 8000 字（服务端与客户端同步），预算留 200 字余量。
 // 先丢掉末尾的可选提示（日记/上一句/情绪），再兜底截断——不能让整条建议因为一句提示作废。
-export function fitPromptBudget(value, limit = 1950) {
+export function fitPromptBudget(value, limit = 7800) {
   let text = String(value ?? '');
   if (text.length <= limit) return text;
   text = text

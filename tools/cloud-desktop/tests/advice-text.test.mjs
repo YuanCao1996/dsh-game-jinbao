@@ -68,16 +68,16 @@ test('人数清点与就位类播报算噪音', async () => {
 
 test('超长提示先丢可选提示、再截断，不会整条作废', async () => {
   const { fitPromptBudget } = await import('../advice-text.mjs');
-  const base = '基础指令'.repeat(300); // 1200 字
+  const base = '基础指令'.repeat(1200); // 4800 字
   const hints = '\n（你昨天在日记里写过：明天还用盲僧嘛。如果跟眼下这波有关，可以自然带一句；无关就别硬提。）'
     + '\n刚才你已经说过：「先用雪球贴脸，技能命中让蜜蜂炸开，小法要留雪球先手」。这次只补充新信息，不要重复同一句建议；没有新东西就说得更具体，别换个说法讲同一件事。';
   const text = base + hints;
-  assert.ok(text.length > 1300 && text.length < 1950, '样本本身不该超限: ' + text.length);
+  assert.ok(text.length > 4800 && text.length < 7800, '样本本身不该超限: ' + text.length);
   assert.equal(fitPromptBudget(text), text, '没超限时原样返回');
 
-  const long = base + base + hints; // 2400+ 字
+  const long = base + base + hints; // 9600+ 字
   const fitted = fitPromptBudget(long);
-  assert.ok(fitted.length <= 1950, '必须压到上限内: ' + fitted.length);
+  assert.ok(fitted.length <= 7800, '必须压到上限内: ' + fitted.length);
   assert.ok(!fitted.includes('刚才你已经说过'), '超限时先丢可选提示');
   assert.ok(fitted.startsWith('基础指令'), '正文保留');
 });
