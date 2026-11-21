@@ -38,7 +38,7 @@ const same=(a,b)=>typeof a==='string'&&a.length===b.length&&timingSafeEqual(Buff
 const send=(res,status,value,headers)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...(headers??{})});res.end(JSON.stringify(value));};
 const error=status=>Object.assign(Error('setup operation failed'),{status});
 async function body(req,max=512*1024,onBytes){const declared=Number(req.headers['content-length']);if(Number.isFinite(declared)&&declared>max){onBytes?.(declared);req.resume();throw error(413);}let size=0;const chunks=[];for await(const c of req){size+=c.length;onBytes?.(size);if(size>max)throw error(413);chunks.push(c);}try{const b=JSON.parse(Buffer.concat(chunks));if(!b||typeof b!=='object'||Array.isArray(b))throw 0;return b;}catch{throw error(400);}}
-export async function createSetupServer({credentials,stateDir,port=3084,coachPort=3081,serviceBaseUrl='https://api.jinbaoai.top',fetchImpl=fetch,cloudAgent,localAgent,runtimeId,prepareModel,onModelChange,updateController,observation,nativeInstaller,logSource,userMemory,activity,diagnostics,speech,diary,canAutoRequest,teamRooms=false,teamHostPreview=false,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError=false,teamCacheError=false,danmakuFactory=createBilibiliDanmaku}) {
+export async function createSetupServer({credentials,stateDir,port=3084,coachPort=3081,serviceBaseUrl='https://api.jinbaoai.top',fetchImpl=fetch,cloudAgent,localAgent,runtimeId,prepareModel,onModelChange,updateController,observation,nativeInstaller,logSource,userMemory,activity,diagnostics,speech,diary,canAutoRequest,teamRooms=false,teamHostPreview=false,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError=false,teamCacheError=false,storage,danmakuFactory=createBilibiliDanmaku}) {
  if(!Number.isInteger(coachPort)||coachPort<1||coachPort>65535)throw Error('Invalid coach port');
  const coachOrigin='http://127.0.0.1:'+coachPort;
  const service=serviceUrl(serviceBaseUrl),nonce=randomBytes(32).toString('hex');
@@ -507,6 +507,8 @@ if(detailUrl.pathname==='/api/pet'&&req.method==='POST'){
  await writeFile(join(stateDir,'pet.json'),JSON.stringify(pet),{mode:0o600});
  send(res,200,{ok:true,...pet});return;
 }
+  if(detailUrl.pathname==='/api/storage'&&req.method==='GET'){if(!storage)throw error(503);send(res,200,await storage.report());return;}
+  if(detailUrl.pathname==='/api/storage/cleanup'&&req.method==='POST'){if(!storage)throw error(503);const value=await body(req,1024);const target=String(value.target??'all');if(!['all','releases','memory','logs','legacy'].includes(target))throw error(400);send(res,200,await storage.cleanup(target));return;}
 if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{enabled:highlightSettings.enabled,count:(await highlights.list()).length});return;}
    if(detailUrl.pathname==='/api/highlights'&&req.method==='POST'){const value=await body(req,1024);highlightSettings.enabled=value.enabled===true;await writeFile(join(stateDir,'highlights.json'),JSON.stringify({enabled:highlightSettings.enabled}),{mode:0o600});send(res,200,{ok:true,enabled:highlightSettings.enabled});return;}
    // 批注：追加与查询
