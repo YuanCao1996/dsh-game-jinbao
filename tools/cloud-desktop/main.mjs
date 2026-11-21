@@ -1,7 +1,5 @@
-﻿import{createCloudCapture}from'./capture.mjs';
+import{createCloudCapture}from'./capture.mjs';
 import{createCloudCoach}from'./auto-coach.mjs';
-import{createCollectorPreview}from'./collector-preview.mjs';
-import{createNodeTaskAgent,createNodeTaskPreviewRouter}from'./node-task-agent.mjs';
 import{claimInstance}from'./instance.mjs';
 import{createEventQuery}from'./event-query.mjs';
 import{createRuntimeRouter}from'./runtime-router.mjs';
@@ -72,7 +70,6 @@ const FAIL_REASON={
  upstream_error:'云端返回异常，稍后再发一次',
  rate_limited:'请求太频繁，等几秒再发',
  login_required:'登录状态失效，请在设置页重新登录',
- collector_not_ready:'游戏数据尚未同步，稍后重试',
  match_changed:'对局已切换',
  agent_preempted:'已优先处理你的提问',
  other:'原因未知，可导出诊断记录反馈',
@@ -83,9 +80,8 @@ if(['generic_observation','public_text','budget_check','model_reserved','model_p
 // 私有经验：云端 agent 通过回调在本机读写，数据不出本机（与 BYOK 同一套语义）。
 const experienceToolkit=createExperienceToolkit({dir:stateDir,player:String(process.env.JINBAO_PLAYER_ID||'local')});
 const experienceTools=experienceCallback(experienceToolkit);
-let nodeCollector=null;
 const rawAgent=createRuntimeRouter({getMode:()=>setup?.config().mode??'cloud',isCurrent,onEvent:onProgress,factories:{
- cloud:()=>{const legacy=createCloudAgent({getActivityEnabled:activity.isEnabled,apiPrefix:'/desktop/agent-preview',deviceId:stateDir,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),experienceTools,onProgress,memoryTools:userMemory.execute,observationPlan:args=>observation.plan(args)});return args.includes('--node-agent-preview')?createNodeTaskPreviewRouter(createNodeTaskAgent({enabled:true,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value,getBinding:request=>nodeCollector?.binding(request.game,request.match),isCurrent,onProgress}),legacy):legacy;},
+ cloud:()=>createCloudAgent({getActivityEnabled:activity.isEnabled,apiPrefix:'/desktop/agent-preview',deviceId:stateDir,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),experienceTools,onProgress,memoryTools:userMemory.execute,observationPlan:args=>observation.plan(args)}),
  byok:()=>createLocalAgent({stateDir,getConfig:()=>setup.config(),getKey:async()=>(await credentials.resolve('JINBAO_USER_MODEL_API_KEY'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),onProgress,getActivityEnabled:activity.isEnabled,memoryTools:userMemory.execute,search:query=>setup.search(query),webSearch:createWebSearch(),observationPlan:args=>observation.plan(args)}),
 }});
 // 日记：一天最多一篇，只在没有进行中的对局时写；写不成就是这天没写，不留占位。
@@ -114,12 +110,13 @@ const version=JSON.parse(await readFile(join(root,'package.json'),'utf8')).versi
 // Reuse the server's existing IP-based trial seats. A remembered login or an
 // explicit local-mode choice always wins; exhausted seats fall back to email UI.
 const loginTask=!args.includes('--headless')?setup.ensureTrialLogin().catch(()=>{}):Promise.resolve();
-await writeFile(join(stateDir,'launcher-state.json'),JSON.stringify({phase:'cloud-preview',version,updatedAt:Date.now()})).catch(error=>{if(!['EPERM','EACCES'].includes(error?.code))throw error;console.warn(JSON.stringify({event:'startup_status_unwritable',code:error.code}));});
+await writeFile(join(stateDir,'launcher-state.json'),JSON.stringify({phase:'cloud-preview',version,updatedAt:Date.now()}));
 
 // 磁盘维护：启动后 30 秒跑一次，之后每天一次（只删过期/可再生数据）。
-const storageSweep=()=>storage.cleanup('all').then(result=>{if(result.freedBytes>0)console.log(JSON.stringify({event:'storage_cleanup',freedBytes:result.freedBytes,detail:result.result}));}).catch(()=>{});
+const storageSweep=()=>storage.cleanup('all').then(result=>{if(result.freedBytes>0)console.log(JSON.stringify({event:'storage_cleanup',freedBytes:result.freedBytes}));}).catch(()=>{});
 setTimeout(storageSweep,30000).unref?.();
-setInterval(storageSweep,24*60*60*1000).unref?.();const heartbeat=setInterval(()=>void writeFile(join(stateDir,'launcher-state.json'),JSON.stringify({phase:'standalone',version,updatedAt:Date.now()})).catch(()=>{}),5000);
+setInterval(storageSweep,24*60*60*1000).unref?.();
+const heartbeat=setInterval(()=>void writeFile(join(stateDir,'launcher-state.json'),JSON.stringify({phase:'standalone',version,updatedAt:Date.now()})).catch(()=>{}),5000);
 const updateTimer=setInterval(()=>void updates.check(),6*60*60*1000);void updates.check();
 const diaryTimer=setInterval(()=>void diary.tick(),10*60*1000);setTimeout(()=>void diary.tick(),45000).unref?.();
 const speechTimer=setInterval(()=>speech.tick(),500);
@@ -129,9 +126,6 @@ const observationTimer=setInterval(()=>{void observation.tick();void logSource.t
 // 端口其实不冲突（本进程的设置端口是随机的，教练也在进程内），冲突的是"谁在屏幕上说话"。
 const instanceLock=acquireInstanceLock({line:'standalone',stateDir});
 const secondaryLock=instanceLock.role==='secondary';
-// Explicit preview only until trusted production enrollment is available.
-nodeCollector=createCollectorPreview({onStatus:value=>diagnostics.record('collector',value),enabled:(args.includes('--node-collector-preview')||args.includes('--node-agent-preview'))&&!secondaryLock,stateDir,getView:()=>setup.view(),getMode:()=>setup.config().mode,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value});
-const nodeCollectorTimer=(args.includes('--node-collector-preview')||args.includes('--node-agent-preview'))&&!secondaryLock?setInterval(()=>void nodeCollector.tick().catch(()=>{}),2000):null;
 if(instanceLock.role==='owner')publishSettingsUrl(setup.url);
 if(secondaryLock)try{await writeFile(join(stateDir,'instance-secondary.json'),JSON.stringify({owner:instanceLock.owner?.line??'unknown',settingsUrl:instanceLock.owner?.settingsUrl??'',at:Date.now()}),{mode:0o600});}catch{}
 await rm(join(stateDir,'overlay-stopped'),{force:true});
@@ -150,8 +144,8 @@ if(!args.includes('--headless')&&!secondaryLock){
 console.log(JSON.stringify({standalone:true,requiresDshDesktop:false,stateDir,port:setup.port,collecting:!!supervisor}));
 if(process.connected)process.send({action:'ready'});
 const stop=createShutdown({
- quiesce:()=>{if(nodeCollectorTimer)clearInterval(nodeCollectorTimer);void nodeCollector.close();if(interval)clearInterval(interval);if(coachTimer)clearInterval(coachTimer);if(overlayTimer)clearInterval(overlayTimer);void overlay?.close();clearInterval(stopTimer);clearInterval(heartbeat);clearInterval(diagnosticsTimer);clearInterval(speechTimer);clearInterval(diaryTimer);clearInterval(updateTimer);clearInterval(observationTimer);setup.stopAccepting();},
- steps:[['node-collector',()=>nodeCollector.close()],['overlay',()=>overlay?.close()],['coach',()=>coach?.close()],['speech',()=>speech.close()],['agent',()=>agent.close()],['memory',()=>userMemory.close()],['collectors',()=>supervisor?.close()],['updates',()=>updates.close()],['observation',()=>observation.close()],['logs',()=>logSource.close()],['installer',()=>nativeInstaller.close()],['login',()=>loginTask],['settings',()=>setup.close()],['usage-outbox',()=>teamUsageOutbox?.close()],['cache-reports',()=>teamCacheReports?.close()],['team-cache',()=>teamCacheStore?.close()],['activity',()=>activity.close()],['diagnostics',()=>diagnostics.close()],['instance-lock',()=>releaseInstanceLock()],['instance',()=>instance.close()]],
+ quiesce:()=>{if(interval)clearInterval(interval);if(coachTimer)clearInterval(coachTimer);if(overlayTimer)clearInterval(overlayTimer);void overlay?.close();clearInterval(stopTimer);clearInterval(heartbeat);clearInterval(diagnosticsTimer);clearInterval(speechTimer);clearInterval(diaryTimer);clearInterval(updateTimer);clearInterval(observationTimer);setup.stopAccepting();},
+ steps:[['overlay',()=>overlay?.close()],['coach',()=>coach?.close()],['speech',()=>speech.close()],['agent',()=>agent.close()],['memory',()=>userMemory.close()],['collectors',()=>supervisor?.close()],['updates',()=>updates.close()],['observation',()=>observation.close()],['logs',()=>logSource.close()],['installer',()=>nativeInstaller.close()],['login',()=>loginTask],['settings',()=>setup.close()],['usage-outbox',()=>teamUsageOutbox?.close()],['cache-reports',()=>teamCacheReports?.close()],['team-cache',()=>teamCacheStore?.close()],['activity',()=>activity.close()],['diagnostics',()=>diagnostics.close()],['instance-lock',()=>releaseInstanceLock()],['instance',()=>instance.close()]],
  complete:async({failed})=>{try{await writeFile(join(stateDir,'shutdown-state.json'),JSON.stringify({at:Date.now(),state:failed.length?'completed_with_errors':'completed',failedSteps:failed}),{mode:0o600});await notifyRestart({requested:restartRequested,failed,connected:process.connected,send:(...values)=>process.send(...values)});}finally{process.exit(failed.length?1:0);}}
 });
 const stopTimer=setInterval(()=>void access(join(stateDir,'overlay-stopped')).then(stop).catch(()=>{}),500);
