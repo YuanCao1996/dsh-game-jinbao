@@ -319,7 +319,10 @@ function Show-NarrowPlaceholder {
 function Playback-Tick {
  if($script:displayMode -ne 'narrow' -or $script:closing){$modeClock.Stop();return}
  $now=Get-PlaybackNow
- if($settingsMenu.IsOpen -or $quickConfirm.IsOpen -or ($script:overlayModeMenu -and $script:overlayModeMenu.IsOpen) -or $script:dragging){$script:playbackLastTick=$now;return}
+ # 拖拽标记只应在按住左键时有效：鼠标在窗口外松开时 MouseUp 可能收不到，
+   # 标记一旦卡住，播报会一直排在队列里（能听到语音、字幕不出来）。
+   if($script:dragging -and [Windows.Input.Mouse]::LeftButton -ne [Windows.Input.MouseButtonState]::Pressed){$script:dragging=$false;try{Log-OverlayState 'drag-reset' @{phase=[string]$script:playbackPhase}}catch{}}
+   if($settingsMenu.IsOpen -or $quickConfirm.IsOpen -or ($script:overlayModeMenu -and $script:overlayModeMenu.IsOpen) -or $script:dragging){$script:playbackLastTick=$now;return}
  $delta=[Math]::Max(0,$now-$script:playbackLastTick);$script:playbackLastTick=$now
  if(!$script:activePlayback -and $script:playbackQueue.Count){
   $script:awaitingPlayback=$false
