@@ -18,82 +18,78 @@ export const PRAISE_SETTLE_MS = 2_000;
 export const PRAISE_MAX_WAIT_MS = 40_000;
 export const PRAISE_ROLES = Object.freeze(['jinbao', 'liurufeng', 'wangbatian', 'tiezhi']);
 
-const SELF = {
+// 台词模板：叹词 + 主语 + 多杀 + 反应 + 夸奖 +（被击杀者 + 幽默说法）。
+// 例：哇塞，你这波三杀把我看愣住啦，牛呀！对面的安妮被你打成麻瓜了
+const VOICE = {
   jinbao: {
-    2: ['双杀，稳住这个节奏。', '双杀到手，继续压。'],
-    3: ['三杀！手感回来了，接着打。', '三杀！这波很漂亮。'],
-    4: ['四杀！最后一个也拿下！', '四杀！再来一个就是五杀！'],
-    5: ['五杀！这波太漂亮了！', '五杀！记住这一波。'],
+    exclaim: ['哇塞', '耶', '嘿嘿'],
+    react: ['把我看愣住啦', '看得我眼睛都直了', '我手都拍红啦'],
+    praise: ['牛呀', '太厉害啦', '你太猛啦'],
+    mock: ['被你打成麻瓜了', '话都说不出来', '直接不吭声了'],
   },
   liurufeng: {
-    2: ['双杀，节奏正确。', '双杀，保持推进。'],
-    3: ['三杀。继续保持这个走位。', '三杀，优势已经建立。'],
-    4: ['四杀。收掉最后一个。', '四杀，再一个就是五杀。'],
-    5: ['五杀。这一波可以回放了。', '五杀，执行力满分。'],
+    exclaim: ['不错', '很好'],
+    react: ['节奏拿得很稳', '处理得很干净', '时机掐得正好'],
+    praise: ['干得漂亮', '这就是执行力', '值得记一笔'],
+    mock: ['被打崩了节奏', '完全接不住', '只能往回缩'],
   },
   wangbatian: {
-    2: ['双杀！就该这么打。', '双杀，跟我压。'],
-    3: ['三杀！这才是我的队友。', '三杀，别给他们喘息。'],
-    4: ['四杀！最后一个也别放过！', '四杀！再来一个满贯！'],
-    5: ['五杀！全场都是你的！', '五杀！这才叫统治。'],
+    exclaim: ['漂亮', '痛快'],
+    react: ['这才是该有的气势', '把对面按在地上打', '一点机会都没给'],
+    praise: ['够狠', '就该这么打', '我服了'],
+    mock: ['连还手的余地都没有', '直接被打穿了', '看着都没脾气了'],
   },
   tiezhi: {
-    2: ['双杀，对面有点懵了。', '双杀，这波挺顺手。'],
-    3: ['三杀！对面指挥都乱了。', '三杀，这波我服。'],
-    4: ['四杀！就差一个凑数了。', '四杀，对面已经不想玩了。'],
-    5: ['五杀！这波我得给你鼓掌。', '五杀！对面直接不吭声了。'],
+    exclaim: ['行啊', '我服了'],
+    react: ['这波我服', '看得我直乐', '真给我整不会了'],
+    praise: ['可以啊', '有东西', '牛'],
+    mock: ['被打得没脾气', '话都说不利索了', '直接摆烂了'],
   },
 };
 
-const ALLY = {
-  jinbao: {
-    4: ['{hero}四杀！跟着冲。', '{hero}四杀，快接上。'],
-    5: ['{hero}五杀！太漂亮了。', '{hero}五杀，这波稳了。'],
-  },
-  liurufeng: {
-    4: ['{hero}四杀，抓住这个窗口。', '{hero}四杀，可以推进。'],
-    5: ['{hero}五杀，节奏完全在我们手里。', '{hero}五杀，跟着收尾。'],
-  },
-  wangbatian: {
-    4: ['{hero}四杀！上去压。', '{hero}四杀，一口气打穿。'],
-    5: ['{hero}五杀！给我推。', '{hero}五杀，直接结束这局。'],
-  },
-  tiezhi: {
-    4: ['{hero}四杀，就差一个凑整。', '{hero}四杀，对面不敢上了。'],
-    5: ['{hero}五杀，这波可以吹一年。', '{hero}五杀，对面怕是说不出话了。'],
-  },
-};
-
+const STREAK_LABEL = { 2: '双杀', 3: '三杀', 4: '四杀', 5: '五杀' };
 const pickOf = (list, pick) => {
   const index = Number.isInteger(pick) ? ((pick % list.length) + list.length) % list.length : 0;
   return list[index];
 };
 
-export function praiseText({ streak, side = 'self', role = 'jinbao', hero = '', pick = 0, victims = [], revenge = [] } = {}) {
-  const byRole = (side === 'ally' ? ALLY : SELF);
-  const table = byRole[role] ?? byRole.jinbao;
-  const list = table?.[streak];
-  if (!list || !list.length) return '';
-  const raw = pickOf(list, pick);
-  // 复仇优先：这波里干掉的敌人此前杀过你，文案直接给爽感。
-  const revenged = (Array.isArray(revenge) ? revenge : []).filter(Boolean).slice(0, 2);
-  const killed = (Array.isArray(victims) ? victims : []).filter(Boolean).slice(0, 3);
-  if (side !== 'ally') {
-    if (revenged.length) {
-      const name = String(revenged[0]).slice(0, 12);
-      const prefix = String(raw).replace(/[。！!]+$/, '');
-      return `${prefix}，${name}那笔仇报了！`;
-    }
-    if (killed.length) {
-      const prefix = String(raw).replace(/[。！!]+$/, '');
-      return `${prefix}（${killed.join('、')}）。`;
-    }
-    return raw;
-  }
-  const name = String(hero ?? '').trim().slice(0, 12);
-  return name ? raw.replace('{hero}', name) : raw.replace(/\{hero\}/g, '').trim();
+// 被击杀者：1 个 →「对面的安妮」；2 个 →「对面的安妮和塞拉斯」；3+ →「对面安妮、塞拉斯那几个」
+function victimsClause(victims) {
+  // 客户端给的是「名字#标签」，播报里只留名字；太长的昵称截 8 个字。
+  const names = (Array.isArray(victims) ? victims : []).map(name => String(name ?? '').split('#')[0].trim().slice(0, 8)).filter(Boolean);
+  if (!names.length) return '';
+  if (names.length === 1) return '对面的' + names[0];
+  if (names.length === 2) return '对面的' + names[0] + '和' + names[1];
+  return '对面' + names.slice(0, 2).join('、') + '那几个';
 }
 
+export function praiseText({ streak, side = 'self', role = 'jinbao', hero = '', pick = 0, victims = [], revenge = [] } = {}) {
+  const level = Number(streak);
+  const label = STREAK_LABEL[level];
+  if (!label) return '';
+  if (side === 'ally' && level < 4) return '';   // 队友双杀/三杀不夸，太吵
+  if (side !== 'self' && side !== 'ally') return '';
+  const voice = VOICE[role] ?? VOICE.jinbao;
+  const exclaim = pickOf(voice.exclaim, pick);
+  const react = pickOf(voice.react, pick);
+  const praise = pickOf(voice.praise, pick);
+
+  if (side === 'ally') {
+    const name = String(hero ?? '').trim().slice(0, 12);
+    if (!name) return `${exclaim}，${label}！${praise}。`;
+    return `${exclaim}，${name}这波${label}${react}，${praise}。`;
+  }
+
+  const revengeNames = (Array.isArray(revenge) ? revenge : []).map(name => String(name ?? '').trim()).filter(Boolean);
+  const base = `${exclaim}，你这波${label}${react}，${praise}！`;
+  if (revengeNames.length) return `${base}${revengeNames[0].slice(0, 12)}那笔仇报了。`;
+  const victimsText = victimsClause(victims);
+  if (!victimsText) return base;
+  const mock = pickOf(voice.mock, pick);
+  const composed = `${base}${victimsText}${mock}。`;
+  // 语音单段上限 60 字：超了就把"被击杀者+幽默说法"整段去掉，不切断句子。
+  return composed.length <= 60 ? composed : base;
+}
 // Names we accept for one participant. The live client reports riotId ("名字#tag") or
 // summonerName, China-server summonerName is usually empty, and event KillerName comes
 // WITHOUT the tag, so every non-empty form is kept with and without the tag.

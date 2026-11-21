@@ -204,3 +204,24 @@ test('the live service uses the mentor the player actually picked',async t=>{
   assert.equal(praise.text,praiseText({streak:5,role:'tiezhi'}),'tone must follow the selected mentor');
   assert.notEqual(praise.text,praiseText({streak:5,role:'jinbao'}));
 });
+
+test('台词按「叹词+你+多杀+反应+夸奖+被击杀者+幽默」组合',()=>{
+  const one=praiseText({streak:3,pick:0,victims:['安妮']});
+  assert.match(one,/哇塞/,'要有叹词');
+  assert.match(one,/你这波三杀/,'要有主语和多杀详情');
+  assert.match(one,/牛呀/,'要有夸奖词');
+  assert.match(one,/对面的安妮/,'要点名被击杀者');
+  assert.match(one,/麻瓜|不吭声|话都说不出来/,'要有一句幽默说法');
+  assert.ok(Array.from(one).length<=60,'语音单段上限: '+one);
+
+  const two=praiseText({streak:3,pick:0,victims:['安妮','塞拉斯']});
+  assert.match(two,/对面的安妮和塞拉斯/,'两个被击杀者用「和」连接');
+
+  // 没拿到被击杀者时只保留前半段，不出现半截句子
+  const bare=praiseText({streak:3,pick:0});
+  assert.ok(!/对面/.test(bare),'没有受害者就不该出现「对面的」: '+bare);
+
+  // 复仇优先于点名
+  const revenge=praiseText({streak:3,pick:0,victims:['安妮'],revenge:['塞拉斯']});
+  assert.match(revenge,/塞拉斯那笔仇报了/,'复仇优先');
+});

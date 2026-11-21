@@ -337,6 +337,14 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   if (event.kind === 'event') {
     const seconds = Number(event.time ?? event.EventTime);
     const name = event.name ?? event.EventName;
+    // 击杀记录：多杀事件本身不带"杀了谁"，只能从紧邻的 ChampionKill 里取。
+    // 以前只从 state.events 反推，而事件流只留塔/龙/团灭，于是 victims 永远是空的，
+    // 夸奖里点不出被击杀者（2026-11-21 日志：111 次 ChampionKill，链上 victims 全是 []）。
+    if (name === 'ChampionKill') {
+      const killer = String(event.killer ?? event.KillerName ?? '').trim();
+      const victim = String(event.victim ?? event.VictimName ?? '').trim();
+      if (killer && victim) state.recentKills = [...(state.recentKills ?? []), { at: Number(event.t ?? event.EventTime ?? Date.now()), killer, victim }].slice(-16);
+    }
     if (name === 'GameEnd') {
       state.ended = true;
       // 结束语据此选措辞：赢了/输了。
@@ -376,8 +384,21 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
        }
        return who.slice(0,5);
       })(), now:at }):{victims:[],revenge:[]};
+    // 被击杀者：取最近 15 秒内同一个击杀者拿到的 ChampionKill（按名字去重）。
+    const victimNames = (() => {
+      const killerName = String(event.killer ?? event.KillerName ?? '').trim();
+      const cutoff = Number(event.t ?? Date.now()) - 15000;
+      const names = [];
+      for (const row of (state.recentKills ?? [])) {
+        if (!row || row.at < cutoff) continue;
+        const same = row.killer === killerName || row.killer.includes(killerName) || killerName.includes(row.killer);
+        if (!same || names.includes(row.victim)) continue;
+        names.push(row.victim);
+      }
+      return names.slice(-3);
+    })();
     recordMultikill(state, { streak: event.KillStreak ?? event.killStreak, side: killed.side, hero: killed.hero, at, now: at,
-     victims:killInfo.victims, revenge:killInfo.revenge });
+     victims: victimNames.length ? victimNames : killInfo.victims, revenge: killInfo.revenge });
       }
     }
     // 击杀类也进事件流：以前只收塔/龙/水晶/团灭，玩家看不到「谁杀了谁」。
