@@ -3,7 +3,7 @@
 $script:playbackPhase='idle';$script:lineElapsed=0.0;$script:playbackLastTick=0L
 $script:scrollOffset=0.0;$script:scrollEnd=0.0;$script:playbackAccelerated=$false
 $script:subtitleRows=New-Object 'Collections.Generic.List[string]'
-$script:renderedSubtitleMode=$true;$script:playbackLayoutDirty=$false;$script:playbackInitialized=$false
+$script:renderedSubtitleMode=$true;$script:playbackLayoutDirty=$false;$script:playbackInitialized=$false;$script:narrowBarShown=$false;$script:barHideTimer=$null
 function Get-PlaybackNow {
  if($SelfTest -and $null -ne $script:playbackTestNow){return [double]$script:playbackTestNow}
  return [double][DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -36,9 +36,19 @@ function Set-NarrowMetrics {
  # 收起时如果是字幕模式，也要排字幕条尺寸（原来收起后不再排版，结果停在 56×56）。
  if($script:displayMode -eq 'narrow' -and (!$script:collapsed -or $script:subtitleMode)){
   # 全身模式需要更宽，否则人物会挤掉文字；头肩保持原来的最小宽度。
-  if($script:narrowPetFrame -eq 'full'){$minWidth=[Math]::Min([Math]::Max(300,[double]$script:narrowPetDisplay+300),$area.Width-20)}else{$minWidth=[Math]::Min(260,$area.Width-20)}
-  $window.MinWidth=$minWidth;$window.MinHeight=40
-  $window.Width=[Math]::Min([Math]::Max($window.MinWidth,$script:narrowWidth),$area.Width-20)
+  # 气泡收起时窗口只包住形象，并贴屏幕最左边；有消息再向右展开。
+  $petW=if($script:narrowPetDisplay -gt 0){[double]$script:narrowPetDisplay}else{[double]$script:narrowPetSize}
+  if($script:narrowPetFrame -ne 'head'){$petW=[Math]::Round($petW*0.523)}
+  $showBar=($script:narrowBarShown -or -not $script:narrowPetVisible)
+  if($showBar){
+    if($script:narrowPetFrame -eq 'full'){$minWidth=[Math]::Min([Math]::Max(300,[double]$script:narrowPetDisplay+300),$area.Width-20)}else{$minWidth=[Math]::Min(260,$area.Width-20)}
+    $window.MinWidth=$minWidth;$window.MinHeight=40
+    $window.Width=[Math]::Min([Math]::Max($window.MinWidth,$script:narrowWidth),$area.Width-20)
+  }else{
+    $window.MinWidth=[Math]::Max(48,$petW+16);$window.MinHeight=40
+    $window.Width=$window.MinWidth
+  }
+  $window.Left=[double]$area.Left
   $rowHeight=if($script:subtitleMode){2*$script:subtitleRowHeight+24}else{$script:subtitleRowHeight+24}
   # 形象比一行字高：不把窗口撑开的话，调到 56/72 会被条子裁掉一半
   # 形象高度：局外全身更高，但气泡本身保持文字高度（NarrowBubble 居中）
@@ -63,6 +73,59 @@ function Set-NarrowMetrics {
  }
  $script:playbackLayoutDirty=$true
 }
+function Set-NarrowBarShown {
+  param([bool]$show,[switch]$Instant)
+  if($script:displayMode -ne 'narrow'){return}
+  # 没有形象时必须保留条子，否则整层什么都看不见（占位逻辑继续用）。
+  if(-not $script:narrowPetVisible){ return }
+  if($show){
+    if($script:barHideTimer){try{$script:barHideTimer.Stop()}catch{};$script:barHideTimer=$null}
+    if($script:narrowBarShown){return}
+    $script:narrowBarShown=$true
+    try{
+      $controls.NarrowBubble.Visibility='Visible'
+      if($script:narrowPetTail){$script:narrowPetTail.Visibility='Visible'}
+    }catch{}
+    Set-NarrowMetrics
+    try{
+      $duration=[Windows.Media.Duration]::new([TimeSpan]::FromMilliseconds(240))
+      $ease=New-Object Windows.Media.Animation.CubicEase
+      $ease.EasingMode=[Windows.Media.Animation.EasingMode]::EaseOut
+      $fade=New-Object Windows.Media.Animation.DoubleAnimation(0,1,$duration)
+      $fade.EasingFunction=$ease
+      $controls.NarrowCanvas.Opacity=0
+      $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$fade)
+      $slide=New-Object Windows.Media.Animation.DoubleAnimation(-14,0,$duration)
+      $slide.EasingFunction=$ease
+      $transform=New-Object Windows.Media.TranslateTransform
+      $controls.NarrowBubble.RenderTransform=$transform
+      $transform.BeginAnimation([Windows.Media.TranslateTransform]::XProperty,$slide)
+    }catch{}
+    return
+  }
+  if(-not $script:narrowBarShown){return}
+  $script:narrowBarShown=$false
+  if($Instant){ try{Clear-PlaybackRows}catch{}; Set-NarrowMetrics; return }
+  # 先淡出，200ms 后再把窗口收成只剩形象（宽度收起不跳脸）。
+  try{
+    $fade=New-Object Windows.Media.Animation.DoubleAnimation(1,0,[Windows.Media.Duration]::new([TimeSpan]::FromMilliseconds(180)))
+    $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$fade)
+  }catch{}
+  if($script:barHideTimer){try{$script:barHideTimer.Stop()}catch{}}
+  $timer=New-Object Windows.Threading.DispatcherTimer
+  $timer.Interval=[TimeSpan]::FromMilliseconds(200)
+  $timer.Add_Tick({
+    try{
+      if($script:narrowBarShown){$timer.Stop();return}
+      Clear-PlaybackRows
+      Set-NarrowMetrics
+    }catch{}
+    $timer.Stop()
+  })
+  $script:barHideTimer=$timer
+  $timer.Start()
+}
+
 function Split-Subtitle([string]$value,[double]$width){
  $measure=New-Object Windows.Controls.TextBlock;$measure.FontSize=$controls.NarrowText.FontSize;$measure.FontFamily=$controls.NarrowText.FontFamily
  $lines=New-Object 'Collections.Generic.List[string]';$line='';$value=$value.Replace("`r`n","`n").Replace("`r","`n")
@@ -261,14 +324,14 @@ function Playback-Tick {
  if(!$script:activePlayback -and $script:playbackQueue.Count){
   $script:awaitingPlayback=$false
   $script:activePlayback=$script:playbackQueue[0];$script:playbackQueue.RemoveAt(0);$script:playbackAccelerated=$script:playbackQueue.Count -gt 0
-  Prepare-PlaybackLayout;$delta=0
+  Set-NarrowBarShown $true;Prepare-PlaybackLayout;$delta=0
  }elseif($script:activePlayback -and $script:playbackLayoutDirty){Prepare-PlaybackLayout $true;$delta=0}
  if(!$script:activePlayback){
   if($script:awaitingPlayback -and !$script:collapsed){
    # 没有新播报时保留上一条消息的外观；只有真的空着才补占位，别把最后一条擦掉。
    $controls.NarrowText.Width=(Get-NarrowWidth);$controls.NarrowText.TextAlignment=if($script:narrowPetVisible){'Left'}else{'Center'}
    [Windows.Controls.Canvas]::SetTop($controls.NarrowText,0);[Windows.Controls.Canvas]::SetLeft($controls.NarrowText,0)
-   Show-NarrowPlaceholder
+   if($script:narrowPetVisible){Set-NarrowBarShown $false}else{Show-NarrowPlaceholder}
    $modeClock.Stop();return
   }
   $modeClock.Stop()
@@ -280,7 +343,7 @@ function Playback-Tick {
     $controls.NarrowText.Foreground='#DDE5EE'
     $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null)
     $controls.NarrowCanvas.Opacity=1
-    Show-NarrowPlaceholder
+    if($script:narrowPetVisible){Set-NarrowBarShown $false}else{Show-NarrowPlaceholder}
    }catch{}
   }
   return
@@ -323,7 +386,7 @@ function Playback-Tick {
    if($script:displayMode -eq 'narrow'){
     try{
      $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$controls.NarrowCanvas.Opacity=1
-     Show-NarrowPlaceholder
+     if($script:narrowPetVisible){Set-NarrowBarShown $false}else{Show-NarrowPlaceholder}
     }catch{}
     $modeClock.Stop()
    }else{Set-Collapsed $true -PreserveMode;$modeClock.Stop()}
