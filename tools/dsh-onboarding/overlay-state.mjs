@@ -997,7 +997,7 @@ export function skipStaleHistory({ size, mtimeMs, now = Date.now(), maxAgeMs = S
   if (!Number.isFinite(mtimeMs)) return false;
   return now - mtimeMs > maxAgeMs;
 }
-export async function createOverlayService({ stateDir, agentChat, agentImage, search, pollMs = 500, equipmentDebounceMs=2000, equipmentCooldownMs=30000, equipmentOpeningRetryMs=15000, knowledgeRetryMs=15000,activity,canAutoRequest,experience=null,praiseCloudGraceMs=6000 }) {
+export async function createOverlayService({ stateDir, agentChat, agentImage, search, pollMs = 500, equipmentDebounceMs=2000, equipmentCooldownMs=30000, equipmentOpeningRetryMs=15000, knowledgeRetryMs=15000,activity,canAutoRequest,experience=null,praiseCloudGraceMs=0 }) {
   search=createKnowledgeSearch(search);
   const logs = join(stateDir, 'logs'), output = join(stateDir, 'overlay-state.json');
   // 高光截图：关键事件（多杀/团灭/破水晶/大龙/首杀）各留一张，每局上限 6 张，本机存储。

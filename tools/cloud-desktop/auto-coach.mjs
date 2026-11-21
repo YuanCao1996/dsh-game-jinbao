@@ -2,7 +2,6 @@
 import{mkdir,appendFile,writeFile,rename}from'node:fs/promises';import{join}from'node:path';
 import{stateCoachingTrigger,buildLolCoachingPlan,createAdviceValidity,adviceIsValid}from'../dsh-coach-server/lib/lol-coaching-plan.js';
 import{createCoachScheduler}from'./coach-scheduler.mjs';
-import{requestPraise}from'../dsh-onboarding/praise-cloud.mjs';
 // 配合窗口只取决于双方存活人数差，所以每轮都把人数算好塞进 state 事件。
 // c.allies 在某些采集路径下已经把本人算进去了，先按英雄名去掉本人再补一次，
 // 否则自己会被数两遍，人数差永远偏向我方。
@@ -64,37 +63,6 @@ let deathTurns=0;
  // the context moved on between publish and status, which used to leave
  // advicePublished at 0 even though coach_broadcasts.jsonl kept growing.
  const published=async(v,extra={})=>{note(v,'coach_published',undefined,extra);await status(v,'published','',extra,{noted:true});};
- // 本地多杀文案只是固定句式的兜底；真正上屏的那句话由云端生成。
- // 每条连杀链只请求一次，避免同一波连杀反复打模型。
- const praiseTries=new Map();
- const praiseTurn=async v=>{
-  // 云端点评窗口只有十几秒，而 agent 往往正在跑出装分析（本局 250 行）。
-  // 所以：不因 agent 忙就放弃（让请求排进队列），失败也让下一轮再试一次。
-  const nowMs=now();
-  const pending=(v?.pendingPraise??[]).filter(item=>{
-   if(!item?.chain)return false;
-   const tried=praiseTries.get(item.chain);
-   // 已经发过、或重试次数/时限用尽，就不再打模型（视图里短暂残留也不重复播）。
-   return !tried||(!tried.published&&tried.attempts<3&&nowMs-tried.at<40000);
-  });
-  if(!pending.length)return false;
-  const item=pending[0];
-  const tried=praiseTries.get(item.chain)??{attempts:0,at:nowMs};
-  praiseTries.set(item.chain,{attempts:tried.attempts+1,at:nowMs});
-  if(praiseTries.size>64)praiseTries.delete(praiseTries.keys().next().value);
-  const result=await requestPraise(agent,{
-   streak:item.streak,
-   hero:item.side==='ally'?item.hero:(v.selfChampion??''),
-   victims:item.victims, revenge:item.revenge, game:v.game, match:v.match,
-  },{timeoutMs:8000});
-  // 云端没说话就交回本地兜底（overlay 的宽限窗口会补上），这里不补发第二条固定文案。
-  if(!result||result.source!=='cloud'||!result.text)return true;
-  await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'praise',broadcast:result.text,praise:true,praiseChain:item.chain,priority:2});
-  note(v,'praise_cloud','published',{chain:item.chain,streak:item.streak});
-  // 记成已发布：同一条链即使还在视图里，也不会再请求或再播一次。
-  praiseTries.set(item.chain,{...(praiseTries.get(item.chain)??{attempts:1}),published:true,at:now()});
-  return true;
- };
  return {async tick(){
   if(closed)return;const v=view();
   // 配合窗口必须在 busy/背压/无对局这些闸门之前记录：跨 ±2 的那一刻只要撞上被吞掉的
@@ -108,13 +76,11 @@ let deathTurns=0;
   if(pendingCoordination&&now()-pendingCoordination.at>20000)pendingCoordination=null;
   // 多杀点评必须排在教练回合之前：一次点评最多 2.5 秒，而教练回合要 13~58 秒，
   // 排在后面就永远抢不到模型槽位，多杀只能听固定文案。
-  if(!busy){if(await praiseTurn(v))return;}
   // 诊断：窗口里有待点评的链但教练正忙时留痕，下次能直接看出是没窗口还是被占用。
-  else if((v?.pendingPraise??[]).length)note(v,'praise_cloud','skipped_busy',{chain:v.pendingPraise[0].chain});
   if(busy||agent.busy?.()){note(v,'skip','busy');return;}
   if(!enabled()){note(v,'skip','disabled');return;}
   if(!live(v)){note(v,'skip','no_live_match');return;}
-  if(match!==v.game+':'+v.match){match=v.game+':'+v.match;store={};offers='';owned='';ownedCount=0;selection='';retryAt=0;deathTurns=0;praiseTries.clear();sideBaseline=null;pendingCoordination=null;}
+  if(match!==v.game+':'+v.match){match=v.game+':'+v.match;store={};offers='';owned='';ownedCount=0;selection='';retryAt=0;deathTurns=0;sideBaseline=null;pendingCoordination=null;}
   if(now()<retryAt){note(v,'skip','retry_backoff',{retryAt});return;}
   // A confirmation is the player's explicit request for guidance. The view carries only
   // the count, so this stays the cheap guard: while nothing new is confirmed the turn is
