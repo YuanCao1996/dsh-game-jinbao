@@ -22,31 +22,54 @@ export const PRAISE_ROLES = Object.freeze(['jinbao', 'liurufeng', 'wangbatian', 
 // 例：哇塞，你这波三杀把我看愣住啦，牛呀！对面的安妮被你打成麻瓜了
 const VOICE = {
   jinbao: {
-    exclaim: ['哇塞', '耶', '嘿嘿'],
-    react: ['把我看愣住啦', '看得我眼睛都直了', '我手都拍红啦'],
-    praise: ['牛呀', '太厉害啦', '你太猛啦'],
-    mock: ['被你打成麻瓜了', '话都说不出来', '直接不吭声了'],
+    exclaim: ['哇塞', '耶', '嘿嘿', '呜呼', '天呐', '好耶', '哇哦'],
+    react: [
+      '把我看愣住啦', '看得我眼睛都直了', '我手都拍红啦', '我都蹦起来啦',
+      '尖叫到破音啦', '差点把水杯打翻', '刚才还在替你捏把汗呢', '这一下我整个人都精神了',
+    ],
+    praise: ['牛呀', '太厉害啦', '你太猛啦', '这也太帅了吧', '我服气啦', '好强呀', '帅我一脸', '这波我记一辈子'],
+    mock: [
+      '被你打成麻瓜了', '话都说不出来', '直接不吭声了', '被打得找不着北',
+      '只能站在原地发愣', '已经懵在原地了', '连逃跑都忘了', '像被人关掉了开关',
+    ],
   },
   liurufeng: {
-    exclaim: ['不错', '很好'],
-    react: ['节奏拿得很稳', '处理得很干净', '时机掐得正好'],
-    praise: ['干得漂亮', '这就是执行力', '值得记一笔'],
-    mock: ['被打崩了节奏', '完全接不住', '只能往回缩'],
+    exclaim: ['不错', '很好', '可以', '稳', '漂亮', '干净'],
+    react: [
+      '节奏拿得很稳', '处理得很干净', '时机掐得正好', '出手没有多余动作',
+      '走位一点没浪费', '收得很利落', '技能交换算得很准', '从头到尾都很清楚',
+    ],
+    praise: ['干得漂亮', '这就是执行力', '值得记一笔', '判断正确', '打得明白', '这个选择很聪明', '值得复盘的正面例子'],
+    mock: [
+      '被打崩了节奏', '完全接不住', '只能往回缩', '阵型被撕开了',
+      '一点反打空间都没剩', '只能被动挨打', '资源被吃干净了', '前后排都被切断了',
+    ],
   },
   wangbatian: {
-    exclaim: ['漂亮', '痛快'],
-    react: ['把对面按在地上打', '一点机会都没给', '气势完全压住了'],
-    praise: ['够狠', '就该这么打', '我服了'],
-    mock: ['连还手的余地都没有', '直接被打穿了', '看着都没脾气了'],
+    exclaim: ['漂亮', '痛快', '好', '够劲', '就这样', '爽'],
+    react: [
+      '把对面按在地上打', '一点机会都没给', '气势完全压住了', '从头压到尾',
+      '打得对面抬不起头', '把这波彻底吃干', '一步都没退', '直接把场子撑住了',
+    ],
+    praise: ['够狠', '就该这么打', '我服了', '这才叫打', '有我当年的样子', '干得解气', '够胆', '看得痛快'],
+    mock: [
+      '连还手的余地都没有', '直接被打穿了', '看着都没脾气了', '只能缩在塔下',
+      '当场被打散', '一点气势都不剩', '连装备都不敢出了', '人已经站在复活点了',
+    ],
   },
   tiezhi: {
-    exclaim: ['行啊', '好家伙', '嘿'],
-    react: ['看得我直乐', '我服了', '真给我整不会了'],
-    praise: ['可以啊', '有东西', '牛'],
-    mock: ['被打得没脾气', '话都说不利索了', '直接摆烂了'],
+    exclaim: ['行啊', '好家伙', '嘿', '嚯', '可以可以', '哎哟'],
+    react: [
+      '看得我直乐', '我服了', '真给我整不会了', '这操作我看傻了',
+      '笑得我手一抖', '我就当看了一场表演', '有点不讲道理啊', '这段可以录下来',
+    ],
+    praise: ['可以啊', '有东西', '牛', '有点东西', '学不来学不来', '够我吹一晚上', '算你厉害'],
+    mock: [
+      '被打得没脾气', '话都说不利索了', '直接摆烂了', '心态当场就崩了',
+      '连语音都不敢开', '在地上找牙', '已经放弃思考了', '估计在想怎么解释',
+    ],
   },
 };
-
 const STREAK_LABEL = { 2: '双杀', 3: '三杀', 4: '四杀', 5: '五杀' };
 const pickOf = (list, pick) => {
   const index = Number.isInteger(pick) ? ((pick % list.length) + list.length) % list.length : 0;
@@ -70,9 +93,23 @@ export function praiseText({ streak, side = 'self', role = 'jinbao', hero = '', 
   if (side === 'ally' && level < 4) return '';   // 队友双杀/三杀不夸，太吵
   if (side !== 'self' && side !== 'ally') return '';
   const voice = VOICE[role] ?? VOICE.jinbao;
-  const exclaim = pickOf(voice.exclaim, pick);
-  const react = pickOf(voice.react, pick);
-  const praise = pickOf(voice.praise, pick);
+  // 四个部分各自独立取词：同一个 pick 结果稳定（同一条链不会边说边变），
+  // 不同 pick 之间互相解耦，组合数从「跟词库一样多」变成「叹词×反应×夸奖×幽默」上千种。
+  // splitmix32：同 pick 稳定，不同 pick 之间充分打散（简单 LCG 的低位会让叹词一直撞同一个）。
+  const rng = (() => {
+    let state = Math.imul((Number(pick) || 0) + 1, 0x9E3779B1) >>> 0;
+    return () => {
+      state = (state + 0x9E3779B9) >>> 0;
+      let z = state;
+      z = Math.imul(z ^ (z >>> 16), 0x85EBCA6B) >>> 0;
+      z = Math.imul(z ^ (z >>> 13), 0xC2B2AE35) >>> 0;
+      return (z ^ (z >>> 16)) >>> 0;
+    };
+  })();
+  const pickFrom = list => list[rng() % Math.max(1, list.length)];
+  const exclaim = pickFrom(voice.exclaim);
+  const react = pickFrom(voice.react);
+  const praise = pickFrom(voice.praise);
 
   if (side === 'ally') {
     const name = String(hero ?? '').trim().slice(0, 12);
@@ -85,7 +122,7 @@ export function praiseText({ streak, side = 'self', role = 'jinbao', hero = '', 
   if (revengeNames.length) return `${base}${revengeNames[0].slice(0, 12)}那笔仇报了。`;
   const victimsText = victimsClause(victims);
   if (!victimsText) return base;
-  const mock = pickOf(voice.mock, pick);
+  const mock = pickFrom(voice.mock);
   const composed = `${base}${victimsText}${mock}。`;
   // 语音单段上限 60 字：超了就把"被击杀者+幽默说法"整段去掉，不切断句子。
   return composed.length <= 60 ? composed : base;

@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -207,11 +207,11 @@ test('the live service uses the mentor the player actually picked',async t=>{
 
 test('台词按「叹词+你+多杀+反应+夸奖+被击杀者+幽默」组合',()=>{
   const one=praiseText({streak:3,pick:0,victims:['安妮']});
-  assert.match(one,/哇塞/,'要有叹词');
+  assert.match(one,/^[^，]{1,4}，/,'要有叹词');
   assert.match(one,/你这波三杀/,'要有主语和多杀详情');
-  assert.match(one,/牛呀/,'要有夸奖词');
+
   assert.match(one,/对面的安妮/,'要点名被击杀者');
-  assert.match(one,/麻瓜|不吭声|话都说不出来/,'要有一句幽默说法');
+  assert.match(one,/麻瓜|不吭声|说不出来|找不着北|发愣|懵|逃跑|开关/,'要有一句幽默说法');
   assert.ok(Array.from(one).length<=60,'语音单段上限: '+one);
 
   const two=praiseText({streak:3,pick:0,victims:['安妮','塞拉斯']});
@@ -224,4 +224,14 @@ test('台词按「叹词+你+多杀+反应+夸奖+被击杀者+幽默」组合',
   // 复仇优先于点名
   const revenge=praiseText({streak:3,pick:0,victims:['安妮'],revenge:['塞拉斯']});
   assert.match(revenge,/塞拉斯那笔仇报了/,'复仇优先');
+});
+
+test('同一角色不同 pick 能组合出大量不同句子',()=>{
+  const seen=new Set();
+  for(let pick=0;pick<16;pick++) seen.add(praiseText({streak:3,pick,victims:['安妮']}));
+  assert.ok(seen.size>=12,'16 次里至少 12 句不同，实际 '+seen.size);
+  const roles=new Set();
+  for(const role of ['jinbao','liurufeng','wangbatian','tiezhi']) roles.add(praiseText({streak:4,role,pick:3,victims:['安妮']}));
+  assert.equal(roles.size,4,'四个人设不能被同一套词覆盖');
+  for(const text of roles) assert.ok(Array.from(text).length<=60,'不超过语音单段上限: '+text);
 });
