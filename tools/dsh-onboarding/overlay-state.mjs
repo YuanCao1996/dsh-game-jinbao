@@ -114,9 +114,26 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
  if(event&&event.kind==='augment_capture_blind'){state.captureBlind=(Number(state.captureBlind)||0)+1;return state;}
   if (!event || typeof event !== 'object') return;
   const at = eventTimestamp(event);
+  if (event.kind === 'viewer_message' || event.kind === 'viewer_reply') {
+    if ((event.game && state.game && event.game !== state.game) ||
+        (event.match && event.match !== state.match) || at < state.matchStartedAt) return;
+    const viewerReply = event.kind === 'viewer_reply';
+    const body = String(viewerReply ? event.broadcast ?? '' : event.text ?? '').trim().slice(0, 200);
+    if (!body || state.chat.some(row => row.origin === 'viewer' && row.role === (viewerReply ? 'assistant' : 'user') &&
+      (event.viewerMessageId ? row.viewerMessageId === event.viewerMessageId : row.at === at && row.text === body))) return;
+    const nick = String(event.user ?? '观众').slice(0, 24);
+    state.chat.push({role:viewerReply?'assistant':'user',origin:'viewer',text:body,nick,
+      viewerMessageId:event.viewerMessageId??'',platform:String(event.platform??'bilibili'),at,noSpeech:true});
+    state.chat=state.chat.slice(-200);
+    if(viewerReply){
+      state.broadcasts.push({at,text:'回应观众：'+body,noSpeech:true,viewerReply:true,expiresAt:at+30000,priority:0});
+      state.broadcasts=state.broadcasts.slice(-12);
+    }
+    return state;
+  }
   if (event.broadcast) {
     if(at<state.matchStartedAt||(event.game&&state.game&&event.game!==state.game)||(event.match&&event.match!==state.match))return;
-    const reply = { at, text: text(event.broadcast), validity:event.validity ?? null,priority:Number.isInteger(event.priority)?Math.max(0,Math.min(2,event.priority)):0,dimension:typeof event.dimension==='string'?event.dimension:'',stage:typeof event.key==='string'?event.key:'' };
+    const reply = { at, text: text(event.broadcast), ...(event.noSpeech===true?{noSpeech:true}:{}), validity:event.validity ?? null,priority:Number.isInteger(event.priority)?Math.max(0,Math.min(2,event.priority)):0,dimension:typeof event.dimension==='string'?event.dimension:'',stage:typeof event.key==='string'?event.key:'' };
     // 云端多杀点评：同一个 praiseChain 只留一条播报。云端先到就直接落一条；
     // 本地兜底先到就只替换文案并保留原来的 at，避免同一波连杀被播两遍。
     if (typeof event.praiseChain === 'string' && event.praiseChain) {
@@ -282,16 +299,6 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   }
   if (event.kind === 'augment_mutate' && event.who === 'self' && event.champion && event.champion === state.me?.champion && event.augment) {
     recordChoice(state, { kind: 'augment', name: String(event.augment), at });
-  }
-  // 主播模式：观众弹幕进时间线，带 origin=viewer 以便和玩家自己的提问区分开。
-  if (event.kind === 'viewer_message' && event.text) {
-    state.chat.push({
-      role: 'user', origin: 'viewer', text: String(event.text).slice(0, 200),
-      nick: String(event.user ?? '观众').slice(0, 24), platform: String(event.platform ?? 'bilibili'),
-      superChat: event.superChat === true, at: Number.isFinite(at) ? at : Date.now(),
-    });
-    if (state.chat.length > 200) state.chat = state.chat.slice(-200);
-    return state;
   }
   if (event.kind === 'augment_offer_closed'){
     // 面板关掉说明这一轮结束了，视觉看到的这张就是最终选择。
@@ -495,6 +502,10 @@ export function createOverlayRouter(limit = 64) {
         event={...raw,...facts,t:eventTimestamp(raw)};
       }
       if(!event||typeof event!=='object')return;
+      if(event.kind==='viewer_message'||event.kind==='viewer_reply'){
+        applyOverlayEvent(active,event,file);
+        return; // Public audience messages must not become game observations or personal memory.
+      }
       if(event.matchEnded&&!(event.kind==='event'&&event.name==='GameEnd'))return;
       if(event.broadcast){
         const requested=typeof event.match==='string'?event.match.replace(/^file-/,''):null;
@@ -533,6 +544,9 @@ export function createOverlayRouter(limit = 64) {
     },
   };
 }
+const personalMemoryState = state => ({...state,
+  chat:(state.chat??[]).filter(row=>row.origin!=='viewer'),
+  broadcasts:(state.broadcasts??[]).filter(row=>!row.viewerReply)});
 const percent = v => Number.isFinite(Number(v)) && v !== null ? Number(v) + '%' : '暂无数据';
 function items(value) {
   if (typeof value === 'string') {
@@ -930,6 +944,8 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
     game: state.game, mode:state.mode, match: state.match, matchStartedAt:state.matchStartedAt, matchWin: state.matchWin === true ? true : state.matchWin === false ? false : null, gameTime: state.game==='generic'?(state.phase==='CapturePaused'?'观察已停止':'观察中'):clock(state.gameSeconds), phase:state.phase, ended: state.ended,
     ...(sideAlive??{}),
     selfChampion: shortChampion(me.champion),
+    viewerFacts:{items:items(state.game==='lol'?list(me.items).filter(isCompletedItem):me.items).split('、').filter(Boolean),
+      augments:[...state.ownedAugments],enemies:state.enemies.map(p=>p.champion).filter(Boolean)},
     // The coach needs to know the player is dead before it decides whether it may spend a
     // turn: a death reminder is worth bypassing a busy voice queue, nothing else is.
     dead: me.dead===true, respawn: Number.isFinite(Number(me.respawn)) ? Number(me.respawn) : null,
@@ -983,12 +999,12 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
     // ignore that event?" is answerable from the UI instead of from logs. Held-back rows
     // are called out rather than silently hidden.
     events: (()=>{const {rows,heldBack}=eventWindow(state.events);const body=rows.map(e=>`${e.time} ${e.text}`).join('\n');return (body||'等待关键事件：装备购买、海克斯选择、团灭和重要目标。')+(heldBack?`\n（更早 ${heldBack} 条未进入智能体上下文，可在聊天中要求查询）`:'');})(),
-    chat: state.chat.filter(r => !r.hidden).slice(-12).map(r => `${r.role === 'user' ? '我' : '教练'}：${r.text}`).join('\n\n') || '输入问题，与教练讨论当前对局。',
+    chat: state.chat.filter(r => !r.hidden).slice(-12).map(r => `${r.origin==='viewer'?(r.role==='user'?'观众 · '+(r.nick||'观众'):'金宝 · 回应观众'):(r.role === 'user' ? '我' : '教练')}：${r.text}`).join('\n\n') || '输入问题，与教练讨论当前对局。',
    // The battle page is one conversation: advice the coach published and the turns the
    // player exchanged are merged into a single chronological stream, oldest first.
    thread: (() => {
-    const turns = state.chat.filter(r => !r.hidden).map(r => ({ role: r.role, origin: r.origin ?? '', text: r.text, failed: r.failed === true, at: Number(r.at) || 0, kind: 'chat' }));
-    const spoken = state.broadcasts.map(b => ({ role: 'assistant', origin: 'coach', text: b.text, at: Number(b.at) || 0, kind: b.topic === 'praise' ? 'praise' : 'advice', dimension: b.dimension ?? '', stage: b.stage ?? '' }));
+    const turns = state.chat.filter(r => !r.hidden).map(r => ({ role: r.role, origin: r.origin ?? '', text: r.origin==='viewer'?(r.role==='user'?'观众 · '+(r.nick||'观众')+'：':'回应观众：')+r.text:r.text, failed: r.failed === true, at: Number(r.at) || 0, kind: 'chat' }));
+    const spoken = state.broadcasts.filter(b=>!b.viewerReply).map(b => ({ role: 'assistant', origin: 'coach', text: b.text, at: Number(b.at) || 0, kind: b.topic === 'praise' ? 'praise' : 'advice', dimension: b.dimension ?? '', stage: b.stage ?? '' }));
     // 原海克斯页/胜率页的内容以同一条时间线出现，玩家不用切页就能看到。
     // table/footer 透传给渲染层：阵容这类内容排成四列表格，比拼一行文字整齐得多。
     const notices = (state.notices ?? []).map(n => ({ role: 'assistant', origin: 'coach', text: n.text, at: n.at, kind: 'notice', dimension: n.dimension ?? '', stage: n.stage ?? '', ...(n.table?{table:n.table}:{}) , ...(n.footer?{footer:n.footer}:{}) , ...(n.slots?{slots:n.slots}:{}) }));
@@ -1020,7 +1036,7 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
    })(),
    // Events are too long to list here; the page keeps only the newest line and updates it.
    eventTicker: (() => { const last = state.events.at(-1); return last ? `${last.time ?? ''} ${last.text ?? ''}`.trim() : ''; })(),
-    chatRows: state.chat.filter(r => !r.hidden).slice(-40).map(r => ({role:r.role,origin:r.origin??'',text:r.text,at:r.at,failed:r.failed===true})),
+    chatRows: state.chat.filter(r => !r.hidden).slice(-40).map(r => ({role:r.role,origin:r.origin??'',text:r.origin==='viewer'?(r.role==='user'?'观众 · '+(r.nick||'观众')+'：':'回应观众：')+r.text:r.text,at:r.at,failed:r.failed===true})),
     suggestedQuestion: suggestOverlayQuestion(state),
     // 经验库给出的历史段落（已带标题与实际字节预算）；教练消息里包含整份 context，
     // 因此把它放进视图就等于放进提示词，无需再改消息构造。
@@ -1167,7 +1183,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
   await writeFile(output + '.tmp', JSON.stringify(view()), { mode: 0o600 });
     await rename(output + '.tmp', output);
     await writeFile(join(stateDir,'overlay-chat.json'),JSON.stringify({game:state.game,match:state.match,matchStartedAt:state.matchStartedAt,chat:state.chat}),{mode:0o600});
-    await memory.snapshot(state, knowledge.rows ?? []);
+    await memory.snapshot(personalMemoryState(state), knowledge.rows ?? []);
   }
   // Serialize disk snapshots: model requests and polling may finish concurrently.
   let writes = Promise.resolve();
@@ -1409,7 +1425,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
         if(event?.kind==='augment_vision_ambiguous')ambiguous.push(event);
         if (observed) { await memory.record(observed,event,file,position); observedStates.add(observed); }
       }
-      for (const observed of observedStates) await memory.snapshot(observed);
+      for (const observed of observedStates) await memory.snapshot(personalMemoryState(observed));
  // One opening line per match, one result per finished match.
  const startedEvent = pending.map(entry => entry.event).find(e => e?.kind === 'game_start' || e?.kind === 'match_start');
  const endedEvent = pending.map(entry => entry.event).find(e => e?.kind === 'event' && e.name === 'GameEnd');

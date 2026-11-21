@@ -158,10 +158,43 @@ export function createViewerFilter(options = {}) {
 export function createBilibiliDanmaku({
   roomId, fetchImpl = fetch, WsImpl = globalThis.WebSocket, now = Date.now,
   onMessage = () => {}, onStatus = () => {}, heartbeatMs = 30_000, cookie = '',
+  reconnectMs = 2000, timeoutMs = 10000,
 }) {
   let ws = null;
   let timer = null;
-  let closed = false;
+  let closed = true;
+  let generation = 0, retries = 0, retryTimer = null, deadline = null, controller = null;
+  let state = 'closed';
+  const emit = (value) => { state = value.state; onStatus(value); };
+  const cleanup = () => {
+    clearInterval(timer); clearTimeout(deadline); clearTimeout(retryTimer);
+    timer = deadline = retryTimer = null;
+    controller?.abort(); controller = null;
+    const previous = ws; ws = null;
+    if (previous) {
+      previous.onopen = previous.onmessage = previous.onerror = previous.onclose = null;
+      try { previous.close(); } catch {}
+    }
+  };
+  const request = (url, options = {}) => fetchImpl(url, {
+    ...options, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(timeoutMs)]),
+  });
+  const failed = (epoch, error = 'connection_failed') => {
+    if (closed || epoch !== generation) return;
+    generation++; cleanup();
+    const retryInMs = Math.min(30000, reconnectMs * 2 ** Math.min(retries++, 4));
+    emit({state:'reconnecting', error, retryInMs});
+    retryTimer = setTimeout(() => { retryTimer = null; void connect(); }, retryInMs);
+    retryTimer.unref?.();
+  };
+  async function connect() {
+    if (closed) return;
+    const epoch = ++generation;
+    controller = new AbortController();
+    emit({state:'connecting'});
+    try { await open(epoch); }
+    catch (error) { failed(epoch, /^room_not_found$|^danmu_info_failed:-?\d+$/.test(error.message) ? error.message : 'connection_failed'); }
+  }
   let buvid = '';
   const cookieHeader = () => {
     const parts = [];
@@ -172,22 +205,24 @@ export function createBilibiliDanmaku({
   const headers = () => ({ ...BROWSER_HEADERS, ...(cookieHeader() ? { cookie: cookieHeader() } : {}) });
 
   async function resolveRoom() {
-    const response = await fetchImpl(`https://api.live.bilibili.com/room/v1/Room/room_init?id=${encodeURIComponent(roomId)}`, { headers: headers() });
+    const response = await request(`https://api.live.bilibili.com/room/v1/Room/room_init?id=${encodeURIComponent(roomId)}`, { headers: headers() });
     const payload = await response.json();
     const real = Number(payload?.data?.room_id);
     if (!real) throw new Error('room_not_found');
     return real;
   }
 
-  async function danmuInfo(realRoom) {
+  async function danmuInfo(realRoom, epoch) {
     // WBI 签名需要 img/sub key，先取 nav
-    const navRaw = await (await fetchImpl('https://api.bilibili.com/x/web-interface/nav', { headers: headers() })).json();
+    const navRaw = await (await request('https://api.bilibili.com/x/web-interface/nav', { headers: headers() })).json();
+    if (closed || epoch !== generation) throw new Error('connection_cancelled');
     const imgUrl = String(navRaw?.data?.wbi_img?.img_url ?? '');
     const subUrl = String(navRaw?.data?.wbi_img?.sub_url ?? '');
     const pick = url => url.split('/').pop()?.split('.')[0] ?? '';
     const imgKey = pick(imgUrl);
     const subKey = pick(subUrl);
     const { createHash } = await import('node:crypto');
+    if (closed || epoch !== generation) throw new Error('connection_cancelled');
     const params = { id: realRoom, type: 0, web_location: WEB_LOCATION };
     const key = mixinKey(imgKey, subKey);
     const query = new URLSearchParams({ ...params, wts: String(Math.floor(now() / 1000)) });
@@ -195,56 +230,72 @@ export function createBilibiliDanmaku({
     const queryString = sorted.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v).replace(/[!'()*]/g, ''))}`).join('&');
     const wRid = createHash('md5').update(queryString + key).digest('hex');
     const url = `https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?id=${realRoom}&type=0&web_location=444.8&w_rid=${wRid}&wts=${query.get('wts')}`;
-    const payload = await (await fetchImpl(url, { headers: headers() })).json();
+    const payload = await (await request(url, { headers: headers() })).json();
     const token = payload?.data?.token;
-    const host = payload?.data?.host_list?.[0]?.host;
+    const endpoint = payload?.data?.host_list?.[0];
+    const host = endpoint?.host;
     if (!token || !host) throw new Error('danmu_info_failed:' + (payload?.code ?? '?'));
-    return { token, host };
+    const port=Number(endpoint?.wss_port??443);
+    if(!/^[a-z0-9.-]+\.bilibili\.com$/i.test(host)||![443,2245].includes(port))throw new Error('danmu_endpoint_invalid');
+    return { token, host, port };
   }
 
-  async function open() {
+  async function open(epoch) {
     if (!buvid) {
       // B 站 getDanmuInfo 对无 cookie 的请求返回 -352（风控）；匿名取一个 buvid3 即可。
       try {
-        const spi = await (await fetchImpl('https://api.bilibili.com/x/frontend/finger/spi', { headers: BROWSER_HEADERS })).json();
+        const spi = await (await request('https://api.bilibili.com/x/frontend/finger/spi', { headers: BROWSER_HEADERS })).json();
         buvid = String(spi?.data?.b_3 ?? '').trim();
       } catch {}
     }
+    if (closed || epoch !== generation) return;
     const realRoom = await resolveRoom();
-    const { token, host } = await danmuInfo(realRoom);
-    onStatus({ state: 'connecting', roomId: realRoom });
-    ws = new WsImpl(`wss://${host}/sub`);
+    if (closed || epoch !== generation) return;
+    const { token, host, port } = await danmuInfo(realRoom, epoch);
+    if (closed || epoch !== generation) return;
+    ws = new WsImpl(`wss://${host}:${port}/sub`);
     ws.binaryType = 'arraybuffer';
+    const socket = ws;
+    const active = () => !closed && epoch === generation && ws === socket;
+    deadline = setTimeout(() => failed(epoch, 'connection_timeout'), timeoutMs);
+    deadline.unref?.();
     ws.onopen = () => {
-      const auth = { uid: 0, roomid: realRoom, protover: 2, platform: 'web', type: 2, key: token };
-      try { ws.send(packFrame(OP.AUTH, JSON.stringify(auth))); } catch {}
-      timer = setInterval(() => { try { ws.send(packFrame(OP.HEARTBEAT, '[object Object]')); } catch {} }, heartbeatMs);
+      if (!active()) return;
+      const auth = { uid: 0, roomid: realRoom, protover: 3, buvid, platform: 'web', type: 2, key: token };
+      try { socket.send(packFrame(OP.AUTH, JSON.stringify(auth))); } catch { failed(epoch); return; }
+      timer = setInterval(() => { if (!active()) return; try { socket.send(packFrame(OP.HEARTBEAT, '[object Object]')); } catch { failed(epoch); } }, heartbeatMs);
       timer.unref?.();
-      onStatus({ state: 'connected', roomId: realRoom });
+      emit({ state: 'connected', roomId: realRoom });
     };
     ws.onmessage = event => {
+      if (!active()) return;
+      try {
       const buffer = Buffer.from(event?.data ?? []);
       for (const frame of parseFrames(buffer)) {
-        if (frame.operation === OP.AUTH_REPLY) onStatus({ state: 'authorized', roomId: realRoom });
+        if (frame.operation === OP.AUTH_REPLY) {
+          let auth; try { auth = JSON.parse(frame.text); } catch { failed(epoch, 'auth_invalid'); return; }
+          if (auth.code !== 0) { failed(epoch, 'auth_failed'); return; }
+          clearTimeout(deadline); deadline = null; retries = 0;
+          emit({state:'authorized',roomId:realRoom});
+        }
         if (frame.operation !== OP.MESSAGE || !frame.text) continue;
+        if (state !== 'authorized') continue;
         const message = parseDanmaku(frame.text);
         if (message) onMessage(message);
       }
+      } catch { failed(epoch, 'message_decode_failed'); }
     };
-    ws.onerror = () => onStatus({ state: 'error' });
-    ws.onclose = () => { onStatus({ state: closed ? 'closed' : 'disconnected' }); };
+    ws.onerror = () => failed(epoch);
+    ws.onclose = () => failed(epoch, 'connection_closed');
   }
 
   return {
-    async start() { closed = false; await open(); },
+    async start() { if (!closed) return; closed = false; retries = 0; await connect(); },
     stop() {
       closed = true;
-      if (timer) clearInterval(timer);
-      timer = null;
-      try { ws?.close(); } catch {}
-      ws = null;
-      onStatus({ state: 'closed' });
+      generation++; cleanup();
+      emit({ state: 'closed' });
     },
-    status: () => ({ state: ws ? 'open' : 'closed' }),
+    status: () => ({ state }),
   };
 }

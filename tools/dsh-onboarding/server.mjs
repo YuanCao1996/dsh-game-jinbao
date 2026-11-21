@@ -1,4 +1,4 @@
-﻿import {readFileSync} from 'node:fs';
+import {readFileSync} from 'node:fs';
 import {createLocalExploration} from './exploration-local.mjs';
 import { createAnnotations, ANNOTATION_TAGS } from './annotations.mjs';
 import { createHighlights, matchFolder } from './highlights.mjs';
@@ -11,7 +11,7 @@ import { createExperienceStore } from "../dsh-coach-server/lib/experience-store.
 import { createExperienceRuntime } from "../dsh-coach-server/lib/experience-runtime.mjs";
 import { syncPublicMemory } from "../dsh-coach-server/lib/public-remote.mjs";
 import { randomBytes,timingSafeEqual,randomUUID } from 'node:crypto';
-import { mkdir,readFile,writeFile,rename,readdir,stat,open,rm } from 'node:fs/promises';
+import { mkdir,readFile,writeFile,rename,readdir,stat,open,rm,appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { hostname } from 'node:os';
 import { once } from 'node:events';
@@ -27,12 +27,18 @@ import { createTeamLocalRoutes, serveTeamPage } from '../team-room/local-routes.
 import { createDesktopExploration } from './exploration.mjs';
 import { currentHeroSuggestion, currentModeSuggestion } from './exploration-evidence.mjs';
 import { createShutdown } from '../cloud-desktop/shutdown.mjs';
+// A cached navigation link is optional; an access-denied write must not take
+// down the authenticated settings server. Never alter its ACL or expose URL.
+export async function saveSettingsLink(path,url,writer=writeFile){
+ try{await writer(path,url,{mode:0o600});return true;}
+ catch(error){if(['EPERM','EACCES'].includes(error?.code))return false;throw error;}
+}
 const refs={local:'JINBAO_LOCAL_ACCESS_KEY',cloud:'JINBAO_SERVICE_TOKEN',byok:'JINBAO_USER_MODEL_API_KEY',speech:'JINBAO_USER_SPEECH_API_KEY',sync:'JINBAO_SYNC_TOKEN'};
 const same=(a,b)=>typeof a==='string'&&a.length===b.length&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const send=(res,status,value,headers)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...(headers??{})});res.end(JSON.stringify(value));};
 const error=status=>Object.assign(Error('setup operation failed'),{status});
 async function body(req,max=512*1024,onBytes){const declared=Number(req.headers['content-length']);if(Number.isFinite(declared)&&declared>max){onBytes?.(declared);req.resume();throw error(413);}let size=0;const chunks=[];for await(const c of req){size+=c.length;onBytes?.(size);if(size>max)throw error(413);chunks.push(c);}try{const b=JSON.parse(Buffer.concat(chunks));if(!b||typeof b!=='object'||Array.isArray(b))throw 0;return b;}catch{throw error(400);}}
-export async function createSetupServer({credentials,stateDir,port=3084,coachPort=3081,serviceBaseUrl='https://api.jinbaoai.top',fetchImpl=fetch,cloudAgent,localAgent,runtimeId,prepareModel,onModelChange,updateController,observation,nativeInstaller,logSource,userMemory,activity,diagnostics,speech,diary,canAutoRequest,teamRooms=false,teamHostPreview=false,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError=false,teamCacheError=false}) {
+export async function createSetupServer({credentials,stateDir,port=3084,coachPort=3081,serviceBaseUrl='https://api.jinbaoai.top',fetchImpl=fetch,cloudAgent,localAgent,runtimeId,prepareModel,onModelChange,updateController,observation,nativeInstaller,logSource,userMemory,activity,diagnostics,speech,diary,canAutoRequest,teamRooms=false,teamHostPreview=false,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError=false,teamCacheError=false,danmakuFactory=createBilibiliDanmaku}) {
  if(!Number.isInteger(coachPort)||coachPort<1||coachPort>65535)throw Error('Invalid coach port');
  const coachOrigin='http://127.0.0.1:'+coachPort;
  const service=serviceUrl(serviceBaseUrl),nonce=randomBytes(32).toString('hex');
@@ -81,6 +87,8 @@ try{
   streamState.status = 'idle';
   streamState.lastError = '';
   let streamBridge = null;
+  let streamMetrics={received:0,accepted:0,filtered:0,replied:0,logErrors:0,lastReceivedAt:null,lastFilterReason:''};
+  let streamStartRevision = 0;
   const viewerFilter = createViewerFilter({ trigger: streamState.trigger || 'at' });
   const saveStream = async next => {
     streamState = { ...streamState, ...next };
@@ -92,9 +100,12 @@ try{
     await rename(streamFile + '.tmp', streamFile);
   };
   const stopStream = async () => {
-    try { streamBridge?.stop(); } catch {}
+    const revision = ++streamStartRevision;
+    const previous = streamBridge;
     streamBridge = null;
+    try { previous?.stop(); } catch {}
     streamState.status = 'idle';
+    return revision;
   };
   const streamFacts = () => {
     // 观众应答只读当前视图，不额外调模型。
@@ -107,40 +118,56 @@ try{
         champion: String(live.champion ?? view.selfChampion ?? ''),
         kda: kda ? [Number(kda[1]), Number(kda[2]), Number(kda[3])] : null,
         gold: Number(live.gold) || null,
-        items: Array.isArray(view.ownedItems) ? view.ownedItems : [],
-        augments: Array.isArray(view.ownedAugments) ? view.ownedAugments : [],
+        items: view.viewerFacts?.items ?? [],
+        augments: view.viewerFacts?.augments ?? [],
+        enemies: view.viewerFacts?.enemies ?? [],
       };
     } catch { return {}; }
   };
   const startStream = async () => {
     if (!streamState.enabled || !streamState.roomId) { await stopStream(); return; }
-    await stopStream();
-    const bridge = createBilibiliDanmaku({
+    const revision = await stopStream();
+    if(revision !== streamStartRevision) return;
+    streamMetrics={received:0,accepted:0,filtered:0,replied:0,logErrors:0,lastReceivedAt:null,lastFilterReason:''};
+    const bridge = danmakuFactory({
       roomId: String(streamState.roomId),
-      onStatus: status => { streamState.status = status.state; if (status.state === 'error') streamState.lastError = 'connection_failed'; },
+      onStatus: status => {
+        if (streamBridge !== bridge) return;
+        streamState.status = status.state;
+        if (status.error) streamState.lastError = status.error;
+        else if (status.state === 'authorized') streamState.lastError = '';
+      },
       onMessage: async message => {
+        if (streamBridge !== bridge || !streamState.enabled) return;
+        streamMetrics.received++;streamMetrics.lastReceivedAt=Date.now();
         const verdict = viewerFilter.check(message);
-        if (!verdict.accept) return;
+        if (!verdict.accept){streamMetrics.filtered++;streamMetrics.lastFilterReason=verdict.reason??'filtered';return;}
+        streamMetrics.accepted++;
+        const currentView=overlay?.view?.();
+        const boundGame=currentView?.game||'lol',boundMatch=currentView?.match||null;
+        const viewerMessageId=randomUUID();
         const at = Date.now();
         const row = {
-          game: 'lol', t: at, kind: 'viewer_message', platform: message.platform,
+          game: boundGame, match:boundMatch,viewerMessageId,t: at, kind: 'viewer_message', platform: message.platform,
           user: streamState.showNick === false ? '观众' : message.user,
           text: message.text, superChat: message.superChat === true, price: message.price ?? 0,
         };
-        try { await appendFile(join(stateDir, 'logs', 'viewer.jsonl'), JSON.stringify(row) + '\n', { mode: 0o600 }); } catch {}
+        try { await appendFile(join(stateDir, 'logs', 'viewer.jsonl'), JSON.stringify(row) + '\n', { mode: 0o600 }); } catch {streamMetrics.logErrors++;}
+        const latestView=overlay?.view?.();
+        if(streamBridge!==bridge||!streamState.enabled||(latestView?.match||null)!==boundMatch||(latestView?.game||'lol')!==boundGame)return;
         if (streamState.reply === false) return;
         const answer = viewerReply(message.text, streamFacts(), at);
         if (!answer) return;
         const reply = {
-          game: 'lol', t: Date.now(), kind: 'viewer_reply', broadcast: answer,
+          game: boundGame,match:boundMatch,viewerMessageId,t: Date.now(), kind: 'viewer_reply', broadcast: answer,
           viewerReply: true, noSpeech: true, user: row.user, question: message.text,
         };
-        try { await appendFile(join(stateDir, 'logs', 'coach_broadcasts.jsonl'), JSON.stringify(reply) + '\n', { mode: 0o600 }); } catch {}
+        try { await appendFile(join(stateDir, 'logs', 'coach_broadcasts.jsonl'), JSON.stringify(reply) + '\n', { mode: 0o600 });streamMetrics.replied++; } catch {streamMetrics.logErrors++;}
       },
     });
     streamBridge = bridge;
     try { await bridge.start(); }
-    catch (error) { streamState.status = 'error'; streamState.lastError = String(error?.message ?? error).slice(0, 120); }
+    catch (error) { if(streamBridge === bridge){streamState.status = 'error'; streamState.lastError = String(error?.message ?? error).slice(0, 120);} }
   };
   try { if (streamState.enabled && streamState.roomId) void startStream(); } catch {}
 
@@ -558,7 +585,7 @@ if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{ena
     }
    }
    if(req.url==='/api/stream'&&req.method==='GET'){
-    send(res,200,{enabled:streamState.enabled,roomId:streamState.roomId,trigger:streamState.trigger,showNick:streamState.showNick,reply:streamState.reply,status:streamState.status,lastError:streamState.lastError});
+    send(res,200,{enabled:streamState.enabled,roomId:streamState.roomId,trigger:streamState.trigger,showNick:streamState.showNick,reply:streamState.reply,status:streamState.status,lastError:streamState.lastError,metrics:{...streamMetrics}});
     return;
    }
    if(req.url==='/api/stream'&&req.method==='POST'){
@@ -573,8 +600,7 @@ if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{ena
     if(value.trigger!==undefined){if(!['at','keyword','all'].includes(value.trigger))throw error(400);next.trigger=value.trigger;}
     if(value.showNick!==undefined)next.showNick=value.showNick===true;
     if(value.reply!==undefined)next.reply=value.reply===true;
-    await locked(async()=>{await saveStream(next);});
-    try{await startStream();}catch{}
+    await locked(async()=>{await saveStream(next);await startStream();});
     send(res,200,{ok:true,status:streamState.status,error:streamState.lastError||''});
     return;
    }
@@ -697,7 +723,7 @@ if(input.clickThrough!==undefined&&typeof input.clickThrough!=='boolean')throw e
     let releaseNotes=null;try{const bundled=JSON.parse(await readFile(new URL('./release-notes.json',import.meta.url),'utf8'));if(bundled.version===version)releaseNotes=bundled.notes;}catch{}
     let maintenance=null;try{maintenance=JSON.parse(await readFile(join(stateDir,'maintenance-status.json'),'utf8'));}catch{}
     let emailDisplay=null;if(account?.loginMethod==='email')try{emailDisplay=JSON.parse(await readFile(join(stateDir,'email-account.json'),'utf8')).display;}catch{}
-    send(res,200,{...config,welcomeSeen:await readFile(join(stateDir,'welcome-seen.json'),'utf8').then(()=>true,()=>false),agentActivity:activity?.status()??{supported:false,enabled:false},agentRuntime:runtimeId??(cloudAgent?'cloud-preview':'local-dsh'),observation:observation?.status(),logSource:logSource?.status(),nativeInstallation:nativeInstaller?.status(),version,pluginUpdatePending,phoneCaptureEnabled,emailEnabled:email.enabled,wechatEnabled:wechat.enabled,emailDisplay,cloudConfigured:!!token,byokConfigured:!!await resolve('byok'),account,accountError,cloudRenew,update,updateApply,updateResult,releaseNotes,maintenance,mobileUrl:new URL('/desktop/mobile',service).href,teamSupported:!!team,teamCache:teamCacheStore?{...teamCacheStore.status(),reports:teamCacheReports?.status()}:{supported:false,...(teamCacheError?{error:'cleanup_unavailable'}:{})},teamUsage:teamUsageOutbox?teamUsageOutbox.status():{supported:false,...(teamUsageError?{error:'usage_unavailable'}:{})},phoneSync:phoneSync.status(),...await diagnostic()});return;
+    send(res,200,{...config,settingsLinkSaved,welcomeSeen:await readFile(join(stateDir,'welcome-seen.json'),'utf8').then(()=>true,()=>false),agentActivity:activity?.status()??{supported:false,enabled:false},agentRuntime:runtimeId??(cloudAgent?'cloud-preview':'local-dsh'),observation:observation?.status(),logSource:logSource?.status(),nativeInstallation:nativeInstaller?.status(),version,pluginUpdatePending,phoneCaptureEnabled,emailEnabled:email.enabled,wechatEnabled:wechat.enabled,emailDisplay,cloudConfigured:!!token,byokConfigured:!!await resolve('byok'),account,accountError,cloudRenew,update,updateApply,updateResult,releaseNotes,maintenance,mobileUrl:new URL('/desktop/mobile',service).href,teamSupported:!!team,teamCache:teamCacheStore?{...teamCacheStore.status(),reports:teamCacheReports?.status()}:{supported:false,...(teamCacheError?{error:'cleanup_unavailable'}:{})},teamUsage:teamUsageOutbox?teamUsageOutbox.status():{supported:false,...(teamUsageError?{error:'usage_unavailable'}:{})},phoneSync:phoneSync.status(),...await diagnostic()});return;
    }
    if(req.method!=='POST'||!String(req.headers['content-type']).startsWith('application/json'))throw error(404);
    const b=await body(req,8192);
@@ -876,7 +902,7 @@ if(input.clickThrough!==undefined&&typeof input.clickThrough!=='boolean')throw e
   // 只有真的用上期望端口才记下来：临时被占用的那次不要污染下次的选择。
   if (!port || server.address().port === port) await savePort(stateDir, server.address().port);
  const url='http://127.0.0.1:'+server.address().port+'/#'+nonce;
- await writeFile(join(stateDir,'settings-link.txt'),url,{mode:0o600});
+ const settingsLinkSaved=await saveSettingsLink(join(stateDir,'settings-link.txt'),url);
  // Renew on a timer so the session no longer depends on someone opening the settings page.
  const renewTimer=setInterval(()=>{void renewCloudSession().catch(()=>{});},60000);
  // 启动时补一次续期：App 关机跨过过期时刻时，60 秒定时器救不回来（过期后只能重新登录）。
@@ -895,6 +921,6 @@ if(input.clickThrough!==undefined&&typeof input.clickThrough!=='boolean')throw e
  renewTimer.unref?.();
  let httpClosing;
  const stopAccepting=()=>{accepting=false;team?.stopAccepting();if(!httpClosing){httpClosing=new Promise(resolve=>server.close(()=>resolve()));server.closeAllConnections();}};
- const stopSetup=createShutdown({quiesce:stopAccepting,steps:[['renewal',()=>{clearInterval(renewTimer);}],['commands',()=>mutation],['phone',()=>phoneSync.close()],['team',()=>team?.close()],['memories',()=>memories.close()],['overlay',()=>overlay.close()],['http',()=>httpClosing]]});
- return {url,port:server.address().port,stopAccepting,view:overlay.view,config:()=>({...config}),ensureTrialLogin:()=>locked(async()=>{if(config.mode!=='cloud'||await resolve('cloud'))return;await acceptCloud(await remote('/desktop/auth/ip/register',null,{}));}),search:async query=>{const token=await resolve('cloud');if(!token)throw error(401);return remote('/site/search',token,query);},close:async()=>{if((await stopSetup()).failed.length)throw Error('setup_shutdown_failed');}};
+ const stopSetup=createShutdown({quiesce:stopAccepting,steps:[['renewal',()=>{clearInterval(renewTimer);}],['commands',()=>mutation],['stream',stopStream],['phone',()=>phoneSync.close()],['team',()=>team?.close()],['memories',()=>memories.close()],['overlay',()=>overlay.close()],['http',()=>httpClosing]]});
+ return {url,settingsLinkSaved,port:server.address().port,stopAccepting,view:overlay.view,config:()=>({...config}),ensureTrialLogin:()=>locked(async()=>{if(config.mode!=='cloud'||await resolve('cloud'))return;await acceptCloud(await remote('/desktop/auth/ip/register',null,{}));}),search:async query=>{const token=await resolve('cloud');if(!token)throw error(401);return remote('/site/search',token,query);},close:async()=>{if((await stopSetup()).failed.length)throw Error('setup_shutdown_failed');}};
 }
