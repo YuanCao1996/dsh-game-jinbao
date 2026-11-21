@@ -581,7 +581,7 @@ async function openMatch(matchId){
   $('matchNoteText').value='';
   let data=null;
   try{
-    data=await fetch('/api/match-detail?match='+encodeURIComponent(matchId)).then(r=>r.ok?r.json():null);
+    data=await fetch('/api/match-detail?match='+encodeURIComponent(matchId),{headers:{'X-Jinbao-Setup':nonce}}).then(r=>r.ok?r.json():null);
   }catch{}
   if(!data){$('matchMeta').textContent='读取失败，请稍后重试';return;}
   const memory=data.memory||{};
@@ -596,11 +596,16 @@ async function openMatch(matchId){
 
   const shots=Array.isArray(data.shots)?data.shots:[];
   if(shots.length){
-    $('matchShots').innerHTML=shots.map(shot=>(
-      '<a href="/api/match-shot?match='+encodeURIComponent(matchId)+'&file='+encodeURIComponent(shot.file)+'" target="_blank" rel="noopener">'
-      +'<img loading="lazy" src="/api/match-shot?match='+encodeURIComponent(matchId)+'&file='+encodeURIComponent(shot.file)+'" alt="'+esc(shot.label||'高光')+'">'
-      +'<span>'+esc(shot.label||'高光')+'</span></a>'
+    $('matchShots').innerHTML=shots.map((shot,i)=>(
+      '<a href="#" data-shot-index="'+i+'"><img alt="'+esc(shot.label||'高光')+'"><span>'+esc(shot.label||'高光')+'</span></a>'
     )).join('');
+    Array.from($('matchShots').querySelectorAll('a[data-shot-index]')).forEach(link=>{
+      const shot=shots[Number(link.dataset.shotIndex)];
+      fetch('/api/match-shot?match='+encodeURIComponent(matchId)+'&file='+encodeURIComponent(shot.file),{headers:{'X-Jinbao-Setup':nonce}})
+        .then(r=>r.ok?r.blob():null)
+        .then(blob=>{if(!blob)return;const url=URL.createObjectURL(blob);const img=link.querySelector('img');img.src=url;link.href=url;link.target='_blank';link.rel='noopener';})
+        .catch(()=>{});
+    });
   }else{
     $('matchShots').innerHTML='<div class="shot-empty">这一局没有留下截图（关键事件：多杀/团灭/破水晶/大龙/首杀）</div>';
   }
@@ -646,7 +651,7 @@ async function openMatch(matchId){
     if(!text&&!picked.length){alert('选个标签或写一句话再保存');return;}
     $('matchNoteSave').disabled=true;
     try{
-      const response=await fetch('/api/annotations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
+      const response=await fetch('/api/annotations',{method:'POST',headers:{'content-type':'application/json','X-Jinbao-Setup':nonce},body:JSON.stringify({
         match:matchId, game:'lol', champion:memory.entity||'', text, tags:picked,
         sentiment:picked.some(tag=>/不对|太啰嗦|别念/.test(tag))?'negative':picked.some(tag=>/很有用|夸得不错/.test(tag))?'positive':'neutral'
       })});
