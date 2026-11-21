@@ -596,16 +596,17 @@ async function openMatch(matchId){
 
   const shots=Array.isArray(data.shots)?data.shots:[];
   if(shots.length){
+    const shotUrls=await Promise.all(shots.map(async shot=>{
+      try{
+        const r=await fetch('/api/match-shot?match='+encodeURIComponent(matchId)+'&file='+encodeURIComponent(shot.file),{headers:{'X-Jinbao-Setup':nonce}});
+        return r.ok?URL.createObjectURL(await r.blob()):'';
+      }catch{return '';}
+    }));
     $('matchShots').innerHTML=shots.map((shot,i)=>(
-      '<a href="#" data-shot-index="'+i+'"><img alt="'+esc(shot.label||'高光')+'"><span>'+esc(shot.label||'高光')+'</span></a>'
+      '<a href="'+(shotUrls[i]||'#')+'" target="_blank" rel="noopener">'
+      +(shotUrls[i]?'<img src="'+shotUrls[i]+'" alt="'+esc(shot.label||'高光')+'">':'<div class="shot-empty">截图读取失败</div>')
+      +'<span>'+esc(shot.label||'高光')+'</span></a>'
     )).join('');
-    Array.from($('matchShots').querySelectorAll('a[data-shot-index]')).forEach(link=>{
-      const shot=shots[Number(link.dataset.shotIndex)];
-      fetch('/api/match-shot?match='+encodeURIComponent(matchId)+'&file='+encodeURIComponent(shot.file),{headers:{'X-Jinbao-Setup':nonce}})
-        .then(r=>r.ok?r.blob():null)
-        .then(blob=>{if(!blob)return;const url=URL.createObjectURL(blob);const img=link.querySelector('img');img.src=url;link.href=url;link.target='_blank';link.rel='noopener';})
-        .catch(()=>{});
-    });
   }else{
     $('matchShots').innerHTML='<div class="shot-empty">这一局没有留下截图（关键事件：多杀/团灭/破水晶/大龙/首杀）</div>';
   }

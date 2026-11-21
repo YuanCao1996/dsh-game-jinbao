@@ -1,4 +1,4 @@
-﻿import {activityLine} from './activity-line.mjs';
+import {activityLine} from './activity-line.mjs';
 import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
 import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId, leaderboardRowData } from './leaderboard-pages.mjs';
 import { mkdir, readdir, stat, open, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
@@ -23,6 +23,33 @@ import {adviceIsValid,createAdviceValidity} from '../dsh-coach-server/lib/lol-co
 import {eventWindow} from '../dsh-coach-server/lib/event-window.mjs';
 import {createCompanion} from '../dsh-coach-server/lib/companion.mjs';
 import {whoKilled,recordMultikill,settlePraise,PRAISE_ROLES,killInfoFromEvents} from './multikill-praise.mjs';
+
+// 高光截图只留我方的：敌方多杀/团灭/大龙/首杀等不记录。
+// 击杀类事件带 killer/Recipient，按敌方名单排除；团灭看 AcingTeam，推塔/水晶看 Team。
+export function enemyHighlight(state, event) {
+  const norm = v => String(v ?? '').trim();
+  const enemies = Array.isArray(state?.enemies) ? state.enemies : [];
+  const sideValue = v => {
+    const value = norm(v).toUpperCase();
+    if (!value) return false;
+    return enemies.some(e => norm(e?.team).toUpperCase() === value);
+  };
+  const killer = norm(event?.killer ?? event?.KillerName ?? event?.Recipient);
+  if (killer) {
+    const who = whoKilled(state, event);
+    if (who.side === 'self' || who.side === 'ally') return false;
+    return enemies.some(e => {
+      const names = [e?.name, e?.riotId, e?.champion, e?.championAlias].map(norm).filter(Boolean);
+      return names.some(n => n === killer || (n.length >= 2 && killer.includes(n)) || (killer.length >= 2 && n.includes(killer)));
+    });
+  }
+  const acing = norm(event?.AcingTeam ?? event?.AcingTeamName);
+  if (acing) return sideValue(acing);
+  const team = norm(event?.Team);
+  if (team === 'ORDER' || team === 'CHAOS') return sideValue(team);
+  return false;
+}
+
 import {recordChoice,settleChoiceReactions,resetChoiceReactions} from './choice-reactions.mjs';
 import {settleHumanMoments,resetHumanMoments} from './human-moments.mjs';
 import { createHighlights, shouldCapture } from './highlights.mjs';
@@ -1356,7 +1383,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
         updateAugmentRecommendations(state,knowledge.rows??[]);
         const observed = router.apply(event,file);
         // 关键事件留一张画面（同一事件只截一次；上限与间隔由模块控制）。
-        if (event?.kind === 'event' && shouldCapture(event)) {
+        if (event?.kind === 'event' && shouldCapture(event) && !enemyHighlight(state, event)) {
           const shotKey = String(event.t ?? '') + ':' + String(event.name ?? event.EventName ?? '');
           if (!capturedHighlights.has(shotKey)) {
             capturedHighlights.add(shotKey);
