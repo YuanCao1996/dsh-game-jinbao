@@ -61,10 +61,16 @@ function Set-DisplayMode([string]$mode){
  if($mode -notin @('large','narrow','silent')){return}
  $quickConfirm.IsOpen=$false;$script:popupConfirmId=''
  $modeClock.Stop()
- if($script:displayMode -eq 'large' -and !$script:collapsed){$script:expandedWidth=$window.Width;$script:expandedHeight=$window.Height}
+ if($script:displayMode -eq 'large' -and !$script:collapsed -and $window.Width -ge 360 -and $window.Height -ge 300){$script:expandedWidth=$window.Width;$script:expandedHeight=$window.Height}
  if($script:collapsed){Set-Collapsed $false -PreserveMode}
  $controls.NarrowPanel.Visibility='Collapsed';$controls.Expanded.Visibility='Visible'
- $window.MinWidth=300;$window.MinHeight=180;$window.Width=$script:expandedWidth;$window.Height=$script:expandedHeight
+ $window.MinWidth=300;$window.MinHeight=180
+   # 展开尺寸偶尔会被记成窄条大小（上一次大框被拖得很小，或尺寸切换的瞬间），
+   # 一展开就是 300×180 的小窄块；这里给大框一个可读下限。
+   $targetWidth=[double]$script:expandedWidth;$targetHeight=[double]$script:expandedHeight
+   if($targetWidth -lt 360){$targetWidth=380}
+   if($targetHeight -lt 320){$targetHeight=520}
+   $window.Width=$targetWidth;$window.Height=$targetHeight
  $script:displayMode=$mode
  $controls.MainBorder.Padding='12';$controls.MainBorder.BorderThickness=1;Set-BackgroundOpacity
  if($mode -eq 'narrow'){
