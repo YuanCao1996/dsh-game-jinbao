@@ -87,3 +87,25 @@ async function readdirSafe(path) {
   const { readdir } = await import('node:fs/promises');
   try { return await readdir(path); } catch { return []; }
 }
+
+test('迁移校验：目标不能与当前目录相同/互相包含', async () => {
+  const root = await fixture();
+  try {
+    const storage = createStorageMaintenance({ stateDir: root });
+    await assert.rejects(storage.migrate(root), error => error.status === 400);
+    await assert.rejects(storage.migrate(join(root, 'inside')), error => error.status === 400);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('迁移校验：目标文件夹必须为空文件夹', async () => {
+  const root = await fixture();
+  const target = await mkdtemp(join(tmpdir(), 'jinbao-target-'));
+  try {
+    await writeFile(join(target, 'x.txt'), 'x');
+    const storage = createStorageMaintenance({ stateDir: root });
+    await assert.rejects(storage.migrate(target), error => error.status === 409);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(target, { recursive: true, force: true });
+  }
+});
