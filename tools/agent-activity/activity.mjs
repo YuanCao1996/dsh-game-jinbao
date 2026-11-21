@@ -120,7 +120,11 @@ export async function createAgentActivity({stateDir,getView=()=>null,now=Date.no
     task.terminal=true;task.draft='';rows=rows.filter(entry=>entry.id!==id+':draft');
     for(const entry of rows)if(entry.task===id&&['running','queued'].includes(entry.phase))entry.phase=type==='task_completed'?'done':'cancelled';
     // 失败不上面板：用户明确不要看到「这回没看成」。失败照样进日志，排查时看 agent-activity.jsonl。
-  if(type==='task_failed'){appendLog({at:Number(now()),kind:'task_failed',task:id,code:String(event.code??event.reason??'')});revision++;}
+  if(type==='task_failed'){const detail={at:Number(now()),kind:'task_failed',task:id,code:String(event.code??event.reason??'')};
+    if(event.status!=null)detail.status=event.status;
+    if(event.message)detail.message=String(event.message).slice(0,200);
+    else if(event.detail)detail.message=String(event.detail).slice(0,200);
+    appendLog(detail);revision++;}
   else row(id,task,({task_completed:'我说完了',task_cancelled:'先不看了',task_stale:'对局变了，重来'})[type],type==='task_completed'?'done':'cancelled');
    }
   },

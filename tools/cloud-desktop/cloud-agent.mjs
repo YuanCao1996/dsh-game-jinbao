@@ -70,7 +70,13 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
   return limitedJson(response,256*1024);
  }
  return {async ask(request){
-  if(busy)throw fail(409,'Cloud Agent is busy');busy=true;
+  if(busy){
+    // 同一时间只允许一个任务：等前一个结束，而不是把这次请求直接判失败。
+    const waitUntil=Date.now()+12000;
+    while(busy&&Date.now()<waitUntil){try{await settled;}catch{}}
+    if(busy){const error=fail(409,'Cloud Agent is busy');error.code='agent_busy';throw error;}
+  }
+  busy=true;
   settled=new Promise(resolve=>{finish=resolve;});
   let task,token,terminal=false;const signal=AbortSignal.any([lifetime.signal,AbortSignal.timeout(timeoutMs)]);
   const current=()=>isCurrent(request.game,request.match);
