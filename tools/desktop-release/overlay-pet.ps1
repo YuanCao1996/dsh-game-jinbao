@@ -1,4 +1,4 @@
-﻿# 金宝形象层（悬浮窗内的宠物）：加载 PNG 序列帧，按对局状态切换动作。
+# 金宝形象层（悬浮窗内的宠物）：加载 PNG 序列帧，按对局状态切换动作。
 #
 # 为什么是序列帧：WPF 没有能解 VP9-alpha 的解码器，社区那套 webm + Chromium 的做法
 # 搬不过来；序列帧零依赖、透明度准确，192px 每帧约 9KB，八套动作总共几 MB。
@@ -461,6 +461,9 @@ function Test-NarrowPetInMatch {
   param($Snapshot)
   if (-not $Snapshot) { return $false }
   if ($Snapshot.ended -eq $true) { return $false }
+  # 选完英雄进入加载页（LCU GameStart）就开始算局内：加载页是全屏的，
+  # 等游戏进程/阶段走到 InProgress 才切，全身条子会一直挡着加载页。
+  if ([string]$Snapshot.phase -eq 'GameStart') { return $true }
   # 以游戏进程为准：LCU 阶段在结算后可能还停在 InProgress，只看阶段会一直卡在头肩。
   # 进程查询 1 秒缓存；异常时退回阶段/时钟判断。
   try {
