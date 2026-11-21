@@ -96,7 +96,8 @@ function recommendedName(broadcasts, kind) {
     .sort((a, b) => Number(b.at) - Number(a.at))
     .slice(0, 5);
   for (const b of recent) {
-    const text = String(b.text ?? '');
+    // 教练播报落库用的是 broadcast 字段（state.broadcasts），只看 text 会永远取不到推荐。
+    const text = String(b.text ?? b.broadcast ?? '');
     if (kind === 'augment') {
       const named = /推荐选\s*([^\s，。；、（）()]{2,12})/.exec(text)
         ?? /(?:首选|优先选|建议选)\s*([^\s，。；、（）()]{2,12})/.exec(text);

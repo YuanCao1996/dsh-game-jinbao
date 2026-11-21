@@ -1,4 +1,4 @@
-// Differentiated, immediate praise for multi-kills.
+﻿// Differentiated, immediate praise for multi-kills.
 //
 // Deterministic on purpose: a model round-trip lands seconds later, after the moment
 // has passed, and praise must never invent facts about the fight. Texts stay short so
@@ -180,7 +180,8 @@ export function settlePraise(state, now = Date.now(), {
     const id = `${chain.key}@${chain.chainAt}`;
     state.broadcasts = (state.broadcasts ?? []).filter(reply => reply.praiseChain !== id);
     state.broadcasts.push({
-      at: Number.isFinite(chain.lastAt) ? chain.lastAt : now,
+      // at 必须是「现在」：语音只朗读 30 秒内的条目，用击杀时刻会让宽限期后的夸奖被静默丢掉。
+      at: now,
       text, priority: 2, praise: true, praiseChain: id, praiseSide: chain.side,
       praiseHero: chain.side === 'ally' ? chain.hero : '', streak: chain.streak,
       variant: chain.variant, expiresAt: now + 12_000,

@@ -104,3 +104,14 @@ test('模型说「补 X」也要能认出推荐（真实播报措辞）', () => 
     assert.equal(row.agreed, true, '买的就是推荐的那件，应当算听劝: ' + advice + ' -> ' + row.text);
   }
 });
+
+test('教练播报用 broadcast 字段时也能认出推荐（真实落库形态）', () => {
+  const state = {
+    broadcasts: [{ at: Date.now() - 1000, broadcast: '下次能买时先补夺萃之镰，暴击转冷却更稳呀。' }],
+    pendingChoices: [],
+    choiceStreak: { agree: 0, disagree: 0 },
+  };
+  recordChoice(state, { kind: 'item', name: '夺萃之镰', at: Date.now() - 500 });
+  assert.equal(settleChoiceReactions(state, Date.now(), { role: 'jinbao' }), true, 'broadcast 字段的播报也要参与判断');
+  assert.equal(state.broadcasts.at(-1).agreed, true);
+});

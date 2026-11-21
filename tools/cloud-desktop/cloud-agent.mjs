@@ -8,9 +8,9 @@ const fail=(status,message)=>Object.assign(Error(message),{status});
 export function agentQuestion(request){
  let message=request.question;
  if(request.topic==='equipment'&&typeof message==='string'&&message.includes('【装备决策事实 JSON】'))message=message.split('【装备决策事实 JSON】')[0].replace('只用 coach_reply 提交','直接提交')+'\n按需读取当前事实中的 equipment_decision；区分 confirmedAugments 与 assumedAugments，推测不当作已拥有。';
- if(typeof message!=='string'||!message.trim()||message.length>2400)throw fail(413,'Agent message exceeds the bounded task budget');
+ if(typeof message!=='string'||!message.trim()||message.length>2000)throw fail(413,'Agent message exceeds the bounded task budget');
  const role=[roleInstruction(request.role,request.game,request.automatic===true),...(request.game==='generic'?['通用识别中，identityEvidence的tentative只是推测，corroborated只是多帧印证，source=user才是用户确认；分别核实游戏名、模式和版本。按需看图或检索日志，不从窗口标题猜规则。处于between阶段时不延续上一局操作建议；搜索使用当前gameName、gameMode及可用版本，资料不匹配则说明未知。']:[]),...(request.automatic===true?['低频短播报：2~3 个短句，每句不超过 20 字，用换行分开；像边想边说，先说现在做什么，再补一句为什么；省略铺垫，不为凑字数编造内容。','当前对局状态、阵容、装备与海克斯已经在上下文里：不要为了看局势反复调用 get_current_match_state，只有上下文缺字段时才查一次。']:[])].filter(Boolean).join('\n');
- if(role&&message.length+role.length+1>2400)throw fail(413,'Agent message exceeds the bounded task budget');
+ if(role&&message.length+role.length+1>2000)throw fail(413,'Agent message exceeds the bounded task budget');
  return role?message+'\n'+role:message;
 }
 // 本局实体名 → 检索关键词，随请求带给后端预加载使用。

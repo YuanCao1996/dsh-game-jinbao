@@ -72,9 +72,9 @@ export function adviceSimilarity(a, b) {
   return shared / (left.size + right.size - shared);
 }
 
-// 任务接口对单条 message 有上限，超了直接 413（2026-11-19 一晚连挂 102 次）。
+// 任务接口对单条 message 的硬上限是 2000 字（服务端 1..2000，超了直接 400/413）。
 // 先丢掉末尾的可选提示（日记/上一句/情绪），再兜底截断——不能让整条建议因为一句提示作废。
-export function fitPromptBudget(value, limit = 2200) {
+export function fitPromptBudget(value, limit = 1950) {
   let text = String(value ?? '');
   if (text.length <= limit) return text;
   text = text
