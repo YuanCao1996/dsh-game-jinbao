@@ -80,7 +80,7 @@ let deathTurns=0;
   if(busy||agent.busy?.()){note(v,'skip','busy');return;}
   if(!enabled()){note(v,'skip','disabled');return;}
   if(!live(v)){note(v,'skip','no_live_match');return;}
-  if(match!==v.game+':'+v.match){match=v.game+':'+v.match;store={};offers='';owned='';ownedCount=0;selection='';retryAt=0;deathTurns=0;sideBaseline=null;pendingCoordination=null;}
+  if(match!==v.game+':'+v.match){match=v.game+':'+v.match;store={since:now()};offers='';owned='';ownedCount=0;selection='';retryAt=0;deathTurns=0;sideBaseline=null;pendingCoordination=null;}
   if(now()<retryAt){note(v,'skip','retry_backoff',{retryAt});return;}
   // A confirmation is the player's explicit request for guidance. The view carries only
   // the count, so this stays the cheap guard: while nothing new is confirmed the turn is
@@ -150,6 +150,13 @@ let deathTurns=0;
    // objective cannot fire again on the next poll.
 
    nextStore.seenEventKeys=seenNow;store.seenEventKeys=seenNow;
+   // 空档看门狗：4 分钟没给出过建议时主动补一次局势分析，避免上游抖动/连续失败
+   // 把整局拖成十几分钟没有一句话（实测 26 分钟只说了 3 条）。
+   try{
+    const silenceMs=now()-Math.max(Number(store.lastAt)||0,Number(store.since)||0);
+    const urgent=events.some(e=>e.kind==='augment_offer'||['death','augment','objective','ace','inhib','turret','coordination','enemyChange','postAugment'].includes(e.coachTrigger));
+    if(silenceMs>=240000&&!urgent){events=[{kind:'state',coachTrigger:'situation'}];note(v,'watchdog','long_silence',{silenceMs:Math.round(silenceMs/1000)});}
+   }catch{}
    if(!events.length){note(v,'skip','no_trigger');return;}
 
    const plan=buildLolCoachingPlan(events,c);

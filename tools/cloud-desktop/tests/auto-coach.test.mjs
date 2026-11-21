@@ -74,3 +74,17 @@ test('a late reply tied to a closed window is still dropped',async()=>{
  assert.equal(entries.length,0,'a recommendation for an offer that no longer exists must not ship');
  coach.close();
 });
+
+test('4 分钟没有建议会主动补一次局势分析',async()=>{
+  let time=10000;const entries=[];let calls=0;
+  const current={game:'lol',match:'one',phase:'InProgress',gameSeconds:180,me:{champion:'安妮',level:6,items:[],dead:false},allies:[],enemies:[],offers:[],ownedAugments:[]};
+  const coach=createCloudCoach({view:()=>({game:'lol',match:'one',updatedAt:time}),getContext:async()=>({current}),now:()=>time,
+    agent:{ask:async()=>{calls++;return '先控线，等对面交技能再上';}},publish:async e=>entries.push(e)});
+  await coach.tick();
+  const baseline=calls;
+  time+=250000;
+  await coach.tick();
+  assert.ok(calls>baseline,'空档超过 4 分钟必须再问一次');
+  assert.equal(entries.at(-1)?.key,'situation');
+  coach.close();
+});
