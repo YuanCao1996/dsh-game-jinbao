@@ -40,6 +40,7 @@ export function highlightSide(state, event) {
   return hit ? 'enemy' : 'unknown';
 }
 
+// 旧的敌方过滤（只挡认得出来的敌人），已由 highlightSide + shouldCapture 取代；保留仅为兼容旧调用。
 export function enemyHighlight(state, event) {
   const norm = v => String(v ?? '').trim();
   const enemies = Array.isArray(state?.enemies) ? state.enemies : [];
