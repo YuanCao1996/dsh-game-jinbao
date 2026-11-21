@@ -109,6 +109,29 @@ function settlePendingPick(state,reason){
   trackAugmentRound(state,pending.event,before);
   return pending.name;
 }
+
+// 播报里提到击杀对象时用英雄名，而不是对方召唤师名：先用名单里的 name/riotId 找到人，
+// 再取他的英雄；认不出来才退回原名（宁可不写，也别写错英雄）。
+function championLabel(state, name) {
+  const norm = value => String(value ?? '').split('#')[0].trim();
+  const target = norm(name);
+  if (!target) return '';
+  const candidates = row => [row?.name, row?.riotId, row?.summonerName].map(norm).filter(Boolean);
+  const matches = row => candidates(row).some(value => value === target ||
+    (value.length >= 2 && target.length >= 2 && (value.includes(target) || target.includes(value))));
+  const rows = [...(state.allies ?? []), ...(state.enemies ?? []), ...(state.bench ?? [])];
+  for (const row of rows) {
+    if (!matches(row)) continue;
+    const champion = String(row.champion ?? '').trim();
+    if (champion && champion !== '未知英雄') return champion;
+  }
+  if (matches(state.me)) {
+    const champion = String(state.me?.champion ?? '').trim();
+    if (champion) return champion;
+  }
+  return '';
+}
+
 export function applyOverlayEvent(state, event, file, {continueStart=false}={}) {
  // 识别盲区是诊断事件，不进入事件页，但它是经验提炼要用的真事实，这里自己计数。
  if(event&&event.kind==='augment_capture_blind'){state.captureBlind=(Number(state.captureBlind)||0)+1;return state;}
@@ -392,7 +415,7 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     if (name === 'ChampionKill') {
       const killer = String(event.killer ?? event.KillerName ?? '').trim();
       const victim = String(event.victim ?? event.VictimName ?? '').trim();
-      if (killer && victim) state.recentKills = [...(state.recentKills ?? []), { at: Number(event.t ?? event.EventTime ?? Date.now()), killer, victim }].slice(-16);
+      if (killer && victim) state.recentKills = [...(state.recentKills ?? []), { at: Number(event.t ?? event.EventTime ?? Date.now()), killer, victim, killerChampion: championLabel(state, killer), victimChampion: championLabel(state, victim) }].slice(-16);
     }
     if (name === 'GameEnd') {
       state.ended = true;
@@ -429,7 +452,7 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
         const killer=String(e?.killer??'');
         if(!victim||!killer)continue;
         if(kind!=='kill'&&kind!=='death'&&kind!=='ChampionKill')continue;
-        if(victim.includes(mine)||mine.includes(victim)){if(!who.includes(killer))who.push(killer);}
+        if(victim.includes(mine)||mine.includes(victim)){const label=championLabel(state,killer)||killer;if(!who.includes(label))who.push(label);}
        }
        return who.slice(0,5);
       })(), now:at }):{victims:[],revenge:[]};
@@ -441,13 +464,16 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
       for (const row of (state.recentKills ?? [])) {
         if (!row || row.at < cutoff) continue;
         const same = row.killer === killerName || row.killer.includes(killerName) || killerName.includes(row.killer);
-        if (!same || names.includes(row.victim)) continue;
-        names.push(row.victim);
+        const label = row.victimChampion || championLabel(state, row.victim) || String(row.victim ?? '').split('#')[0].trim();
+        if (!same || names.includes(label)) continue;
+        names.push(label);
       }
       return names.slice(-3);
     })();
+    const victimLabels = (killInfo.victims ?? []).map(name => championLabel(state, name) || String(name ?? '').split('#')[0].trim()).filter(Boolean);
+    const revengeLabels = (killInfo.revenge ?? []).map(name => championLabel(state, name) || String(name ?? '').split('#')[0].trim()).filter(Boolean);
     recordMultikill(state, { streak: event.KillStreak ?? event.killStreak, side: killed.side, hero: killed.hero, at, now: at,
-     victims: victimNames.length ? victimNames : killInfo.victims, revenge: killInfo.revenge });
+     victims: victimNames.length ? victimNames : victimLabels, revenge: revengeLabels });
       }
     }
     // 击杀类也进事件流：以前只收塔/龙/水晶/团灭，玩家看不到「谁杀了谁」。

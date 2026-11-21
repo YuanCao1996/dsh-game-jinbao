@@ -509,6 +509,7 @@ if(detailUrl.pathname==='/api/pet'&&req.method==='POST'){
 }
   if(detailUrl.pathname==='/api/storage'&&req.method==='GET'){if(!storage)throw error(503);send(res,200,await storage.report());return;}
   if(detailUrl.pathname==='/api/storage/cleanup'&&req.method==='POST'){if(!storage)throw error(503);const value=await body(req,1024);const target=String(value.target??'all');if(!['all','releases','memory','logs','legacy'].includes(target))throw error(400);send(res,200,await storage.cleanup(target));return;}
+  if(detailUrl.pathname==='/api/storage/migrate'&&req.method==='POST'){if(!storage)throw error(503);const value=await body(req,2048);try{const result=await storage.migrate(value.path);send(res,202,result);setTimeout(()=>process.exit(0),1200);}catch(problem){send(res,problem.status||400,{error:problem.message||'迁移失败'});}return;}
 if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{enabled:highlightSettings.enabled,count:(await highlights.list()).length});return;}
    if(detailUrl.pathname==='/api/highlights'&&req.method==='POST'){const value=await body(req,1024);highlightSettings.enabled=value.enabled===true;await writeFile(join(stateDir,'highlights.json'),JSON.stringify({enabled:highlightSettings.enabled}),{mode:0o600});send(res,200,{ok:true,enabled:highlightSettings.enabled});return;}
    // 批注：追加与查询

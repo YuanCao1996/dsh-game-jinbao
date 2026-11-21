@@ -1,6 +1,9 @@
 // 状态目录的磁盘维护：高光/日志/对局记忆/旧版本都有上限，避免无限增长。
 // 只删本模块能确定是“可再生”或“过期”的文件，不动当前对局正在写的文件。
-import { readdir, stat, rm, readFile } from 'node:fs/promises';
+import { readdir, stat, lstat, rm, readFile, statfs } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { resolve, parse, sep } from 'node:path';
 import { join } from 'node:path';
 
 const MB = 1024 * 1024;
@@ -70,7 +73,7 @@ function envelopeVersion(envelope) {
   } catch { return null; }
 }
 
-export function createStorageMaintenance({ stateDir, now = () => Date.now(), limits = {} } = {}) {
+export function createStorageMaintenance({ stateDir, launcherPath = '', now = () => Date.now(), limits = {} } = {}) {
   const config = { ...STORAGE_DEFAULTS, ...limits };
   const updatesDir = join(stateDir, 'updates');
   const releasesDir = join(updatesDir, 'releases');
@@ -241,5 +244,39 @@ export function createStorageMaintenance({ stateDir, now = () => Date.now(), lim
     return { target, result, freedBytes, before: reportBefore, after: reportAfter };
   }
 
-  return { report, cleanup };
+  async function migrate(target) {
+    const from = resolve(stateDir);
+    const to = resolve(String(target ?? '').trim());
+    if (!String(target ?? '').trim()) throw Object.assign(Error('请选择迁移目标目录'), { status: 400 });
+    if (to === from) throw Object.assign(Error('目标目录不能和当前目录相同'), { status: 400 });
+    if (to.startsWith(from + sep) || from.startsWith(to + sep)) throw Object.assign(Error('目标目录不能和当前目录互相包含'), { status: 400 });
+    let fromInfo;
+    try { fromInfo = await lstat(from); } catch { throw Object.assign(Error('当前数据目录不存在'), { status: 409 }); }
+    if (fromInfo.isSymbolicLink()) throw Object.assign(Error('数据目录已经迁移过了'), { status: 409 });
+    let toInfo = null;
+    try { toInfo = await stat(to); } catch {}
+    if (toInfo) {
+      if (!toInfo.isDirectory()) throw Object.assign(Error('目标路径不是文件夹'), { status: 400 });
+      const entries = await readdir(to);
+      if (entries.length) throw Object.assign(Error('目标文件夹不是空的，请换一个空目录'), { status: 409 });
+    }
+    const need = (await dirSizes(from)).bytes;
+    try {
+      const space = await statfs(parse(to).root);
+      const freeBytes = Number(space.bavail) * Number(space.bsize);
+      if (Number.isFinite(freeBytes) && freeBytes > 0 && freeBytes < need * 1.2) {
+        throw Object.assign(Error('目标磁盘剩余空间不足（还需要约 ' + Math.ceil((need * 1.2) / MB) + ' MB）'), { status: 409 });
+      }
+    } catch (error) {
+      if (error.status) throw error;
+    }
+    const helper = fileURLToPath(new URL('../cloud-desktop/storage-migrate.ps1', import.meta.url));
+    const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', helper, '-From', from, '-To', to, '-WaitPid', String(process.pid)];
+    if (launcherPath) args.push('-Launcher', launcherPath);
+    const child = spawn('powershell.exe', args, { detached: true, stdio: 'ignore', windowsHide: true });
+    child.unref();
+    return { ok: true, from, to, message: '正在退出金宝并迁移数据，完成后会自动重新启动。' };
+  }
+
+  return { report, cleanup, migrate };
 }
