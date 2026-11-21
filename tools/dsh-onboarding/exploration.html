@@ -466,10 +466,10 @@ function renderTrail(data,game,season,category){
     if(Array.isArray(row.augments))for(const a of row.augments.slice(0,3))chips.push('<span class="chip">'+esc(a)+'</span>');
     if(Array.isArray(row.highlights))for(const h of row.highlights.slice(0,2))chips.push('<span class="chip" data-kind="highlight">'+esc(h)+'</span>');
     html+='<li class="node" data-win="'+resultKey(row)+'">'
-      +'<button class="recall" data-entity="'+esc(row.entity)+'">'
+      +'<button class="recall" data-entity="'+esc(row.entity)+'" data-match="'+esc(row.id||'')+'">'
         +'<div class="recall-top">'
           +avatarMarkup(row.entity,row.icon,44)
-          +'<div class="who"><b>'+esc(row.entity)+'</b><span>'+esc(fmtDay(row.endedAt))+' '+esc(fmtTime(row.endedAt))+(row.level?' · Lv'+esc(row.level):'')+'</span></div>'
+          +'<div class="who"><b data-entity-open="'+esc(row.entity)+'" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">'+esc(row.entity)+'</b><span>'+esc(fmtDay(row.endedAt))+' '+esc(fmtTime(row.endedAt))+(row.level?' · Lv'+esc(row.level):'')+'</span></div>'
           +'<span class="badge" data-win="'+resultKey(row)+'">'+esc(resultLabel(row))+' · '+mins(row.durationSeconds)+' 分钟</span>'
         +'</div>'
         +bestBadge(row)
@@ -485,8 +485,13 @@ function renderTrail(data,game,season,category){
   trail.innerHTML=html;
   // 点回忆 → 打开该英雄的抽屉
   trail.querySelectorAll('.recall').forEach(button=>{
-    button.onclick=()=>{
-      const name=button.dataset.entity;
+    const matchId=button.dataset.match;
+    button.onclick=()=>{if(matchId)openMatch(matchId);};
+  });
+  trail.querySelectorAll('[data-entity-open]').forEach(node=>{
+    node.onclick=event=>{
+      event.stopPropagation();
+      const name=node.dataset.entityOpen;
       const done=(data.selected||[]).includes(name);
       openMemory(name,done,data,game,season,category);
     };
