@@ -48,7 +48,7 @@ function Set-NarrowMetrics {
     $window.MinWidth=[Math]::Max(48,$petW+16);$window.MinHeight=40
     $window.Width=$window.MinWidth
   }
-  $window.Left=[double]$area.Left
+  $window.Left=[double]([Math]::Max($area.Left,$area.Right-$window.Width))
   $rowHeight=if($script:subtitleMode){2*$script:subtitleRowHeight+24}else{$script:subtitleRowHeight+24}
   # 形象比一行字高：不把窗口撑开的话，调到 56/72 会被条子裁掉一半
   # 形象高度：局外全身更高，但气泡本身保持文字高度（NarrowBubble 居中）
