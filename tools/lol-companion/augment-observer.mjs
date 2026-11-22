@@ -192,8 +192,12 @@ function isLabelMerge(text){
       misses=0;
       const next=[...current],changed=[];
       const titleSlots=new Set((frame.titleLines??[]).filter(line=>Number.isInteger(line.slot)&&line.slot>=0&&line.slot<=2).map(line=>line.slot));
-  // 开局三选一常常只出现 1–2 帧就被点掉；只要三个槽位都读到不同卡名，首帧直接认。
-  const stableFirstFrame=!current.some(Boolean)&&recognized===3&&new Set(candidates).size===3&&(frame.cardLayout==='stacked-title-regions'||(titleSlots.size>=3&&String(frame.method??'').includes('card-strip')));
+  // 精确命中（非形近字纠正）的标题槽位；卡条 OCR 的槽位归属可靠，可首帧直接认。
+  const exactTitleSlots=new Set(found.filter(line=>line.source==='title'&&Number.isInteger(line.slot)&&line.slot>=0&&line.slot<=2&&!line.fuzzy).map(line=>line.slot));
+  const strongFirstFrame=String(frame.method??'').includes('card-strip')&&exactTitleSlots.size>=2
+   &&candidates.every((name,slot)=>!name||exactTitleSlots.has(slot));
+  // 开局三选一常常只出现 1–2 帧就被点掉；2~3 张卡都精确命中时首帧直接发布。
+  const stableFirstFrame=!current.some(Boolean)&&recognized>=2&&new Set(candidates.filter(Boolean)).size===recognized&&(frame.cardLayout==='stacked-title-regions'||strongFirstFrame);
       // A single-slot reroll can be accepted immediately when two independent
       // OCR passes (full frame and enlarged title crop) agree on its exact name,
       // and both unchanged neighbours are still visible. Otherwise require the
