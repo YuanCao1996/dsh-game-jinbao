@@ -64,9 +64,7 @@ test('队友挂机：等级和补刀 4 分钟没变才提醒', () => {
 
   observeAllyActivity(state, t0 + 300_000);
   settleExtraMoments(state, t0 + 300_001, { role: 'jinbao' });
-  const line = (state.broadcasts ?? []).find(row => row.humanKind === 'allyAfk');
-  assert.ok(line, '超过 4 分钟应当提醒');
-  assert.match(line.text, /锐雯/);
+  assert.equal((state.broadcasts ?? []).filter(row => row.humanKind === 'allyAfk').length, 0, '队友挂机不再播报');
 });
 
 test('首次上手与连胜：排队后按角色渲染', () => {

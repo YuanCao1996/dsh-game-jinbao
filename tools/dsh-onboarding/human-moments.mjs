@@ -164,7 +164,7 @@ function tacticalRecent(state, now, windowMs = TACTICAL_GUARD_MS) {
 
 // 触发型台词：由 overlay 侧检测到事件后排队（state.pendingMoments），这里统一渲染+落播报。
 // 与「人味句」共用同一套语音通道，但每条的 humanKey 独立，不会互相顶掉。
-export const EXTRA_MOMENT_KINDS = Object.freeze(['streakEnded', 'pentaStolen', 'allyAfk', 'firstChampion', 'winStreak']);
+export const EXTRA_MOMENT_KINDS = Object.freeze(['streakEnded', 'pentaStolen', 'firstChampion', 'winStreak']);
 
 export function settleExtraMoments(state, now = Date.now(), { role = 'jinbao' } = {}) {
   if (!state || !Array.isArray(state.pendingMoments) || !state.pendingMoments.length) return false;

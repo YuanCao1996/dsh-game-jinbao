@@ -39,10 +39,10 @@ export function observeAllyActivity(state, now = Date.now()) {
       watch.level = ally.level; watch.cs = ally.cs; watch.at = now;
       continue;
     }
+    // 队友“没动”不再播报：等级/补刀推断误报多，对决策也没有帮助。
     if (watch.announced || ally.dead === true) continue;
     if (now - watch.at < 240_000) continue;
     watch.announced = true;
-    state.pendingMoments.push({ kind: 'allyAfk', key: 'afk:' + key + ':' + Math.floor(watch.at / 60_000), facts: { ally: String(ally.champion ?? ally.name ?? '队友') } });
   }
 }
 
