@@ -42,7 +42,7 @@ const humanSrc = await read('dsh-onboarding/human-moments.mjs');
 const human = {};
 for (const [role, body] of Object.entries(blocks(humanSrc, 'const VOICES = {'))) {
   human[role] = {};
-  for (const slot of ['opening', 'death', 'endWin', 'endNeutral', 'endLoss', 'idle']) human[role][slot] = arr(body, slot);
+  for (const slot of ['opening', 'death', 'endWin', 'endNeutral', 'endLoss', 'idle', 'streakEnded', 'pentaStolen', 'allyAfk', 'firstChampion', 'winStreak']) human[role][slot] = arr(body, slot);
 }
 
 const rolesSrc = await read('shared/game-roles.mjs');
@@ -72,7 +72,7 @@ L.push('| 类别 | 条数 | 触发时机 | 出声 |');
 L.push('|---|---|---|---|');
 L.push(`| 多杀夸奖 | ${countOf(praise)} 条零件，可拼约 2700 种/角色 | 你自己 2 杀起、队友 4/5 杀 | ✅ |`);
 L.push(`| 选择反馈 | ${countOf(choice)} | 买完成装、选完海克斯 | ✅ |`);
-L.push(`| 人味句 | ${countOf(human)} | 开局 / 阵亡 / 结束 / 长时间沉默 | ✅ |`);
+L.push(`| 人味句 + 触发句 | ${countOf(human)} | 开局 / 阵亡 / 结束 / 沉默 / 连杀被终结 / 五杀被抢 / 队友挂机 / 首次上手 / 连胜 | ✅ |`);
 L.push(`| 角色开场语 | ${intros.length} | 切换角色试听 | ✅ |`);
 L.push(`| 敌方关键装提醒 | ${threats.length} | 敌方出了中娅/兰德里等 | ✅ |`);
 L.push(`| 赛后锐评 | ${roasts.length} | 每局结束写进对局记录 | ❌ 仅上屏 |`);
@@ -128,7 +128,7 @@ for (const [role, name] of Object.entries(NAMES)) {
   L.push('');
   L.push('| 场景 | 内容 |');
   L.push('|---|---|');
-  for (const [slot, label] of [['opening', '开局'], ['death', '阵亡'], ['endWin', '赢了'], ['endNeutral', '结束'], ['endLoss', '输了'], ['idle', '长时间沉默']]) {
+  for (const [slot, label] of [['opening', '开局'], ['death', '阵亡'], ['endWin', '赢了'], ['endNeutral', '结束'], ['endLoss', '输了'], ['idle', '长时间沉默'], ['streakEnded', '连杀被终结'], ['pentaStolen', '五杀被抢'], ['allyAfk', '队友挂机'], ['firstChampion', '首次上手'], ['winStreak', '连胜里程碑']]) {
     if (!table[slot]?.length) continue;
     L.push(`| ${label}（${table[slot].length}） | ${table[slot].join(' / ')} |`);
   }
@@ -167,13 +167,23 @@ L.push('| 建议过期 | `{原文}（稍早建议，局势已变化）` |');
 L.push('| 阵容就位 | `阵容 · 我方 {N} 人已就位` |');
 L.push('| 榜单为空 | `三个排名都在 30 名以外，建议刷新看看` / `三个都没进榜，建议刷新换一批` |');
 L.push('');
-L.push('## 8. 目前还没有话术的场景');
+L.push('## 8. 触发句的判定条件（2026-11-22 新增）');
 L.push('');
-L.push('- 连杀被终结、五杀被抢：事件流里有，但没有口头反应；');
-L.push('- 拿龙 / 拆塔 / 破水晶：只有截图和事件记录，没有一句即时反馈；');
-L.push('- 对线被单杀 3 次以上、被压 2 级：没有「要不要换线/求支援」的轻提示；');
-L.push('- 段位/晋级变化、英雄首次上手、版本更新提醒：完全没有；');
-L.push('- 队友挂机/掉线、投降投票：没有反应。');
+L.push('| 场景 | 判定 | 节流 |');
+L.push('|---|---|---|');
+L.push('| 连杀被终结 | 自己连续击杀累计 ≥3 后阵亡 | 每次阵亡最多一条 |');
+L.push('| 五杀被抢 | 队友拿到五杀，且自己这波已连杀 ≥3 | 每条事件一次 |');
+L.push('| 队友挂机 | 队友等级与补刀连续 4 分钟都没变化（且未阵亡） | 每人每局一次 |');
+L.push('| 首次上手 | 最近 20 局记录里没有这个英雄 | 每局一次 |');
+L.push('| 连胜里程碑 | companion 里连胜 ≥3（跨对局持久化） | 每局一次 |');
+L.push('');
+L.push('## 9. 仍然没有话术的场景');
+L.push('');
+L.push('- 投降投票：客户端事件里没有 `Surrender`，做不了；');
+L.push('- 段位晋级：拿不到段位数据，用「连胜里程碑」替代；');
+L.push('- 游戏版本更新：只有应用自身版本号，没有 LoL 补丁号；');
+L.push('- 拿龙 / 拆塔 / 破水晶：只有截图和事件记录，没有口头反馈；');
+L.push('- 对线被单杀 3 次以上、被压 2 级：没有「要不要换线/求支援」的轻提示。');
 L.push('');
 
 await writeFile(`${root}/docs/VOICE_SCRIPT_INVENTORY.md`, `${L.join('\n')}\n`, 'utf8');

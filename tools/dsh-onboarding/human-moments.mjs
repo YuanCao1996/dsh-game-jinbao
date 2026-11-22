@@ -1,4 +1,4 @@
-// 每局固定几句「人味」：开局、阵亡、结束、长时间沉默。
+﻿// 每局固定几句「人味」：开局、阵亡、结束、长时间沉默。
 //
 // 昨晚三条对局的实测：23/22/29 分钟里各只有 4/5/4 条播报，全部是出装建议；
 // 38 次阵亡、74 分钟、21 次团灭，一句情绪反馈都没有；最长沉默 16.6 分钟。
@@ -23,6 +23,11 @@ const VOICES = {
     endNeutral: ['打完啦，还挺燃', '这局结束，手热了', '收工！下把继续', '打完了，状态在线'],
     endLoss: ['天呐，输了！我还想打', '可惜！差一点翻盘', '别丧，下把打回来', '{minute}分钟那波，亏了', '输了也别泄气', '这把算热身，再来'],
     idle: ['我盯着呢，随时喊我上', '安静发育，攒波大招', '别停，节奏在我们', '嘻嘻，喊我就来', '稳着打，力气留着'],
+    streakEnded: ['{n} 杀被终结了，太可惜啦', '哎呀，{n} 杀没了，下次再来', '对面总算把你拦下来了，{n} 杀结束'],
+    pentaStolen: ['五杀被 {ally} 抢走啦，就差一个', '{ally} 拿了五杀，你差一步呀', '哎呀，五杀给 {ally} 了'],
+    allyAfk: ['{ally} 好像不动了，这波先当 4 打 5', '{ally} 半天没动，小心点', '感觉 {ally} 掉线了，稳一点'],
+    firstChampion: ['第一次玩 {champion}，我陪你摸索', '{champion} 第一次上手，稳着来', '新英雄 {champion}，先熟悉手感'],
+    winStreak: ['{n} 连胜啦，你最近手感真好', '连赢 {n} 场，我要记下来', '{n} 连胜，稳住这个状态'],
   },
   liurufeng: {
     opening: ['开局。按计划走。', '开始，先看线权。', '这一局，稳着来。'],
@@ -31,6 +36,11 @@ const VOICES = {
     endNeutral: ['这一局结束了。', '打完了，我们复盘一下。'],
     endLoss: ['输了。问题在中期那两波。', '没赢下来，我们找原因。'],
     idle: ['我在观察局势，需要就问我。'],
+    streakEnded: ['{n} 杀被终结，位置被算到了', '这波断了，{n} 杀到此为止', '他们盯上你了，{n} 杀结束'],
+    pentaStolen: ['五杀落在 {ally} 手上，节奏没问题', '{ally} 收了第五个，你差一个', '这波五杀归 {ally}'],
+    allyAfk: ['{ally} 四分钟没动，按少一个人打', '{ally} 可能掉线了，收缩阵型', '队友 {ally} 静止，先别再开团'],
+    firstChampion: ['{champion} 第一次用，先按标准节奏走', '首次拿 {champion}，别急着秀', '{champion} 首次登场，稳发育'],
+    winStreak: ['已经 {n} 连胜，节奏稳定', '{n} 连胜，保持这套打法', '连胜 {n} 场，说明判断是对的'],
   },
   wangbatian: {
     opening: ['上！这局我说了算。', '开局就压，别怂。', '来了！跟我冲。'],
@@ -39,6 +49,11 @@ const VOICES = {
     endNeutral: ['这局打完了！', '结束了，下一把继续。'],
     endLoss: ['输了？下次我带你打回来。', '这局不算，再来！'],
     idle: ['我在这儿盯着，谁不服就问我。'],
+    streakEnded: ['{n} 杀被断了？再来一次', '被人终结了，{n} 杀不算完', '行，{n} 杀被他们断了，继续压'],
+    pentaStolen: ['五杀让 {ally} 拿走了，下次自己收', '{ally} 抢了你的五杀，记着', '就差一个，五杀给了 {ally}'],
+    allyAfk: ['{ally} 不动了？那就我们自己打', '{ally} 挂机，照打不误', '{ally} 掉线，少个人也压'],
+    firstChampion: ['{champion} 第一次玩？照样压', '新英雄 {champion}，上去试试', '{champion} 没玩过？那就打给他们看'],
+    winStreak: ['{n} 连胜！就这个气势', '连赢 {n} 把，谁敢拦', '{n} 连胜，继续压'],
   },
   tiezhi: {
     opening: ['开局，先别送。', '开始了，稳住。', '来了来了，慢慢玩。'],
@@ -47,6 +62,11 @@ const VOICES = {
     endNeutral: ['打完了，行了。', '这局结束，休息一下。'],
     endLoss: ['输了，别难受。', '这把算了，下一把。'],
     idle: ['我还在，别担心。'],
+    streakEnded: ['{n} 杀断了，对面松了口气', '好家伙，{n} 杀就这么没了', '{n} 杀被终结，他们很开心吧'],
+    pentaStolen: ['五杀被 {ally} 截胡了，血亏', '{ally} 拿五杀，你白打四个', '五杀没了，{ally} 得请你吃饭'],
+    allyAfk: ['{ally} 挂着呢，四打五了', '{ally} 好像人不在', '好家伙，{ally} 直接挂机'],
+    firstChampion: ['{champion} 头一回玩，别送太早', '第一次用 {champion}？有点意思', '{champion} 新手局，慢慢来'],
+    winStreak: ['{n} 连胜，最近有点东西啊', '连赢 {n} 场，可以吹了', '{n} 连胜，别飘'],
   },
 };
 
@@ -127,6 +147,38 @@ function fresh(state, key) {
 function tacticalRecent(state, now, windowMs = TACTICAL_GUARD_MS) {
   const list = Array.isArray(state.broadcasts) ? state.broadcasts : [];
   return list.some(b => b && !b.choiceReaction && !b.humanMoment && Number(b.at) <= now && now - Number(b.at) <= windowMs);
+}
+
+// 触发型台词：由 overlay 侧检测到事件后排队（state.pendingMoments），这里统一渲染+落播报。
+// 与「人味句」共用同一套语音通道，但每条的 humanKey 独立，不会互相顶掉。
+export const EXTRA_MOMENT_KINDS = Object.freeze(['streakEnded', 'pentaStolen', 'allyAfk', 'firstChampion', 'winStreak']);
+
+export function settleExtraMoments(state, now = Date.now(), { role = 'jinbao' } = {}) {
+  if (!state || !Array.isArray(state.pendingMoments) || !state.pendingMoments.length) return false;
+  const voice = VOICES[role] ?? VOICES.jinbao;
+  const queue = state.pendingMoments.splice(0);
+  let emitted = false;
+  for (const item of queue) {
+    const kind = String(item?.kind ?? '');
+    const pool = voice[kind];
+    if (!EXTRA_MOMENT_KINDS.includes(kind) || !Array.isArray(pool) || !pool.length) continue;
+    const key = 'extra:' + kind + ':' + String(item?.key ?? '');
+    if ((state.broadcasts ?? []).some(b => b.humanKey === key)) continue;
+    const facts = item?.facts ?? {};
+    // 同 key 稳定取同一句，避免同一条链刷出两句不同的。
+    let seed = 0;
+    for (const ch of key) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+    const text = renderMoment(pool[seed % pool.length], facts);
+    if (!text) continue;
+    state.broadcasts = (state.broadcasts ?? []).filter(b => b.humanKey !== key);
+    state.broadcasts.push({
+      at: now, text, priority: 2, praise: true, humanMoment: true,
+      humanKey: key, humanKind: kind, expiresAt: now + 12_000,
+    });
+    state.broadcasts = state.broadcasts.slice(-12);
+    emitted = true;
+  }
+  return emitted;
 }
 
 function push(state, text, now, extra = {}) {

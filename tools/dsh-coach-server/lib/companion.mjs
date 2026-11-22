@@ -1,4 +1,4 @@
-// Companion state: the "relationship" layer that survives between matches.
+﻿// Companion state: the "relationship" layer that survives between matches.
 //
 // The three memory layers we already had are match-scoped facts, per-game preferences and
 // per-match summaries. None of them can answer "have we played a lot together?" or "did I
@@ -126,6 +126,7 @@ export function createCompanion({ stateDir, now = Date.now } = {}) {
         wins: current.wins + (win === true ? 1 : 0),
         losses: current.losses + (win === false ? 1 : 0),
         lossRun: win === false ? current.lossRun + 1 : 0,
+        winRun: win === true ? (Number(current.winRun) || 0) + 1 : 0,
         lastResultMatch: match ?? current.lastResultMatch ?? null,
         intimacy: current.intimacy + 1,
         lastSeenAt: at,

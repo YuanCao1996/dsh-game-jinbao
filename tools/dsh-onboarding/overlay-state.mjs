@@ -27,6 +27,38 @@ import {whoKilled,recordMultikill,settlePraise,PRAISE_ROLES,killInfoFromEvents} 
 // 高光截图只留我方的：敌方多杀/团灭/大龙/首杀等不记录。
 // 击杀类事件带 killer/Recipient，按敌方名单排除；团灭看 AcingTeam，推塔/水晶看 Team。
 // 事件归属：用来决定「这张画面要不要留」。认不出名字时返回 unknown（按可能是我方处理）。
+// 队友长时间不动（等级和补刀都不涨）就提醒一句：不依赖客户端的 AFK 字段，纯本地推断。
+export function observeAllyActivity(state, now = Date.now()) {
+  const list = Array.isArray(state?.allies) ? state.allies : [];
+  for (const ally of list) {
+    const key = String(ally?.name ?? ally?.champion ?? '').trim();
+    if (!key) continue;
+    const watch = state.allyWatch[key] ?? (state.allyWatch[key] = { level: ally.level, cs: ally.cs, at: now });
+    if (ally.level !== watch.level || ally.cs !== watch.cs) {
+      watch.level = ally.level; watch.cs = ally.cs; watch.at = now;
+      continue;
+    }
+    if (watch.announced || ally.dead === true) continue;
+    if (now - watch.at < 240_000) continue;
+    watch.announced = true;
+    state.pendingMoments.push({ kind: 'allyAfk', key: 'afk:' + key + ':' + Math.floor(watch.at / 60_000), facts: { ally: String(ally.champion ?? ally.name ?? '队友') } });
+  }
+}
+
+// 第一次用这个英雄：查最近 20 局记录里有没有同名英雄，没有就提醒一句。
+export async function checkFirstChampion(state, memory) {
+  if (!state || state.firstChampionChecked || !memory) return;
+  const champion = String(state.me?.champion ?? '').trim();
+  if (!champion || !state.match) return;
+  state.firstChampionChecked = true;
+  try {
+    const rows = await memory.history(state.game ?? 'lol', state.match, 20, 0, champion);
+    if (Array.isArray(rows) && rows.length === 0) {
+      state.pendingMoments.push({ kind: 'firstChampion', key: 'first:' + state.match, facts: { champion } });
+    }
+  } catch {}
+}
+
 export function highlightSide(state, event) {
   const killer = String(event?.killer ?? event?.KillerName ?? event?.Recipient ?? event?.Acer ?? '').trim();
   if (!killer) return 'unknown';
@@ -66,7 +98,7 @@ export function enemyHighlight(state, event) {
 }
 
 import {recordChoice,settleChoiceReactions,resetChoiceReactions} from './choice-reactions.mjs';
-import {settleHumanMoments,resetHumanMoments} from './human-moments.mjs';
+import {settleHumanMoments,resetHumanMoments,settleExtraMoments} from './human-moments.mjs';
 import { createHighlights, shouldCapture } from './highlights.mjs';
 import {champSelectPartnerText} from '../lol-companion/partner-index.mjs';
 import {createKnowledgeSearch} from './knowledge-search.mjs';
@@ -94,7 +126,9 @@ export function initialOverlayState() {
   return { game: null, mode: '', match: null, at: 0, selfIdentityAt: 0, matchStartedAt: 0, gameSeconds: null, ended: false, phase: '',observedMatch:false,
     me: {}, allies: [], enemies: [], bench: [], playerStats: [], enemyItems: [], events: [], equipmentSnapshots:new Map(), activityEvents:[],
     ownedAugments: [], revealedAugments: [], augmentRounds: [], offers: [], offerRound: null, offerHistory: [], augmentCaptureAvailable: null, augmentCaptureReason: '', equipment: '', equipmentStatus:'', equipmentAssumptions: [], augmentAdvice: '', teamfight: '', broadcasts: [], chat: [],
-    agentStatus:'', agentError:'', coachStatus:null, praiseChains:{}, notices:[], noticeWinRate:null };
+    agentStatus:'', agentError:'', coachStatus:null, praiseChains:{}, notices:[], noticeWinRate:null,
+    // 触发型台词（连杀被终结/五杀被抢/队友挂机/首次上手/连胜）由这里排队，交给 settleExtraMoments 渲染。
+    pendingMoments: [], killStreak: 0, allyWatch: {}, firstChampionChecked: false };
 }
 // Pure projection shared by live polling and log replay tests. Epoch time only orders
 // records; the displayed clock always comes from the game's elapsed seconds.
@@ -425,6 +459,22 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     }
     // Own multi-kills (and an ally's quadra/penta) are praised locally from the game
     // event time, so an escalating chain settles into one praise at its real level.
+    // 连杀计数：自己拿人头 +1，自己阵亡时如果攒到 3 杀以上就报一句"被终结"。
+    if (name === 'ChampionKill') {
+      const victim = String(event.victim ?? event.VictimName ?? '').trim();
+      const mine = String(state.me?.champion ?? '').trim();
+      // 事件里的受害者是「名字#标签」，自己的标识可能是 riotId / 召唤师名 / 英雄名，逐个比。
+      const myNames = [state.me?.riotId, state.me?.summonerName, mine].map(v => String(v ?? '').trim()).filter(Boolean);
+      const victimIsMe = !!victim && myNames.some(name => victim === name || victim.includes(name) || name.includes(victim));
+      if (whoKilled(state, event).side === 'self') state.killStreak = (Number(state.killStreak) || 0) + 1;
+      if (victimIsMe) {
+        const streak = Number(state.killStreak) || 0;
+        if (streak >= 3) {
+          state.pendingMoments = [...(state.pendingMoments ?? []), { kind: 'streakEnded', key: 'streak:' + String(event.id ?? event.t ?? Date.now()), facts: { n: streak } }];
+        }
+        state.killStreak = 0;
+      }
+    }
     if (name === 'Multikill') {
       const killed = whoKilled(state, event);
       // 诊断：多杀夸奖一直没播出去（2026-11-19 三局 0 条）。这里把「谁杀的、认成谁、
@@ -435,6 +485,13 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
           meChampion: String(state.me?.champion ?? ''), meRiotId: String(state.me?.riotId ?? ''),
           meSummoner: String(state.me?.summonerName ?? ''), allyNames: list(state.allies).map(p => String(p?.name ?? '')).filter(Boolean).slice(0, 5) };
         state.killDiagnostics = [...(state.killDiagnostics ?? []), levels].slice(-20);
+      }
+      // 五杀被抢：队友刚拿了五杀，而你这波也已经攒到 3 杀以上。
+      if (killed.side === 'ally' && Number(event.KillStreak ?? event.killStreak) === 5 && (Number(state.killStreak) || 0) >= 3) {
+        state.pendingMoments = [...(state.pendingMoments ?? []), {
+          kind: 'pentaStolen', key: 'penta:' + String(event.id ?? event.t ?? Date.now()),
+          facts: { ally: String(killed.hero || '队友') },
+        }];
       }
       if (killed.side !== 'other') {
         // 带上“这波杀了谁”，以及其中此前杀过我的敌人（复仇播报用）。
@@ -1490,7 +1547,12 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
    } catch {}
  }
  if (state?.match && startedEvent) state.companionLine = companion.touch({ game: state.game, match: state.match }) ?? null;
- if (state?.match && endedEvent) companion.recordResult({ win: endedEvent.Result === 'Win', match: state.match });
+ if (state?.match && endedEvent) {
+   companion.recordResult({ win: endedEvent.Result === 'Win', match: state.match });
+   // 连胜里程碑：3 连胜起提一句（companion 里持久化）。
+   const run = Number(companion.state()?.winRun) || 0;
+   if (run >= 3) state.pendingMoments = [...(state.pendingMoments ?? []), { kind: 'winStreak', key: 'win:' + state.match, facts: { n: run } }];
+ }
       await memory.flush();
       state=router.state();
       for(const event of ambiguous)void runTiebreak(event);
@@ -1542,6 +1604,9 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       settleChoiceReactions(state, Date.now(), { role: await currentPraiseRole() });
       // 开局问候 / 阵亡反应 / 结束语 / 长时间沉默兜底：每局固定几句人味。
       settleHumanMoments(state, Date.now(), { role: await currentPraiseRole(), clock: state.gameSeconds, ended: state.ended === true, win: state.matchWin ?? null });
+      observeAllyActivity(state, Date.now());
+      void checkFirstChampion(state, memory);
+      settleExtraMoments(state, Date.now(), { role: await currentPraiseRole() });
       await flush();
       if(!knowledge.loading)equipmentCoach.tick();
     } catch {} finally { scanning = false; }
