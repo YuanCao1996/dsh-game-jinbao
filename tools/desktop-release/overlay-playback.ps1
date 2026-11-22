@@ -47,8 +47,7 @@ function Set-NarrowMetrics {
     $window.MinWidth=$minWidth;$window.MinHeight=40
     $window.Width=[Math]::Min([Math]::Max($window.MinWidth,$script:narrowWidth),$area.Width-20)
   }else{
-    # 收起时也要给右侧「▣」留位置：穿透状态下它是唯一能点开大框的入口。
-  $window.MinWidth=[Math]::Max(48,$petW+46);$window.MinHeight=40
+    $window.MinWidth=[Math]::Max(48,$petW+16);$window.MinHeight=40
     $window.Width=$window.MinWidth
   }
   $window.Left=[double]([Math]::Max($area.Left,$area.Right-$window.Width))
@@ -57,8 +56,7 @@ function Set-NarrowMetrics {
   # 形象高度：局外全身更高，但气泡本身保持文字高度（NarrowBubble 居中）
   $petHeight=if($script:narrowPetDisplay -gt 0){$script:narrowPetDisplay}else{$script:narrowPetSize}
   if($script:narrowPetVisible){$rowHeight=[Math]::Max($rowHeight,[double]$petHeight+22)}
-  # 窄条右侧留一个明确的「▣」展开按钮：鼠标穿透时它是唯一可点热区。
-  try{$controls.NarrowExpand.Visibility='Visible'}catch{}
+
   # 全身模式下气泡贴住人物头部；否则垂直居中会落到腰上，看着离人很远。
   try {
     if ($script:narrowPetVisible -and $script:narrowPetFrame -eq 'full') {

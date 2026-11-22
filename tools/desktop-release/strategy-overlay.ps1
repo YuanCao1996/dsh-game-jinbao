@@ -892,9 +892,7 @@ function Update-Drag([double]$x,[double]$y,[bool]$pressed){
  }
 }
 function Test-PointerHotzone([Windows.Point]$screenPoint) {
- $targets=if($script:clickThrough -and !$script:collapsed -and $script:displayMode -eq 'narrow'){@($controls.NarrowExpand)}
-  elseif($script:clickThrough -and $script:collapsed){@($controls.Bubble)}
-  elseif($script:collapsed){@($controls.Bubble)}else{@($controls.Header,$controls.ActionButton,$controls.Tabs,$controls.Footer,$controls.PageScroll,$controls.LatestMessageButton,$controls.ChatPanel,$controls.ResizeGrip,$controls.ConfirmationPanel,$controls.AgentActivityPanel,$controls.NarrowPanel)}
+ $targets=if($script:collapsed){@($controls.Bubble)}else{@($controls.Header,$controls.ActionButton,$controls.Tabs,$controls.Footer,$controls.PageScroll,$controls.LatestMessageButton,$controls.ChatPanel,$controls.ResizeGrip,$controls.ConfirmationPanel,$controls.AgentActivityPanel,$controls.NarrowPanel)}
  foreach($target in $targets){
   if(!$target.IsVisible){continue}
   $local=$target.PointFromScreen($screenPoint)
