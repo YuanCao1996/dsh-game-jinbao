@@ -262,7 +262,7 @@ $script:lastThrough=$null
 $script:lastFocusable=$null
 $script:lastControl=0
 $script:closing=$false
-$script:expandedWidth=380.0;$script:expandedHeight=520.0
+$script:expandedWidth=280.0;$script:expandedHeight=369.0
 $script:lastAugmentOfferKey=''
 $script:tray=$null
 $script:testResult=@{}

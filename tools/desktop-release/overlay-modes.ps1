@@ -67,7 +67,7 @@ function Set-DisplayMode([string]$mode){
     # 一次性切到大框：不要先走窄条布局再改尺寸，否则会看到 126→300→126→380 的闪动和残影。
     $script:collapsed=$false
     $targetWidth=[Math]::Max(280,[double]$script:expandedWidth)
-    $targetHeight=[Math]::Max(520,[double]$script:expandedHeight)
+    $targetHeight=[Math]::Max(300,[double]$script:expandedHeight)
     $script:expandedWidth=$targetWidth;$script:expandedHeight=$targetHeight
     $controls.NarrowPanel.Visibility='Collapsed';$controls.Expanded.Visibility='Visible'
     # 先切模式再改尺寸：Width 赋值会同步触发 SizeChanged→Update-AutoFontSize，
