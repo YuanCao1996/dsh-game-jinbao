@@ -264,6 +264,7 @@ $script:lastControl=0
 $script:closing=$false
 $script:expandedWidth=280.0;$script:expandedHeight=369.0
 $script:lastAugmentOfferKey=''
+$script:augmentRestoreTab=$null
 $script:tray=$null
 $script:testResult=@{}
 $area=[Windows.SystemParameters]::WorkArea
@@ -697,8 +698,16 @@ function Update-State {
      if($offerText -and (Get-Command Add-PlaybackMessage -ErrorAction SilentlyContinue)){
       Add-PlaybackMessage ([pscustomobject]@{id='augment-offer-'+$offerKey;at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();text=$offerText;priority=1})
      }
-    }
-   }catch{}
+     # 大框模式不会走窄条播报；主动切到海克斯页，否则看起来像“没识别”。
+   if($script:displayMode -eq 'large' -and $script:tab -ne 'augments'){
+    $script:augmentRestoreTab=$script:tab;Set-Tab 'augments'
+   }
+  }elseif(!$offerKey -and [string]$script:lastAugmentOfferKey){
+  $script:lastAugmentOfferKey=''
+  if($script:displayMode -eq 'large' -and $script:augmentRestoreTab -and $script:tab -eq 'augments'){Set-Tab $script:augmentRestoreTab}
+  $script:augmentRestoreTab=$null
+  }
+  }catch{}
 
   foreach($button in $controls.Tabs.Children){$button.Visibility=if($next.game -eq 'generic' -and $button.Tag -in @('augments','players')){'Collapsed'}else{'Visible'}}
   if($next.game -eq 'generic' -and $script:tab -in @('augments','players')){Set-Tab 'advice'}
