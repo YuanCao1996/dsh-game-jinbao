@@ -43,10 +43,11 @@ export function createAugmentObserver(names, emit, {now=Date.now,maxFrameAgeMs=4
   let current=[null,null,null],history=[],round=0,misses=0,slots=[[],[],[]],anchors=null;
   let pending=[null,null,null],suspended=null;
   let zeroStreak=0;
+  let firstPartialAt=null;
 // Catalog gaps are reported once per match so the shipped list can be extended.
 const unknownNames=new Set();
   let lastValidAt=null,lastCapturedAt=null;
-  const clearPanel=()=>{current=[null,null,null];history=[];slots=[[],[],[]];anchors=null;pending=[null,null,null];misses=0;};
+  const clearPanel=()=>{current=[null,null,null];history=[];slots=[[],[],[]];anchors=null;pending=[null,null,null];misses=0;firstPartialAt=null;};
   const suspendPanel=at=>{suspended={current:[...current],history:[...history],round,slots:slots.map(s=>[...s]),anchors,at};clearPanel();};
   let diagnostic={recognized:0,method:'none'};
   return {
@@ -164,7 +165,13 @@ function isLabelMerge(text){
       // A single tooltip elsewhere in the game can contain an augment name.
       // Establish a panel from at least two distinct card slots, then track
       // each slot independently while the other cards are obscured.
-      if(!current.some(Boolean)&&new Set(candidates.filter(Boolean)).size<2){pending=[null,null,null];return;}
+      const distinctCount=new Set(candidates.filter(Boolean)).size;
+      if(!current.some(Boolean)&&distinctCount<2){pending=[null,null,null];firstPartialAt=null;return;}
+      // 新一轮只认出 2 张时先等 1.5 秒：等第三张再发排名，避免缺卡导致推荐错位；超时才降级。
+      if(!current.some(Boolean)&&distinctCount<3){
+        if(firstPartialAt===null)firstPartialAt=at;
+        if(at-firstPartialAt<1500){return;}
+      }else if(!current.some(Boolean)){firstPartialAt=null;}
       if(!recognized&&!titles.length){
         pending=[null,null,null];
         if(++misses>=5&&current.some(Boolean)){emit({kind:'augment_offer_closed',roll:round});suspendPanel(at);}

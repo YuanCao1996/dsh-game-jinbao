@@ -177,15 +177,15 @@ public static class JinbaoChatSignature {
  try{
   $inputBitmap=[Drawing.Bitmap]::new($inputStream)
   if(!$frame){$frame=@{width=$inputBitmap.Width;height=$inputBitmap.Height;lines=@()}}
-  $w=[int]($inputBitmap.Height*0.302);$h=[int]($inputBitmap.Height*0.11);$gutter=36;$stride=$h*3+$gutter
+  $w=[int]($inputBitmap.Height*0.32);$h=[int]($inputBitmap.Height*0.12);$gutter=36;$stride=$h*3+$gutter
   $strip=[Drawing.Bitmap]::new($w*3,$stride*3);$stripGraphics=[Drawing.Graphics]::FromImage($strip)
   try{
    $stripGraphics.Clear([Drawing.Color]::Black)
    for($slot=0;$slot -lt 3;$slot++){
    $crop=$null;$enlarged=$null;$encoded=[IO.MemoryStream]::new()
    try{
-    $x=[int]($inputBitmap.Width/2+$inputBitmap.Height*(-0.4713+0.3413*$slot));$y=[int]($inputBitmap.Height*0.35)
-    $w=[int]($inputBitmap.Height*0.302);$h=[int]($inputBitmap.Height*0.11)
+    $x=[int]($inputBitmap.Width/2+$inputBitmap.Height*(-0.4803+0.3413*$slot));$y=[int]($inputBitmap.Height*0.342)
+    $w=[int]($inputBitmap.Height*0.32);$h=[int]($inputBitmap.Height*0.12)
     $rect=[Drawing.Rectangle]::new($x,$y,$w,$h)
     $crop=$inputBitmap.Clone($rect,$inputBitmap.PixelFormat)
     $enlarged=[Drawing.Bitmap]::new($crop,[Drawing.Size]::new($w*3,$h*3))
@@ -223,7 +223,7 @@ public static class JinbaoChatSignature {
      foreach($line in $local.lines){
       $slot=[int][Math]::Floor($line.y/$stride)
       if($slot -ge 0 -and $slot -lt 3 -and ($line.y-$slot*$stride) -lt $h*3){
-       $x=[int]($inputBitmap.Width/2+$inputBitmap.Height*(-0.4713+0.3413*$slot));$y=[int]($inputBitmap.Height*0.35)
+       $x=[int]($inputBitmap.Width/2+$inputBitmap.Height*(-0.4803+0.3413*$slot));$y=[int]($inputBitmap.Height*0.342)
        $titleLines+=@{text=$line.text;x=($x+$line.x/3);y=($y+($line.y-$slot*$stride)/3);slot=$slot}
       }
      }
