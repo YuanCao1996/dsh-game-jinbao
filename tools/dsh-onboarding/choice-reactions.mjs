@@ -17,7 +17,7 @@ const VOICES = {
       augment: ['这个强化选得明智。', '正是我推荐的那张，稳。', '选它没错，接下来围绕它打。'],
     },
     disagree: {
-      item: ['行吧，随你。', '这个我记住了，看效果。', '好，我记下了，看你怎么赢。'],
+      item: ['行吧，随你。', '你还真是个犟种。', '好，我记下了，看你怎么赢。'],
       augment: ['行，你有你的想法。', '哼，不听我的？', '好，我倒要看看这张能玩成什么样。'],
     },
     escalate: {
@@ -45,7 +45,7 @@ const VOICES = {
       augment: ['好眼力！这张就是最好的。', '选它，见谁打谁！', '够果断，我喜欢！'],
     },
     disagree: {
-      item: ['你非要这么出？行啊。', '行，你说了算。', '好，那就按你的来。'],
+      item: ['你非要这么出？行啊。', '犟！我服了。', '不听是吧，那你可别输。'],
       augment: ['你选这个？我不同意，但随你。', '哼，看你怎么打。', '好，有种，输了别哭。'],
     },
     escalate: {
@@ -59,7 +59,7 @@ const VOICES = {
       augment: ['选得不错，这张挺顺手。', '有眼光，就要这张。', '听我的，准没错。'],
     },
     disagree: {
-      item: ['随你吧，反正你上场。', '行，你说了算。', '行，等着看效果。'],
+      item: ['随你吧，反正你上场。', '你还真是个犟种。', '行，等着看效果。'],
       augment: ['行吧，你开心就好。', '这张？我持保留意见。', '不听劝，我又能怎么办呢。'],
     },
     escalate: {
@@ -83,8 +83,8 @@ export function choiceReaction({ role = 'jinbao', kind = 'item', agreed = false,
   const list = table?.[kind === 'augment' ? 'augment' : 'item'];
   if (!list?.length) return '';
   const text = pickOf(list, pick);
-  // 只有肯定时才点名，避免"你还真是个犟种：心之钢"这种读起来像骂人。
-  return agreed && name ? `${text}` : text;
+  // 不听话时先点名选了什么，避免玩家误以为在评价别的选择。
+  return !agreed && name ? `选了${name}，${text}` : text;
 }
 
 // 他到底听没听：从最近一条建议里解析出「明确推荐的装备/海克斯」，再和实际选择比。
@@ -138,8 +138,7 @@ export function settleChoiceReactions(state, now = Date.now(), { role = 'jinbao'
   const spread = state.choiceStreak ?? (state.choiceStreak = { agree: 0, disagree: 0 });
   for (const item of pending.splice(0)) {
     if (!item || now - Number(item.at) > maxAgeMs) continue;      // 过期的不再补话，避免马后炮
-    // 海克斯面板打开时，装备选择反馈先别插话：玩家刚选完强化，听到“行吧随你”会以为在评价强化。
-    if (item.kind === 'item' && (state.offers?.length || state.augmentRounds?.some(round => round && round.closed === false))) continue;
+
     const target = recommendedName(state.broadcasts, item.kind);
     if (!target) continue;                                          // 没有明确推荐 → 不评价
     const agreed = sameChoice(item.name, target);
