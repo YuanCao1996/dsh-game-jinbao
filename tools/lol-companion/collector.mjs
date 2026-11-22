@@ -240,7 +240,7 @@ while(running){
    try{
     const session=await getGameflowSession(credentials);
     const queue=session?.gameData?.queue?.queueId??session?.gameData?.queueId??null;
-    nextMatch=false;gameTime=null;lastLiveState=null;lastDataAt=0;silenceEnded=false;
+    nextMatch=false;gameTime=null;lastLiveState=null;lastDataAt=0;silenceEnded=false;decidedRolls.clear();stopCardWatch();
     log=createEventLog(folder,'live-'+Date.now());lastEvent=-1;observer.reset();chatObserver.reset();ultimateObserver.reset();hudAssets.reset();captureSchedule.reset();
     log.append({kind:'game_start',me:{},queue,gameTime:0,allies:[],enemies:[],source:'lcu-gameflow'});
     log.append({kind:'phase',phase});
@@ -275,7 +275,7 @@ while(running){
    // 读数瞬断会把时钟打回 0：不能当新对局（实测 20:32 那局在 13:48 被拆成两个 match）。
    if(clockGlitch(time,gameTime)){if(!silenceEnded)lastDataAt=Date.now();await sleep(1000);continue;}
    if(!forcedStart&&startsNewMatch({time,previous:gameTime,nextMatch,sinceLastDataMs:Date.now()-lastDataAt})){
-    nextMatch=false;lastDataAt=Date.now();silenceEnded=false;log=createEventLog(folder,'live-'+Date.now());lastEvent=-1;observer.reset();chatObserver.reset();ultimateObserver.reset();hudAssets.reset();captureSchedule.reset();captureGeneration++;lastCaptureAvailable=null;nextCaptureAt=0;
+    nextMatch=false;lastDataAt=Date.now();silenceEnded=false;log=createEventLog(folder,'live-'+Date.now());decidedRolls.clear();stopCardWatch();lastEvent=-1;observer.reset();chatObserver.reset();ultimateObserver.reset();hudAssets.reset();captureSchedule.reset();captureGeneration++;lastCaptureAvailable=null;nextCaptureAt=0;
     log.append({kind:'game_start',me:state.me??{},queue:state.mode,gameTime:state.gameTime,allies:state.allies,enemies:state.enemies});
    }
    gameTime=time;lastDataAt=Date.now();silenceEnded=false;forcedStart=false;log.append(stateEvent(state));
