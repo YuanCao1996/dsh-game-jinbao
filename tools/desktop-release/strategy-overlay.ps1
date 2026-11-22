@@ -37,6 +37,16 @@ $StateDir=[IO.Path]::GetFullPath($StateDir)
 [IO.Directory]::CreateDirectory($StateDir) | Out-Null
 $stateFile=Join-Path $StateDir 'overlay-state.json'
 $script:lastHeartbeatAt=0
+function Write-OverlayPageLog([string]$tab,[string]$text){
+ try{
+  if($text -eq [string]$script:lastPageLogText -and $tab -eq [string]$script:lastPageLogTab){return}
+  $script:lastPageLogText=$text;$script:lastPageLogTab=$tab
+  $row=@{at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();event='page';tab=$tab;mode=[string]$script:displayMode;text=$text}
+  $dir=Join-Path $StateDir 'logs';[IO.Directory]::CreateDirectory($dir)|Out-Null
+  $line=($row|ConvertTo-Json -Compress -Depth 4)+[Environment]::NewLine
+  [IO.File]::AppendAllText((Join-Path $dir 'overlay-page.jsonl'),$line,[Text.UTF8Encoding]::new($false))
+ }catch{}
+}
 function Write-OverlayHeartbeat {
  try{
   $nowMs=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -493,6 +503,7 @@ function Update-Page {
  if($script:snapshot){
   $value=[string]$script:snapshot.($script:tab)
   $controls.PageText.Text=if($value){$value}else{'等待此页面的数据…'}
+  Write-OverlayPageLog ([string]$script:tab) ([string]$controls.PageText.Text)
   if(Get-Command Set-HighlightedText -ErrorAction SilentlyContinue){Set-HighlightedText $controls.PageText $controls.PageText.Text}
  }else{
   # 快照还没到（刚启动或状态文件暂时读不到）时也要清空，否则切标签后仍显示上一页正文，
