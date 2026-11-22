@@ -114,7 +114,8 @@ let deathTurns=0;
     const answer=await agent.ask({game:v.game,match:v.match,question:prompt,topic:'advice',automatic:true,timeCritical:plan?.stage==='coordination'||plan?.stage==='death'}),current=(await getContext(v.game,v.match)).current;
     if(!stillCurrent(v)||!current||!adviceIsValid(validity,current,now())){note(v,'reply_discarded','context_changed');return;}
     if(typeof answer!=='string'||!answer.trim())throw Error('Empty automatic reply');
-    const situationText=condenseAdvice(stripSources(String(answer)));
+    const situationTextRaw=condenseAdvice(stripSources(String(answer)));
+const situationText=humanizeChampions(situationTextRaw);
     if(noiseBroadcast(situationText)){note(v,'skip','roster_noise',{stage:'situation'});return;}
     await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:'situation',dimension:'now',broadcast:situationText,validity});rememberAdvice(situationText,'situation');await published(v,{stage:'situation'});store={signature,lastAt:now(),lastValidity:validity};return;
    }
@@ -209,7 +210,7 @@ let deathTurns=0;
    if(noiseBroadcast(stagedText)){note(v,'skip','roster_noise',{stage:plan.stage});return;}
    // 几乎逐字重复的兜底：提示词已经要求换说法，这里只拦「换个标点又播一遍」。
    const previousAdvice=recentAdvice(plan.stage),nextAdvice=stagedText.trim();if(previousAdvice.length>=16&&nextAdvice.length>=16&&adviceSimilarity(previousAdvice,nextAdvice)>=0.8){note(v,'skip','duplicate_advice',{stage:plan.stage});return;}
-   await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:plan.stage,priority:['ace','inhib','augment','death','purchase','enemyChange','objective','turret','coordination'].includes(plan.stage)?2:1,dimension:DIMENSION[plan.stage]??'now',broadcast:answer,validity});rememberAdvice(stagedText,plan.stage);
+   await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:plan.stage,priority:['ace','inhib','augment','death','purchase','enemyChange','objective','turret','coordination'].includes(plan.stage)?2:1,dimension:DIMENSION[plan.stage]??'now',broadcast:stagedText,validity});rememberAdvice(stagedText,plan.stage);
    await published(v,{stage:plan.stage});
    // 补发过一次就清掉，避免同一个窗口反复触发。
    if(plan.stage==='coordination')pendingCoordination=null;

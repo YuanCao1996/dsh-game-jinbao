@@ -1286,7 +1286,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
   const flush = () => (writes = writes.catch(() => {}).then(save));
   const equipmentCoach=createEquipmentCoach({getState:()=>state,canRequest:canAutoRequest,agentChat,save:flush,onAdvice:async(current,answer,reason)=>{
      const stage=reason==='opening'?'opening':reason==='death'?'death':'purchase';
-    const event={game:current.game,match:current.match,at:Date.now(),kind:'equipment-advice',broadcast:condenseAdvice(answer),priority:2,validity:createAdviceValidity(stage,current)};
+    const event={game:current.game,match:current.match,at:Date.now(),kind:'equipment-advice',broadcast:humanizeChampions(condenseAdvice(answer)),priority:2,validity:createAdviceValidity(stage,current)};
     router.apply(event,'coach_broadcasts.jsonl');await appendFile(join(logs,'coach_broadcasts.jsonl'),JSON.stringify(event)+'\n',{mode:0o600});
   },debounceMs:equipmentDebounceMs,cooldownMs:equipmentCooldownMs,openingRetryMs:equipmentOpeningRetryMs});
   function refresh(force = true) {
