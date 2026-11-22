@@ -57,6 +57,27 @@ const surfaces = [...surfaceToTitle.keys()].sort((a, b) => b.length - a.length);
 const toList = value => Array.isArray(value) ? value : (value && typeof value === 'object' ? Object.values(value) : []);
 const nameOf = person => typeof person === 'string' ? person : String(person?.champion ?? person?.name ?? '');
 
+
+// 播报展示用：称号→常用名（如 含羞蓓蕾→莉莉娅）；没有别名就保留称号。
+export function commonChampionName(value) {
+  const name = String(value ?? '').trim();
+  if (!name) return name;
+  const title = surfaceToTitle.get(name) ?? name;
+  const aliases = ALIASES[title];
+  return aliases && aliases.length ? aliases[0] : title;
+}
+
+// 把一段文本里的英雄称号替换成常用名（长词优先，避免「黑暗之女」被拆）。
+export function humanizeChampions(text) {
+  let value = String(text ?? '');
+  for (const surface of surfaces) {
+    if (!value.includes(surface)) continue;
+    const common = commonChampionName(surface);
+    if (common && common !== surface) value = value.split(surface).join(common);
+  }
+  return value;
+}
+
 export function lineupOf(current) {
   const self = String(current?.me?.champion ?? current?.selfChampion ?? '').trim();
   const allies = toList(current?.allies).map(nameOf).map(s => s.trim()).filter(Boolean);

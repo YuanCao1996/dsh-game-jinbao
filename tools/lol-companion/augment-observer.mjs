@@ -174,12 +174,7 @@ function isLabelMerge(text){
       // Establish a panel from at least two distinct card slots, then track
       // each slot independently while the other cards are obscured.
       const distinctCount=new Set(candidates.filter(Boolean)).size;
-      if(!current.some(Boolean)&&distinctCount<2){pending=[null,null,null];firstPartialAt=null;return;}
-      // 新一轮只认出 2 张时先等 1.5 秒：等第三张再发排名，避免缺卡导致推荐错位；超时才降级。
-      if(!current.some(Boolean)&&distinctCount<3){
-        if(firstPartialAt===null)firstPartialAt=at;
-        if(at-firstPartialAt<1500){return;}
-      }else if(!current.some(Boolean)){firstPartialAt=null;}
+      if(!current.some(Boolean)&&distinctCount<2){pending=[null,null,null];return;}
       if(!recognized&&!titles.length){
         pending=[null,null,null];
         if(++misses>=5&&current.some(Boolean)){emit({kind:'augment_offer_closed',roll:round});suspendPanel(at);}

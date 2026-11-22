@@ -1,4 +1,5 @@
-﻿// Differentiated, immediate praise for multi-kills.
+import { commonChampionName } from '../dsh-coach-server/lib/advice-names.js';
+// Differentiated, immediate praise for multi-kills.
 //
 // Deterministic on purpose: a model round-trip lands seconds later, after the moment
 // has passed, and praise must never invent facts about the fight. Texts stay short so
@@ -87,6 +88,9 @@ function victimsClause(victims) {
 }
 
 export function praiseText({ streak, side = 'self', role = 'jinbao', hero = '', pick = 0, victims = [], revenge = [] } = {}) {
+  hero = commonChampionName(hero);
+  victims = (Array.isArray(victims) ? victims : []).map(commonChampionName);
+  revenge = (Array.isArray(revenge) ? revenge : []).map(commonChampionName);
   const level = Number(streak);
   const label = STREAK_LABEL[level];
   if (!label) return '';

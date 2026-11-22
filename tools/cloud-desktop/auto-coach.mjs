@@ -1,4 +1,5 @@
-﻿import { condenseAdvice, stripSources, noiseBroadcast, adviceSimilarity, fitPromptBudget } from './advice-text.mjs';
+﻿import { humanizeChampions } from '../dsh-coach-server/lib/advice-names.js';
+import { condenseAdvice, stripSources, noiseBroadcast, adviceSimilarity, fitPromptBudget } from './advice-text.mjs';
 import{mkdir,appendFile,writeFile,rename}from'node:fs/promises';import{join}from'node:path';
 import{stateCoachingTrigger,buildLolCoachingPlan,createAdviceValidity,adviceIsValid}from'../dsh-coach-server/lib/lol-coaching-plan.js';
 import{createCoachScheduler}from'./coach-scheduler.mjs';
@@ -204,7 +205,7 @@ let deathTurns=0;
     note(v,'coach_late_published',undefined,{stage:plan.stage});
    }
    if(typeof answer!=='string'||!answer.trim())throw Error('Empty automatic reply');
-   const stagedText=condenseAdvice(stripSources(String(answer)));
+   const stagedText=humanizeChampions(condenseAdvice(stripSources(String(answer))));
    if(noiseBroadcast(stagedText)){note(v,'skip','roster_noise',{stage:plan.stage});return;}
    // 几乎逐字重复的兜底：提示词已经要求换说法，这里只拦「换个标点又播一遍」。
    const previousAdvice=recentAdvice(plan.stage),nextAdvice=stagedText.trim();if(previousAdvice.length>=16&&nextAdvice.length>=16&&adviceSimilarity(previousAdvice,nextAdvice)>=0.8){note(v,'skip','duplicate_advice',{stage:plan.stage});return;}

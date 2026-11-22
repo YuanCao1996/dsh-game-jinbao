@@ -1,4 +1,5 @@
-﻿import {activityLine} from './activity-line.mjs';
+﻿import { commonChampionName } from '../dsh-coach-server/lib/advice-names.js';
+import {activityLine} from './activity-line.mjs';
 import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
 import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId, leaderboardRowData } from './leaderboard-pages.mjs';
 import { mkdir, readdir, stat, open, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
@@ -157,11 +158,11 @@ function championLabel(state, name) {
   for (const row of rows) {
     if (!matches(row)) continue;
     const champion = String(row.champion ?? '').trim();
-    if (champion && champion !== '未知英雄') return champion;
+    if (champion && champion !== '未知英雄') return commonChampionName(champion);
   }
   if (matches(state.me)) {
     const champion = String(state.me?.champion ?? '').trim();
-    if (champion) return champion;
+    if (champion) return commonChampionName(champion);
   }
   return '';
 }
