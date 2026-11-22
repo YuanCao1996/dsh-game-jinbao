@@ -289,7 +289,19 @@ function Wake-NarrowPlayback {
  $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$controls.NarrowCanvas.Opacity=1
  $script:playbackLastTick=Get-PlaybackNow;$modeClock.Start()
 }
+# 每条真正上屏的消息都落一条日志（started/completed），排查“为什么没显示/显示错”时直接对照。
+function Write-OverlayMessageLog([string]$event,$item,[hashtable]$extra){
+ try{
+  $text=if($item){[string]$item.text}elseif($extra.ContainsKey('text')){[string]$extra.text}else{''}
+  $row=@{at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();event=$event;text=$text;id=if($item){[string]$item.id}else{[string]$extra.id};priority=if($item){[int]$item.priority}else{0};kind=if($item){[string]$item.kind}else{''};mode=[string]$script:displayMode;w=[double]$window.Width;h=[double]$window.Height}
+  foreach($key in $extra.Keys){if($key -notin @('text','id')){$row[$key]=$extra[$key]}}
+  $dir=Join-Path $StateDir 'logs';[IO.Directory]::CreateDirectory($dir)|Out-Null
+  $line=($row|ConvertTo-Json -Compress -Depth 4)+[Environment]::NewLine
+  [IO.File]::AppendAllText((Join-Path $dir 'overlay-messages.jsonl'),$line,[Text.UTF8Encoding]::new($false))
+ }catch{}
+}
 function Finish-Playback {
+ if($script:activePlayback){Write-OverlayMessageLog 'completed' $script:activePlayback @{shownMs=[Math]::Round((Get-PlaybackNow)-[double]$script:playbackStartedAt)}}
  $script:activePlayback=$null;$script:playbackPhase='idle';$script:lineElapsed=0;$script:playbackAccelerated=$false
 }
 function Reset-Playback {
@@ -339,6 +351,7 @@ function Playback-Tick {
  if(!$script:activePlayback -and $script:playbackQueue.Count){
   $script:awaitingPlayback=$false
   $script:activePlayback=$script:playbackQueue[0];$script:playbackQueue.RemoveAt(0);$script:playbackAccelerated=$script:playbackQueue.Count -gt 0
+  $script:playbackStartedAt=$now;Write-OverlayMessageLog 'started' $script:activePlayback @{queue=$script:playbackQueue.Count}
   Set-NarrowBarShown $true;Prepare-PlaybackLayout;$delta=0
  }elseif($script:activePlayback -and $script:playbackLayoutDirty){Prepare-PlaybackLayout $true;$delta=0}
  if(!$script:activePlayback){
