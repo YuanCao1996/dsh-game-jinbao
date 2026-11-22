@@ -1,4 +1,4 @@
-import {readFile,writeFile,access} from 'node:fs/promises';
+import {readFile,writeFile,access,stat} from 'node:fs/promises';
 import {join} from 'node:path';
 
 // Recover a missing overlay, never kill a live process or restart the Agent.
@@ -22,6 +22,18 @@ export function createOverlaySupervisor({stateDir,launch,now=Date.now,
  return {
   start:()=>run(()=>attempt(false)),
   tick:()=>run(async()=>{
+   // 悬浮窗每 5 秒写心跳；状态文件在更新但心跳停了，说明 UI 线程卡死，直接重拉。
+   const beat=await read('overlay-heartbeat.json');
+   const stateMtime=await stat(join(stateDir,'overlay-state.json')).then(info=>info.mtimeMs).catch(()=>0);
+   if(beat&&Number.isSafeInteger(beat.pid)&&beat.pid>0&&alive(beat.pid)){
+    const age=now()-Number(beat.at||0);
+    if(age>20000&&stateMtime>Number(beat.at||0)+3000){
+     try{process.kill(beat.pid);}catch{}
+     await report('restarting_stale',{pid:beat.pid});
+     if(!closed&&!await stopped())await attempt(true);
+     return;
+    }
+   }
    const heartbeat=await read('overlay-capture-host.json');
    if(closed)return;
    if(heartbeat&&Number.isSafeInteger(heartbeat.pid)&&heartbeat.pid>0&&Number.isFinite(heartbeat.at)){

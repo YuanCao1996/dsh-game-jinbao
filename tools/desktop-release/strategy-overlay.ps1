@@ -36,6 +36,16 @@ public static class JinbaoOverlayNative {
 $StateDir=[IO.Path]::GetFullPath($StateDir)
 [IO.Directory]::CreateDirectory($StateDir) | Out-Null
 $stateFile=Join-Path $StateDir 'overlay-state.json'
+$script:lastHeartbeatAt=0
+function Write-OverlayHeartbeat {
+ try{
+  $nowMs=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  if($nowMs-[double]$script:lastHeartbeatAt -lt 5000){return}
+  $script:lastHeartbeatAt=$nowMs
+  $stateAt=0;try{$stateAt=(Get-Item -LiteralPath $stateFile).LastWriteTimeUtc.Ticks}catch{}
+  [IO.File]::WriteAllText((Join-Path $StateDir 'overlay-heartbeat.json'),(@{at=$nowMs;pid=$PID;stateAt=$stateAt}|ConvertTo-Json -Compress))
+ }catch{}
+}
 $boundsFile=Join-Path $StateDir 'strategy-overlay-bounds.json'
 $preferencesFile=Join-Path $StateDir 'strategy-overlay-preferences.json'
 
@@ -962,7 +972,7 @@ $window.Add_SourceInitialized({
  }
 })
 $timer=New-Object Windows.Threading.DispatcherTimer;$timer.Interval=[TimeSpan]::FromMilliseconds(250)
-$timer.Add_Tick({Update-State;Update-OverlayPlayback;try{Update-NarrowPet -Snapshot $script:snapshot}catch{}})
+$timer.Add_Tick({Update-State;Update-OverlayPlayback;Write-OverlayHeartbeat;try{Update-NarrowPet -Snapshot $script:snapshot}catch{}})
 $pointerTimer=New-Object Windows.Threading.DispatcherTimer;$pointerTimer.Interval=[TimeSpan]::FromMilliseconds(40)
 $pointerTimer.Add_Tick({Pointer-Tick})
 $script:exitApproved=$false;$script:testExitChoice=$true;$script:exitConfirmations=0

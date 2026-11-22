@@ -334,6 +334,8 @@ function Playback-Tick {
    if($script:dragging -and [Windows.Input.Mouse]::LeftButton -ne [Windows.Input.MouseButtonState]::Pressed){$script:dragging=$false;try{Log-OverlayState 'drag-reset' @{phase=[string]$script:playbackPhase}}catch{}}
    if($settingsMenu.IsOpen -or $quickConfirm.IsOpen -or ($script:overlayModeMenu -and $script:overlayModeMenu.IsOpen) -or $script:dragging){$script:playbackLastTick=$now;return}
  $delta=[Math]::Max(0,$now-$script:playbackLastTick);$script:playbackLastTick=$now
+ # 播报期间每 tick 强制保持展开：迟到的 hide/度量不能把它缩回 102/126。
+ if($script:activePlayback -and $script:displayMode -eq 'narrow' -and $script:narrowPetVisible){try{Set-NarrowBarShown $true}catch{}}
  if(!$script:activePlayback -and $script:playbackQueue.Count){
   $script:awaitingPlayback=$false
   $script:activePlayback=$script:playbackQueue[0];$script:playbackQueue.RemoveAt(0);$script:playbackAccelerated=$script:playbackQueue.Count -gt 0
