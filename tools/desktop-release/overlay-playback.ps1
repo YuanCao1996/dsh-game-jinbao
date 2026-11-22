@@ -25,6 +25,8 @@ function Get-NarrowWidth {
   return [Math]::Max(160,$width)
 }
 function Set-NarrowMetrics {
+ # 只有窄条模式才允许改窗口尺寸：大框期间任何迟到的调用都不能把窗口缩成 126 宽。
+ if($script:displayMode -ne 'narrow'){return}
  $size=[double]$controls.FontSlider.Value
  # 字幕/跑马灯比正文大半号：收起后只有这一行，抬一眼就要看清（原来完全跟随正文字号，最小只有 11）。
  $subtitleSize=[Math]::Min(24,$size+1)
@@ -105,6 +107,8 @@ function Set-NarrowBarShown {
     }catch{}
     return
   }
+  # 有正在播/排队的消息时绝不收起：否则 show 之后可能被迟到的 hide 缩回 72 宽。
+  if($script:activePlayback -or $script:playbackQueue.Count){$script:narrowBarShown=$true;return}
   if(-not $script:narrowBarShown){return}
   $script:narrowBarShown=$false
   if($Instant){ try{Clear-PlaybackRows}catch{}; Set-NarrowMetrics; return }
@@ -119,6 +123,7 @@ function Set-NarrowBarShown {
   $timer.Add_Tick({
     try{
       if($script:narrowBarShown){$timer.Stop();return}
+      if($script:activePlayback -or $script:playbackQueue.Count){$script:narrowBarShown=$true;Set-NarrowMetrics;$timer.Stop();return}
       Clear-PlaybackRows
       Set-NarrowMetrics
     }catch{}
@@ -277,7 +282,7 @@ function Prepare-PlaybackLayout([bool]$resume=$false){
 }
 function Wake-NarrowPlayback {
  try{Log-OverlayState 'wake'}catch{}
- if($script:collapsed){Set-Collapsed $false -PreserveMode;Set-NarrowMetrics;$window.UpdateLayout()}
+ if($script:displayMode -eq 'narrow' -and $script:collapsed){Set-Collapsed $false -PreserveMode;Set-NarrowMetrics;$window.UpdateLayout()}
  $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$controls.NarrowCanvas.Opacity=1
  $script:playbackLastTick=Get-PlaybackNow;$modeClock.Start()
 }

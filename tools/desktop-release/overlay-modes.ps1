@@ -30,9 +30,10 @@ function Show-QuickConfirmation($confirmation){
  $skip=New-Object Windows.Controls.Button;$skip.Content='都不是 / 暂不确认';$skip.Margin='3';$skip.Tag=@{id=$script:popupConfirmId;dismiss=$true};$skip.Add_Click({param($s,$e) Start-Confirmation $s.Tag;$quickConfirm.IsOpen=$false});$stack.Children.Add($skip)|Out-Null
  $border.Child=$stack;if($script:captureLeaseId){$border.Opacity=0};$quickConfirm.Child=$border;$quickConfirm.IsOpen=!$SelfTest
 }
-function Save-DisplayMode {
+function Save-DisplayMode([string]$mode) {
  if($SelfTest){return}
- [IO.File]::WriteAllText($displayFile,(@{mode=$script:displayMode;subtitle=$script:subtitleMode;speech=$script:speakEnabled;width=$script:narrowWidth;widthVersion=1}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+ if(-not $mode){$mode=$script:displayMode}
+ [IO.File]::WriteAllText($displayFile,(@{mode=$mode;subtitle=$script:subtitleMode;speech=$script:speakEnabled;width=$script:narrowWidth;widthVersion=1}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
 }
 
 # 监听 overlay-display.json：网页设置页改动后即时生效。
@@ -57,42 +58,58 @@ if($null -ne $saved.clickThrough -and ([bool]$saved.clickThrough) -ne $script:cl
  }catch{}
 }
 function Set-DisplayMode([string]$mode){
- try{Log-OverlayState 'mode-enter' @{target=$mode}}catch{}
- if($mode -notin @('large','narrow','silent')){return}
- $quickConfirm.IsOpen=$false;$script:popupConfirmId=''
- $modeClock.Stop()
- if($script:displayMode -eq 'large' -and !$script:collapsed -and $window.Width -ge 360 -and $window.Height -ge 300){$script:expandedWidth=$window.Width;$script:expandedHeight=$window.Height}
- if($script:collapsed){Set-Collapsed $false -PreserveMode}
- $controls.NarrowPanel.Visibility='Collapsed';$controls.Expanded.Visibility='Visible'
- $window.MinWidth=300;$window.MinHeight=180
-   # 展开尺寸偶尔会被记成窄条大小（上一次大框被拖得很小，或尺寸切换的瞬间），
-   # 一展开就是 300×180 的小窄块；这里给大框一个可读下限。
-   $targetWidth=[double]$script:expandedWidth;$targetHeight=[double]$script:expandedHeight
-   if($targetWidth -lt 360){$targetWidth=380}
-   if($targetHeight -lt 320){$targetHeight=520}
-   $window.Width=$targetWidth;$window.Height=$targetHeight
- $script:displayMode=$mode
- $controls.MainBorder.Padding='12';$controls.MainBorder.BorderThickness=1;Set-BackgroundOpacity
- if($mode -eq 'narrow'){
-  $script:awaitingPlayback=$true
-  Set-Interaction $false
-  $window.ResizeMode='NoResize';$controls.Expanded.Visibility='Collapsed';$controls.NarrowPanel.Visibility='Visible';$controls.ResizeGrip.Visibility='Visible';$controls.ResizeGrip.Cursor='SizeWE';$controls.ResizeGrip.Width=14;$controls.ResizeGrip.Height=14;$controls.ResizeGrip.Margin=0
-  Set-NarrowMetrics;$window.UpdateLayout();$script:playbackLastTick=Get-PlaybackNow
-  # 收起后如果没有可播内容，窗口会变成全透明的一张空条——玩家以为悬浮窗消失了。
-  # 这里补一个占位提示，保证收起状态下始终看得见、也能点回去。
-  if(!$script:activePlayback -and !$script:playbackQueue.Count){
-   if(-not ([string]$controls.NarrowText.Text).Trim()){Set-HighlightedText $controls.NarrowText ''}
-   $controls.NarrowText.FontSize=[Math]::Max(13,$controls.NarrowText.FontSize)
-   $controls.NarrowText.Foreground='#9CAABA'
+  try{Log-OverlayState 'mode-enter' @{target=$mode}}catch{}
+  if($mode -notin @('large','narrow','silent')){return}
+  $quickConfirm.IsOpen=$false;$script:popupConfirmId=''
+  $modeClock.Stop()
+  if($script:displayMode -eq 'large' -and !$script:collapsed -and $window.Width -ge 320 -and $window.Height -ge 300){$script:expandedWidth=$window.Width;$script:expandedHeight=$window.Height}
+  if($mode -eq 'large'){
+    # 一次性切到大框：不要先走窄条布局再改尺寸，否则会看到 126→300→126→380 的闪动和残影。
+    $script:collapsed=$false
+    $targetWidth=[Math]::Max(360,[double]$script:expandedWidth)
+    $targetHeight=[Math]::Max(520,[double]$script:expandedHeight)
+    $script:expandedWidth=$targetWidth;$script:expandedHeight=$targetHeight
+    $controls.NarrowPanel.Visibility='Collapsed';$controls.Expanded.Visibility='Visible'
+    # 先切模式再改尺寸：Width 赋值会同步触发 SizeChanged→Update-AutoFontSize，
+    # 此时若 displayMode 仍是 narrow，Set-NarrowMetrics 会把刚设的宽度改回 126。
+    $script:displayMode='large'
+    $window.ResizeMode='CanResize'
+    # 先设 Width/Height，再设 Min：否则 Min 会先把 126/232 顶到 360/300，
+    # 再跳到最终尺寸——这就是展开时多出来的一次尺寸切换。
+    $window.Width=$targetWidth;$window.Height=$targetHeight
+    $window.MinWidth=$targetWidth;$window.MinHeight=300
+    $controls.MainBorder.Padding='12';$controls.MainBorder.BorderThickness=1;Set-BackgroundOpacity
+    $controls.ResizeGrip.Visibility='Visible';$controls.ResizeGrip.Cursor='SizeNWSE';$controls.ResizeGrip.Width=26;$controls.ResizeGrip.Height=26;$controls.ResizeGrip.Margin='0,0,-8,-8'
+    $script:unread=0;$controls.BubbleLabel.Text=[char]0x25C9
+    try{$window.UpdateLayout();$controls.Expanded.InvalidateVisual();$controls.MainBorder.InvalidateVisual()}catch{}
+    try{Log-OverlayState 'mode-exit' @{target=$mode}}catch{}
+    $window.Left=[Math]::Max($area.Left,[Math]::Min($window.Left,$area.Right-$window.Width))
+    Save-DisplayMode
+    if(Get-Command Update-AgentActivity -ErrorAction SilentlyContinue){Update-AgentActivity}
+    return
   }
-  if(!$script:activePlayback -and !$script:playbackQueue.Count -and !$script:snapshot.ended){$latest=@($script:snapshot.playback)|Select-Object -Last 1;if($latest -and (Get-PlaybackNow)-[double]$latest.at -lt 30000 -and (!$latest.expiresAt -or (Get-PlaybackNow) -lt [double]$latest.expiresAt)){$script:playbackQueue.Add($latest)}}
-  $modeClock.Start()
- }elseif($mode -eq 'silent'){Set-Collapsed $true -PreserveMode}
- else{$controls.ResizeGrip.Visibility='Visible';$controls.ResizeGrip.Cursor='SizeNWSE';$controls.ResizeGrip.Width=26;$controls.ResizeGrip.Height=26;$controls.ResizeGrip.Margin='0,0,-8,-8';$window.ResizeMode='CanResize';$script:unread=0;$controls.BubbleLabel.Text=[char]0x25C9}
- try{Log-OverlayState 'mode-exit' @{target=$mode}}catch{}
- $window.Left=[Math]::Max($area.Left,[Math]::Min($window.Left,$area.Right-$window.Width))
- Save-DisplayMode
- if(Get-Command Update-AgentActivity -ErrorAction SilentlyContinue){Update-AgentActivity}
+  if($script:collapsed){Set-Collapsed $false -PreserveMode}
+  $controls.NarrowPanel.Visibility='Collapsed';$controls.Expanded.Visibility='Visible'
+  $window.MinWidth=300;$window.MinHeight=180
+  $script:displayMode=$mode
+  $controls.MainBorder.Padding='12';$controls.MainBorder.BorderThickness=1;Set-BackgroundOpacity
+  if($mode -eq 'narrow'){
+    $script:awaitingPlayback=$true
+    Set-Interaction $false
+    $window.ResizeMode='NoResize';$controls.Expanded.Visibility='Collapsed';$controls.NarrowPanel.Visibility='Visible';$controls.ResizeGrip.Visibility='Visible';$controls.ResizeGrip.Cursor='SizeWE';$controls.ResizeGrip.Width=14;$controls.ResizeGrip.Height=14;$controls.ResizeGrip.Margin=0
+    Set-NarrowMetrics;$window.UpdateLayout();$script:playbackLastTick=Get-PlaybackNow
+    if(!$script:activePlayback -and !$script:playbackQueue.Count){
+      if(-not ([string]$controls.NarrowText.Text).Trim()){Set-HighlightedText $controls.NarrowText ''}
+      $controls.NarrowText.FontSize=[Math]::Max(13,$controls.NarrowText.FontSize)
+      $controls.NarrowText.Foreground='#9CAABA'
+    }
+    if(!$script:activePlayback -and !$script:playbackQueue.Count -and !$script:snapshot.ended){$latest=@($script:snapshot.playback)|Select-Object -Last 1;if($latest -and (Get-PlaybackNow)-[double]$latest.at -lt 30000 -and (!$latest.expiresAt -or (Get-PlaybackNow) -lt [double]$latest.expiresAt)){$script:playbackQueue.Add($latest)}}
+    $modeClock.Start()
+  }elseif($mode -eq 'silent'){Set-Collapsed $true -PreserveMode}
+  try{Log-OverlayState 'mode-exit' @{target=$mode}}catch{}
+  $window.Left=[Math]::Max($area.Left,[Math]::Min($window.Left,$area.Right-$window.Width))
+  Save-DisplayMode
+  if(Get-Command Update-AgentActivity -ErrorAction SilentlyContinue){Update-AgentActivity}
 }
 function Set-HighlightedText($view,[string]$value){
  if($view.Tag -eq $value){return};$view.Tag=$value
@@ -183,7 +200,7 @@ $controls.NarrowExpand.Add_Click({
  # 只是临时展开成大框：记住收起后回到窄条，并把持久偏好留成窄条。
  $script:narrowResume=$true
  Set-DisplayMode 'large'
- $script:displayMode='narrow';Save-DisplayMode;$script:displayMode='large'
+ Save-DisplayMode 'narrow'
 })
 $controls.NarrowClose.Add_Click({$window.Close()})
 $controls.NarrowMenu.Add_Click({$settingsMenu.PlacementTarget=$controls.NarrowMenu;$settingsMenu.IsOpen=$true})
@@ -198,7 +215,7 @@ $controls.NarrowPanel.Add_MouseLeftButtonUp({param($s,$e)
  $script:narrowLastClickAt=0.0
  $script:narrowResume=$true
  Set-DisplayMode 'large'
- $script:displayMode='narrow';Save-DisplayMode;$script:displayMode='large'
+ Save-DisplayMode 'narrow'
 })
 $mic=New-Object Windows.Controls.Button;$mic.Content='语音';$mic.ToolTip='点击开始，最长20秒，识别后可编辑再发送；再次点击取消'
 [Windows.Controls.Grid]::SetColumn($controls.SendButton,2);$controls.ComposerActions.Children.Add($mic)|Out-Null
