@@ -1,6 +1,6 @@
 ﻿// Lightweight log collection with native Windows OCR; no strategy database or model credential.
 import { readCredentials } from './lockfile.mjs';
-import { lcuRequest } from './lcu.mjs';
+import { lcuRequest, getGameflowSession } from './lcu.mjs';
 import { getAllGameData,compactState,diffEvents } from './live.mjs';
 import { createEventLog, pruneEventLogs, pruneCaptureFrames } from './eventlog.mjs';
 import { stateEvent } from './collector-state.mjs';
@@ -31,6 +31,7 @@ try{const pruned=pruneEventLogs(folder);if(pruned.removed.length)console.log('pr
 try{const frames=pruneCaptureFrames(dirname(folder));if(frames.removed.length)console.log('pruned old frame folders: '+frames.removed.length+', kept '+frames.kept);}catch{}
 let log=createEventLog(folder,'client-'+Date.now()),phase=null,lastEvent=-1,gameTime=null;
 let nextMatch=true;
+let awaitingNewLive=false,forcedStart=false;
 // 采集静默：客户端崩溃/断连时日志停止增长，超时就判本局结束（阈值可用 env 覆盖）。
 let lastDataAt=0,silenceEnded=false;const silenceEndMs=Number(process.env.JINBAO_SILENCE_END_MS)||SILENCE_END_MS;
 const readSelection=createChampionSelectionReader(lcuRequest);
@@ -233,6 +234,19 @@ while(running){
   if(credentials.ok){
    const result=await lcuRequest(credentials,'/lol-gameflow/v1/gameflow-phase');
    if(result.status===200&&result.data!==phase){phase=result.data;log.append({kind:'phase',phase});if(['ChampSelect','EndOfGame','Lobby','None'].includes(phase))nextMatch=true;}
+  // 新一局进入 InProgress 时立刻开新日志：Live Client 常常还在返回上一局数据，
+  // 等它自己消失会晚 1 分钟左右，开局海克斯因此被错过。
+  if(phase==='InProgress'&&nextMatch&&!awaitingNewLive){
+   try{
+    const session=await getGameflowSession(credentials);
+    const queue=session?.gameData?.queue?.queueId??session?.gameData?.queueId??null;
+    nextMatch=false;gameTime=null;lastLiveState=null;lastDataAt=0;silenceEnded=false;
+    log=createEventLog(folder,'live-'+Date.now());lastEvent=-1;observer.reset();chatObserver.reset();ultimateObserver.reset();hudAssets.reset();captureSchedule.reset();
+    log.append({kind:'game_start',me:{},queue,gameTime:0,allies:[],enemies:[],source:'lcu-gameflow'});
+    log.append({kind:'phase',phase});
+    awaitingNewLive=true;forcedStart=true;
+   }catch{}
+  }
    if(phase==='ChampSelect'){
     const selection=await readSelection(credentials);
     if(selection){
@@ -245,6 +259,12 @@ while(running){
    }
   }
   const all=phase==='ChampSelect'?null:await getAllGameData(),state=compactState(all);
+  // 刚按 gameflow 开了新局：先忽略仍在返回的旧对局数据，直到时钟进入新局。
+  if(awaitingNewLive){
+   const liveTime=Number(all?.gameData?.gameTime);
+   if(!Number.isFinite(liveTime)||liveTime>600){await sleep(1000);continue;}
+   awaitingNewLive=false;
+  }
   lastLiveState=state;
   if(state){
    for(const player of [state.me,...state.allies,...state.enemies]){
@@ -254,11 +274,11 @@ while(running){
    const time=all.gameData.gameTime;
    // 读数瞬断会把时钟打回 0：不能当新对局（实测 20:32 那局在 13:48 被拆成两个 match）。
    if(clockGlitch(time,gameTime)){if(!silenceEnded)lastDataAt=Date.now();await sleep(1000);continue;}
-   if(startsNewMatch({time,previous:gameTime,nextMatch,sinceLastDataMs:Date.now()-lastDataAt})){
+   if(!forcedStart&&startsNewMatch({time,previous:gameTime,nextMatch,sinceLastDataMs:Date.now()-lastDataAt})){
     nextMatch=false;lastDataAt=Date.now();silenceEnded=false;log=createEventLog(folder,'live-'+Date.now());lastEvent=-1;observer.reset();chatObserver.reset();ultimateObserver.reset();hudAssets.reset();captureSchedule.reset();captureGeneration++;lastCaptureAvailable=null;nextCaptureAt=0;
     log.append({kind:'game_start',me:state.me??{},queue:state.mode,gameTime:state.gameTime,allies:state.allies,enemies:state.enemies});
    }
-   gameTime=time;lastDataAt=Date.now();silenceEnded=false;log.append(stateEvent(state));
+   gameTime=time;lastDataAt=Date.now();silenceEnded=false;forcedStart=false;log.append(stateEvent(state));
    if(credentials.ok)void hudAssets.update({state,champions,match:log.file,source:credentials.port});
    if(credentials.ok)void readChatCatalog(credentials,acceptCatalog).catch(()=>{});
    const changed=diffEvents(lastEvent,all);lastEvent=changed.maxId;
