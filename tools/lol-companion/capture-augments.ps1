@@ -166,6 +166,32 @@ public static class JinbaoChatSignature {
   return @{width=$width;height=$height;lines=$lines}
  }finally{if($software){$software.Dispose()};$stream.Dispose()}
  }
+function Save-JinbaoAugmentFrames($bitmap,$lines){
+ try{
+  if($env:JINBAO_AUGMENT_FRAMES -eq '0'){return}
+  if(!$bitmap -or @($lines).Count -lt 2){return}
+  $now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  if($global:JinbaoAugmentFrameAt -and ($now-[double]$global:JinbaoAugmentFrameAt) -lt 4000){return}
+  $global:JinbaoAugmentFrameAt=$now
+  if(!$global:JinbaoAugmentFrameTimes){$global:JinbaoAugmentFrameTimes=@()}
+  $global:JinbaoAugmentFrameTimes=@($global:JinbaoAugmentFrameTimes|Where-Object{($now-$_) -lt 60000})
+  if($global:JinbaoAugmentFrameTimes.Count -ge 8){return}
+  $global:JinbaoAugmentFrameTimes+=$now
+  $dir=Join-Path $StateDir ('augment-frames'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+  [IO.Directory]::CreateDirectory($dir)|Out-Null
+  Save-JinbaoVisionJpeg $bitmap 0 0 $bitmap.Width $bitmap.Height (Join-Path $dir 'panel.jpg')
+  $H=[double]$bitmap.Height
+  foreach($line in @($lines)){
+   $slot=[int]$line.slot
+   if($slot -lt 0 -or $slot -gt 2){continue}
+   $x=[int]([double]$line.x-$H*0.05);$y=[int]([double]$line.y-$H*0.03)
+   Save-JinbaoVisionJpeg $bitmap $x $y ([int]($H*0.36)) ([int]($H*0.16)) (Join-Path $dir ('slot'+$slot+'.jpg'))
+  }
+  $meta=@{at=$now;width=$bitmap.Width;height=$bitmap.Height;lines=@($lines|ForEach-Object{@{text=[string]$_.text;slot=[int]$_.slot;x=[double]$_.x;y=[double]$_.y}})}
+  [IO.File]::WriteAllText((Join-Path $dir 'meta.json'),($meta|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+ }catch{}
+}
+
  $frame=if($Focus -eq 'full'){Read-OcrImage $bytes}else{$null}
  $titleLines=@()
  $titleReuse=$false
@@ -231,6 +257,7 @@ public static class JinbaoChatSignature {
     }
    }finally{$stripBytes.Dispose()}
   }finally{$stripGraphics.Dispose();$strip.Dispose()}
+  if($titleLines.Count -ge 2){Save-JinbaoAugmentFrames $inputBitmap $titleLines}
   # Chat text is small and low contrast, and whole-frame OCR mangles CJK there
   # ("已终结了" -> "已 终 了", "无人能挡" -> "无人能了"). Crop the chat box and
   # enlarge it exactly like the card titles, then map the boxes back so the
