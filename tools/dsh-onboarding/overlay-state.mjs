@@ -756,7 +756,7 @@ const playerRows = players.map(p => {
   const roster=playerRows.map(p=>`${p.side} ${p.champion} · ${p.winRateText} · ${p.tierText}`);
   const weighted=side=>{const result=teamStrength(playerRows,side);return result.value===null?`待补齐 ${result.known}/5`:`${Number(result.value.toFixed(1))}%`;};
   const liveEstimate=state.game==='lol'?liveTeamEstimate(playerRows,{seconds:state.gameSeconds,allyKills:me.teamKills,enemyKills:me.enemyKills,sideSource:me.sideSource}):null;
-  const teamWinRates=state.game==='lol'?(liveEstimate?`局势估计 · 我方 ${liveEstimate.ally}%｜敌方 ${liveEstimate.enemy}% · ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`:`加权样本 · 我方 ${weighted('友')}｜敌方 ${weighted('敌')}`):'';
+  const teamWinRates=state.game==='lol'?(liveEstimate?`局势估计 · 我方胜率${Number(liveEstimate.ally)>=Number(liveEstimate.enemy)?'高于':'低于'}敌方 · 击杀 ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`:`加权样本 · 我方 ${weighted('友')}｜敌方 ${weighted('敌')}`):'';
 
   const builds = rows.filter(r => r._type === 'coreBuilds').map(r => `${items(r.items)}\n  样本胜率 ${percent(r.winRate)} · 使用率 ${percent(r.pickRate)}`);
   const ranked = rankedAugments(rows, me.champion);
@@ -871,7 +871,7 @@ const playerRows = players.map(p => {
         // 十人齐且有全部胜率才给双方加权；没齐时只报我方，不出现「敌方 待补齐」。
         // 数据不全时宁可不写：以前会显示「我方 待统计」，加载页播报就照念了这句话。
 footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 '+weighted('友'):'')):'',
-        brief:full?(ratesComplete?('阵容 · '+(teamWinRates||'')):(alliesRated>=5?'阵容 · 我方 '+weighted('友'):'')).slice(0,90):'阵容 · 我方 '+allyNames.length+' 人已就位',
+        brief:full?(ratesComplete?('阵容 · '+(teamWinRates||'')):(alliesRated>=5?'阵容 · 我方 '+weighted('友'):'')).slice(0,90):'',
       });
     }
     // 3.5) 选人阶段的阵容分析（独立一条消息）：定位分布、缺什么、我该干什么。
@@ -926,8 +926,8 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
         state.noticeWinRate={at:Date.now(),ally};
         noticeUpsert(state,'situation',{
           at:Date.now(),stage:'situation',dimension:'map',
-          text:`局势估计 · 我方 ${ally}%｜敌方 ${liveEstimate.enemy}% · 击杀 ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`,
-          brief:`局势 ${ally}% vs ${liveEstimate.enemy}%`,
+          text:`局势估计 · 我方胜率${Number(ally)>=Number(liveEstimate.enemy)?'高于':'低于'}敌方 · 击杀 ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`,
+          brief:`局势 ${Number(ally)>=Number(liveEstimate.enemy)?'我方高于敌方':'我方低于敌方'}`,
         });
       }
     }

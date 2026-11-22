@@ -66,21 +66,22 @@ export function projectProgressEvent(state,event){
 // 敌方关键成装的即时提醒：查资料、问模型都要几十秒，而"跳不跳一个中娅的岩雀"
 // 是当场就要做的决定。这里用本地规则先说一句，模型的完整分析随后再补。
 const THREAT_RULES=[
- {test:/中娅|沙漏/,line:hero=>hero+'出中娅了，别先手跳她'},
- {test:/兰德里/,line:hero=>hero+'有兰德里，别贴着兵线打'},
- {test:/荆棘/,line:hero=>hero+'出荆棘了，别硬接普攻'},
+ {test:/中娅|沙漏/,reason:'别先手跳她'},
+ {test:/兰德里/,reason:'别贴着兵线打'},
+ {test:/荆棘/,reason:'别硬接普攻'},
  // 只认水银饰带（解控）：水银之靴是常见的魔抗鞋，报成「出了水银」既含糊又误导。
- {test:/水银饰带/,line:hero=>hero+'出了水银饰带，控制技能留一手'},
- {test:/无尽|死亡之帽/,line:hero=>hero+'爆发起来了，别单吃'},
- {test:/救赎|钢铁烈阳/,line:hero=>hero+'有保命装，别all in'},
+ {test:/水银饰带/,reason:'控制技能留一手'},
+ {test:/无尽|死亡之帽/,reason:'爆发起来了，别单吃'},
+ {test:/救赎|钢铁烈阳/,reason:'有保命装，别硬上'},
 ];
 export function threatAlerts(state,hero,added){
  const now=Number(state.at)||Date.now();
  const alerts=[];
  for(const item of added){
-  const rule=THREAT_RULES.find(r=>r.test.test(item));
+  const bare=String(item).replace(/ ×\d+$/,'');
+ const rule=THREAT_RULES.find(r=>r.test.test(bare));
   if(!rule)continue;
-  const text=rule.line(hero);
+  const text=hero+'出了'+bare+'，'+rule.reason;
   const recent=(state.broadcasts??[]).some(b=>b&&b.text===text&&now-Number(b.at||0)<120000);
   if(recent)continue;
   alerts.push(text);

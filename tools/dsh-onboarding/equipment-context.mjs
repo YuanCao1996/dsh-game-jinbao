@@ -122,7 +122,7 @@ export function createEquipmentCoach({getState,agentChat,save,onAdvice=()=>{},ca
       if(!canRequest()&&!urgent){state.equipmentStatus=lastDone?'低频更新中，已有出装建议仍可参考':'等待低频自动分析';return;}
       busy=true;lastAt=now();
       const match=state.match,started=state.matchStartedAt;
-      const question='【自动出装建议任务】请结合当前装备、敌方各英雄装备、自己所有已确认海克斯，以及下列明确标注为推测的强化，更新出装建议。先给下一件优先购买的装备，再给后续顺序和针对性调整理由。推测强化必须写成“暂按…考虑，待确认”，不得宣称已拥有；所有已确认强化都要参与取舍。没有可信排名时不要编造推测。不要重复列出敌方装备明细或购买事件。玩法与装备数值不确定时调用工具查证。只用 coach_reply 提交不超过600字的最终建议。\n【装备决策事实 JSON】\n'+JSON.stringify(facts);
+      const question='【自动出装建议任务】请结合当前装备、敌方各英雄装备、自己所有已确认海克斯，以及下列明确标注为推测的强化，更新出装建议。先给下一件优先购买的装备，再给后续顺序和针对性调整理由。推测强化必须写成“暂按…考虑，待确认”，不得宣称已拥有；所有已确认强化都要参与取舍。没有可信排名时不要编造推测。如果有成装已经拥有散件，不要重复提醒合成这件成装；只说明还缺的散件或下一件不同装备。不要重复列出敌方装备明细或购买事件。玩法与装备数值不确定时调用工具查证。只用 coach_reply 提交不超过600字的最终建议。\n【装备决策事实 JSON】\n'+JSON.stringify(facts);
       void agentChat({game:state.game,match,question,topic:'equipment',automatic:true,...(urgent?{urgent:true}:{})}).then(async answer=>{
         const current=getState();
         if(closed||current.ended||current.match!==match||current.matchStartedAt!==started||current.game!==state.game||ownFacts(equipmentContext(current))!==ownFacts(facts))return;
