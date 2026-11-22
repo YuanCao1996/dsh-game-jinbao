@@ -1,4 +1,4 @@
-import {readFile,writeFile,rename,mkdir,appendFile} from 'node:fs/promises';
+import {readFile,writeFile,rename,mkdir,appendFile,readdir,stat,unlink} from 'node:fs/promises';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runSpeechProcess} from './speech-process.mjs';
@@ -45,10 +45,34 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
  // 之后可以跟界面显示内容逐条比对（谁被压缩、谁被丢弃、谁被中断）。
  const auditFile=join(stateDir,'logs','speech.jsonl');
  let auditWrite=Promise.resolve();
+ // 合成结果落盘缓存：同一角色同一句不再重复调用供应商。
+ const cacheDir=join(stateDir,'cache','speech');
+ const cacheKey=(role,text)=>createHash('sha256').update(role+'\n'+text).digest('hex');
+ let cacheHits=0,cacheMisses=0,cacheWrites=0;
+ const cacheGet=async(role,text)=>{
+  if(process.env.JINBAO_SPEECH_CACHE==='0')return null;
+  try{
+   const bytes=await readFile(join(cacheDir,cacheKey(role,text)+'.wav'));
+   if(bytes.length>=44&&bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WAVE'){cacheHits++;return{mediaType:'audio/wav',audioBase64:bytes.toString('base64')};}
+  }catch{}
+  cacheMisses++;return null;
+ };
+ const cachePut=async(role,text,audio)=>{
+  if(process.env.JINBAO_SPEECH_CACHE==='0')return;
+  if(!audio||audio.mediaType!=='audio/wav'||typeof audio.audioBase64!=='string')return;
+  try{
+   const bytes=Buffer.from(audio.audioBase64,'base64');
+   if(bytes.length<44||bytes.toString('ascii',0,4)!=='RIFF')return;
+   await mkdir(cacheDir,{recursive:true});
+   const file=join(cacheDir,cacheKey(role,text)+'.wav');
+   await writeFile(file+'.tmp',bytes,{mode:0o600});await rename(file+'.tmp',file);
+   if(++cacheWrites%50===0){const names=await readdir(cacheDir);for(const name of names){if(!name.endsWith('.wav'))continue;const info=await stat(join(cacheDir,name)).catch(()=>null);if(info&&Date.now()-info.mtimeMs>7*86400000)await unlink(join(cacheDir,name)).catch(()=>{});}}
+  }catch{}
+ };
  const audit=entry=>{auditWrite=auditWrite.catch(()=>{}).then(async()=>{
   try{await mkdir(join(stateDir,"logs"),{recursive:true});
    await appendFile(auditFile,JSON.stringify({at:now(),scope:currentKey(),role:config.role,...entry})+'\n',{mode:0o600});}catch{}});};
- const state=()=>({supported:true,...config,roleName:roleById(config.role).name,voice:roleById(config.role).voice,model:roleById(config.role).model,state:phase,queueDepth:queue.length,lastCode,roles,minIntervalMs,maxChars:60,pendingLimit:1,nextSpeechAt:Number.isFinite(nextSpeechAt)?nextSpeechAt:0,quietRemainingMs:Number.isFinite(nextSpeechAt)?Math.max(0,nextSpeechAt-now()):0});
+ const state=()=>({supported:true,...config,roleName:roleById(config.role).name,voice:roleById(config.role).voice,model:roleById(config.role).model,state:phase,queueDepth:queue.length,lastCode,cacheHits,cacheMisses,roles,minIntervalMs,maxChars:60,pendingLimit:1,nextSpeechAt:Number.isFinite(nextSpeechAt)?nextSpeechAt:0,quietRemainingMs:Number.isFinite(nextSpeechAt)?Math.max(0,nextSpeechAt-now()):0});
  let statusWrite=Promise.resolve();
  const publish=()=>{statusWrite=statusWrite.catch(()=>{}).then(async()=>{await writeFile(join(stateDir,'speech-status.json.tmp'),JSON.stringify({at:now(),...state()}),{mode:0o600});await rename(join(stateDir,'speech-status.json.tmp'),join(stateDir,'speech-status.json'));}).catch(()=>{});};
  const stop=()=>{generation++;active?.controller.abort();queue=[];};
@@ -67,7 +91,9 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
      for(const text of segments){
       // 已经开始出声就别中途切断：过期只用于丢弃还在排队的条目。
       if(closed||controller.signal.aborted||epoch!==generation||(!played&&stale(item)))break;
-      phase='synthesizing';publish();const audio=await synthesize(text,config.role,controller.signal,config.source);
+      phase='synthesizing';publish();
+        let audio=await cacheGet(config.role,text);
+        if(!audio){audio=await synthesize(text,config.role,controller.signal,config.source);await cachePut(config.role,text,audio);}
       if(controller.signal.aborted||epoch!==generation||stale(item))break;
       phase='playing';played=true;publish();const started=now();await play(audio,controller.signal);emit('speech_segment_done',{elapsedMs:now()-started});
       await pause(speechPause(text),controller.signal);
