@@ -24,10 +24,10 @@ export function createOverlaySupervisor({stateDir,launch,now=Date.now,
   tick:()=>run(async()=>{
    // 悬浮窗每 5 秒写心跳；状态文件在更新但心跳停了，说明 UI 线程卡死，直接重拉。
    const beat=await read('overlay-heartbeat.json');
-   const stateMtime=await stat(join(stateDir,'overlay-state.json')).then(info=>info.mtimeMs).catch(()=>0);
    if(beat&&Number.isSafeInteger(beat.pid)&&beat.pid>0&&alive(beat.pid)){
     const age=now()-Number(beat.at||0);
-    if(age>20000&&stateMtime>Number(beat.at||0)+3000){
+    // 心跳每 5 秒必写；超过 20 秒没写就是 UI 线程卡死，不管状态文件有没有变化都重拉。
+    if(age>20000){
      try{process.kill(beat.pid);}catch{}
      await report('restarting_stale',{pid:beat.pid});
      if(!closed&&!await stopped())await attempt(true);
