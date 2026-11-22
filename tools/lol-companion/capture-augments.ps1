@@ -176,18 +176,22 @@ function Save-JinbaoAugmentFrames($bitmap,$lines){
   if(!$global:JinbaoAugmentFrameTimes){$global:JinbaoAugmentFrameTimes=@()}
   $global:JinbaoAugmentFrameTimes=@($global:JinbaoAugmentFrameTimes|Where-Object{($now-$_) -lt 60000})
   if($global:JinbaoAugmentFrameTimes.Count -ge 8){return}
+  # 只保留看起来像卡名的行（含中文、2–12 字），否则会把 HUD 噪声也存下来。
+  $valid=@($lines | Where-Object { $_.text -match '[\u4e00-\u9fff]' -and ([string]$_.text).Length -ge 2 -and ([string]$_.text).Length -le 12 -and [int]$_.slot -ge 0 -and [int]$_.slot -le 2 })
+  if($valid.Count -lt 2){return}
+  if(@($valid | ForEach-Object {[int]$_.slot} | Select-Object -Unique).Count -lt 2){return}
   $global:JinbaoAugmentFrameTimes+=$now
-  $dir=Join-Path $StateDir ('augment-frames'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+  $dir=Join-Path (Join-Path $StateDir 'augment-frames') (Get-Date -Format 'yyyyMMdd-HHmmss-fff')
   [IO.Directory]::CreateDirectory($dir)|Out-Null
   Save-JinbaoVisionJpeg $bitmap 0 0 $bitmap.Width $bitmap.Height (Join-Path $dir 'panel.jpg')
   $H=[double]$bitmap.Height
-  foreach($line in @($lines)){
+  foreach($line in @($valid)){
    $slot=[int]$line.slot
    if($slot -lt 0 -or $slot -gt 2){continue}
    $x=[int]([double]$line.x-$H*0.05);$y=[int]([double]$line.y-$H*0.03)
    Save-JinbaoVisionJpeg $bitmap $x $y ([int]($H*0.36)) ([int]($H*0.16)) (Join-Path $dir ('slot'+$slot+'.jpg'))
   }
-  $meta=@{at=$now;width=$bitmap.Width;height=$bitmap.Height;lines=@($lines|ForEach-Object{@{text=[string]$_.text;slot=[int]$_.slot;x=[double]$_.x;y=[double]$_.y}})}
+  $meta=@{at=$now;width=$bitmap.Width;height=$bitmap.Height;lines=@($valid|ForEach-Object{@{text=[string]$_.text;slot=[int]$_.slot;x=[double]$_.x;y=[double]$_.y}})}
   [IO.File]::WriteAllText((Join-Path $dir 'meta.json'),($meta|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
  }catch{}
 }

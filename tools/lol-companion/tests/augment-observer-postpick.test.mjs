@@ -36,6 +36,8 @@ test('选出强化后进入 6 秒静默，残留文字不会伪装成 reroll', (
   assert.equal(emitted.filter(event => event.kind === 'augment_offer').length, 1, '静默期内不能发新 offer');
 
   now += 6000;
+  observer.observe(frame(now, []));
+  now += 100;
   observer.observe(frame(now, ['丁卡', '戊卡', '己卡']));
   now += 100;
   observer.observe(frame(now, ['丁卡', '戊卡', '己卡']));

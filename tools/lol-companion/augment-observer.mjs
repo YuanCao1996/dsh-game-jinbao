@@ -45,6 +45,8 @@ export function createAugmentObserver(names, emit, {now=Date.now,maxFrameAgeMs=4
   let zeroStreak=0;
   let firstPartialAt=null;
   let ignoreUntil=0;
+  let postPick=false;
+  let panelGap=false;
 // Catalog gaps are reported once per match so the shipped list can be extended.
 const unknownNames=new Set();
   let lastValidAt=null,lastCapturedAt=null;
@@ -59,11 +61,18 @@ const unknownNames=new Set();
     markPicked(){
       suspended=null;current=[null,null,null];history=[];slots=[[],[],[]];anchors=null;
       pending=[null,null,null];misses=0;firstPartialAt=null;ignoreUntil=now()+6000;
+      postPick=true;panelGap=false;
     },
     observe(frame){
       if(!frame?.foreground || !frame.available || frame.panelOccluded===true){pending=[null,null,null];diagnostic={recognized:0,method:frame?.method??'none',...(frame?.panelOccluded?{reason:'scoreboard_visible'}:{})};return;}
       const at=now();
-      if(at<ignoreUntil){pending=[null,null,null];diagnostic={recognized:0,method:frame?.method??'none',reason:'post_pick_cooldown'};return;}
+      // 选完后必须看到面板真正消失（标题不足 2 行）才允许下一轮，否则同一面板
+      // 会在 6 秒后又被当成新的一轮（实测连出两次“捐赠”）。
+      if(postPick){
+        if(((frame.titleLines??[]).length)<2)panelGap=true;
+        if(!panelGap||at<ignoreUntil){pending=[null,null,null];diagnostic={recognized:0,method:frame?.method??'none',reason:'post_pick_cooldown'};return;}
+        postPick=false;
+      }
       if(frame.capturedAt!==undefined){
         if(!Number.isFinite(frame.capturedAt)||at-frame.capturedAt>maxFrameAgeMs||frame.capturedAt>at+500){pending=[null,null,null];diagnostic={recognized:0,knownSlots:current.filter(Boolean).length,method:frame.method??'none',reason:'capture_stale'};return;}
         if(lastCapturedAt!==null&&frame.capturedAt<=lastCapturedAt){diagnostic={...diagnostic,reason:'duplicate_capture'};return;}
