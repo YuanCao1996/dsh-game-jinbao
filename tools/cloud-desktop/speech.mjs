@@ -83,6 +83,23 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
   pumping=(async()=>{
    while(queue.length&&!closed){
     prune();if(!queue.length)break;
+    const head=queue[0];
+    if(!head.preview&&!head.prewarmed&&head.playAfter&&now()<head.playAfter){
+     head.prewarmed=true;
+     const epoch=generation;
+     try{
+      const cached=await cacheGet(config.role,head.text);
+      if(!cached){
+       audit({event:'prewarm',id:String(head.id??''),spoken:head.text});
+       const audio=await synthesize(head.text,config.role,new AbortController().signal,config.source);
+       if(epoch===generation)await cachePut(config.role,head.text,audio);
+      }
+     }catch(error){lastCode=['speech_login_required','speech_key_required','speech_rate_limited','speech_audio_invalid'].includes(error.code)?error.code:'speech_provider_unavailable';}
+     while(queue[0]===head&&!closed&&generation===epoch&&now()<head.playAfter)await pause(Math.min(250,head.playAfter-now()));
+     if(queue[0]!==head)continue;
+     if(closed||generation!==epoch)break;
+     if(stale(head)){queue.shift();audit({event:'discarded',id:String(head.id??''),reason:'stale',spoken:head.text});continue;}
+    }
     if(!queue[0].preview&&queue[0].topic!=='praise'&&now()<nextSpeechAt)break;
     const item=queue.shift();if(stale(item)){emit('speech_discarded');audit({event:'discarded',id:String(item.id??''),reason:'stale',spoken:item.text});continue;}
     const epoch=generation,controller=new AbortController();let played=false;active={...item,controller};
@@ -117,7 +134,15 @@ export async function createSpeech({stateDir,view=()=>({}),synthesize,play=playN
   item={...item,text:briefSpeech(item.text),expiresAt:Math.min(item.expiresAt,now()+20000)};
   if(!item.text){emit('speech_discarded',{reason:'text_too_long'});return false;}
   if(item.preview&&(active?.preview||queue.some(entry=>entry.preview)))return false;
-  if(item.topic==='advice'&&((active&&!active.controller.signal.aborted)||queue.length||now()<nextSpeechAt)){emit('speech_discarded',{reason:'output_backpressure'});return false;}
+  if(item.topic==='advice'){
+   if((active&&!active.controller.signal.aborted)||queue.length){emit('speech_discarded',{reason:'output_backpressure'});return false;}
+   if(now()<nextSpeechAt){
+    const wait=nextSpeechAt-now();
+    if(wait>30000){emit('speech_discarded',{reason:'output_backpressure'});return false;}
+    item.playAfter=nextSpeechAt;
+    item.expiresAt=nextSpeechAt+10000;
+   }
+  }
   const normalized=item.text.replace(/\s+/g,'').slice(0,6000),signature=createHash('sha256').update(item.scope+normalized).digest('hex');
   const prior=recent.get(signature);if(!item.preview&&prior!==undefined&&now()-prior<(item.priority>=2?15000:60000))return false;
   if(!item.preview&&now()<cooldownUntil)return false;
