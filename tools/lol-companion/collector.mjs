@@ -142,6 +142,8 @@ const startCardWatch=offer=>{
   if(roundKey!==null)decidedRolls.add(roundKey);
   try{observer.markPicked()}catch{}
   log.append({kind:'augment_picked',who:'self',name,augment:name,roll:offer.roll??null,source:'vision-click',confidence:'high',gameTime:lastLiveState?.gameTime??gameTime??null,visionReason:result.reason??'',visionFrames:result.frames??0});
+  // 选定即关闭这一轮：否则最后一轮要等到下一轮 offer 才落账，赛后“本局已选”会缺最后一张。
+  log.append({kind:'augment_offer_closed',roll:offer.roll??null,reason:'picked',gameTime:lastLiveState?.gameTime??gameTime??null});
  };
  child.stdout?.setEncoding('utf8');
  child.stdout?.on('data',chunk=>{buffer+=chunk;if(buffer.length>8192){stopCardWatch();return;}let end=buffer.indexOf('\n');while(end>=0){onLine(buffer.slice(0,end).trim());buffer=buffer.slice(end+1);end=buffer.indexOf('\n');}});
