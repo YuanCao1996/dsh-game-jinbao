@@ -191,7 +191,9 @@ function isLabelMerge(text){
       }
       misses=0;
       const next=[...current],changed=[];
-      const stableFirstFrame=!current.some(Boolean)&&frame.cardLayout==='stacked-title-regions'&&recognized===3&&new Set(candidates).size===3;
+      const titleSlots=new Set((frame.titleLines??[]).filter(line=>Number.isInteger(line.slot)&&line.slot>=0&&line.slot<=2).map(line=>line.slot));
+  // 开局三选一常常只出现 1–2 帧就被点掉；只要三个槽位都读到不同卡名，首帧直接认。
+  const stableFirstFrame=!current.some(Boolean)&&recognized===3&&new Set(candidates).size===3&&(frame.cardLayout==='stacked-title-regions'||(titleSlots.size>=3&&String(frame.method??'').includes('card-strip')));
       // A single-slot reroll can be accepted immediately when two independent
       // OCR passes (full frame and enlarged title crop) agree on its exact name,
       // and both unchanged neighbours are still visible. Otherwise require the
