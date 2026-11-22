@@ -243,10 +243,10 @@ if(!$SelfTest){
 }
 function Set-PointerMode([bool]$hotzone){
  if($script:windowHandle -eq [IntPtr]::Zero){return}
- # 勾选“鼠标穿透”就严格穿透：热区悬停不再把窗口变回可点击，否则会挡住游戏点击。
- # 要操作悬浮窗按 Ctrl+Alt+J 进交互模式。
- $through=if($script:clickThrough){-not ($script:interactiveMode -or $script:dragging)}else{$false}
- $focusable=if($script:clickThrough){$script:interactiveMode -and !$script:collapsed}else{($script:interactiveMode -or $hotzone) -and !$script:collapsed}
+ # 穿透时只保留很小的可点区域（窄条上的展开按钮/气泡），其余点击落到游戏；
+ # 大框展开后恢复可点，方便阅读和操作。Ctrl+Alt+J 仍可整体切换交互。
+ $through=if($script:clickThrough){-not ($script:interactiveMode -or $script:dragging -or $hotzone)}else{$false}
+ $focusable=($script:interactiveMode -or $hotzone) -and !$script:collapsed
  if($script:lastThrough -ne $through -or $script:lastFocusable -ne $focusable){
   [JinbaoOverlayNative]::InputMode($script:windowHandle,$through,$focusable)
   $script:lastThrough=$through;$script:lastFocusable=$focusable
@@ -855,7 +855,9 @@ function Update-Drag([double]$x,[double]$y,[bool]$pressed){
  }
 }
 function Test-PointerHotzone([Windows.Point]$screenPoint) {
- $targets=if($script:collapsed){@($controls.Bubble)}else{@($controls.Header,$controls.ActionButton,$controls.Tabs,$controls.Footer,$controls.PageScroll,$controls.LatestMessageButton,$controls.ChatPanel,$controls.ResizeGrip,$controls.ConfirmationPanel,$controls.AgentActivityPanel,$controls.NarrowPanel)}
+ $targets=if($script:clickThrough -and !$script:collapsed -and $script:displayMode -eq 'narrow'){@($controls.NarrowExpand)}
+  elseif($script:clickThrough -and $script:collapsed){@($controls.Bubble)}
+  elseif($script:collapsed){@($controls.Bubble)}else{@($controls.Header,$controls.ActionButton,$controls.Tabs,$controls.Footer,$controls.PageScroll,$controls.LatestMessageButton,$controls.ChatPanel,$controls.ResizeGrip,$controls.ConfirmationPanel,$controls.AgentActivityPanel,$controls.NarrowPanel)}
  foreach($target in $targets){
   if(!$target.IsVisible){continue}
   $local=$target.PointFromScreen($screenPoint)
