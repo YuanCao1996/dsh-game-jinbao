@@ -10,6 +10,36 @@ const normalize = value => String(value??'').replace(/[\s:：!！·•・．.。
 
 export function createAugmentObserver(names, emit, {now=Date.now,maxFrameAgeMs=4000,maxBlindGapMs=15000}={}) {
   const catalog = new Map(names.map(name=>[normalize(name),name]));
+  // OCR 偶尔把卡名读错一个字：只在编辑距离 1 且候选唯一时纠正，宁可不认也不猜错。
+  const catalogEntries=[...catalog.entries()].filter(([norm])=>norm.length>=3);
+  const oneEdit=(a,b)=>{
+    if(a===b)return false;
+    if(Math.abs(a.length-b.length)>1)return false;
+    let i=0,j=0,edits=0;
+    while(i<a.length&&j<b.length){
+      if(a[i]===b[j]){i++;j++;continue;}
+      if(++edits>1)return false;
+      if(a.length>b.length){i++;}
+      else if(a.length<b.length){j++;}
+      else{i++;j++;}
+    }
+    if(i<a.length||j<b.length){if(++edits>1)return false;}
+    return true;
+  };
+  const resolveName=(text)=>{
+    const key=normalize(text);
+    if(!key)return null;
+    const exact=catalog.get(key);
+    if(exact)return {name:exact,exact:true};
+    if(key.length<3)return null;
+    let hit=null;
+    for(const [norm,name] of catalogEntries){
+      if(!oneEdit(norm,key))continue;
+      if(hit&&hit!==name)return null;
+      hit=name;
+    }
+    return hit?{name:hit,exact:false}:null;
+  };
   let current=[null,null,null],history=[],round=0,misses=0,slots=[[],[],[]],anchors=null;
   let pending=[null,null,null],suspended=null;
   let zeroStreak=0;
@@ -35,14 +65,14 @@ const unknownNames=new Set();
       if(lastValidAt!==null&&at-lastValidAt>maxBlindGapMs&&current.some(Boolean))suspendPanel(at);
       lastValidAt=at;
       const lines=[...(frame.titleLines??[]).map(line=>({...line,source:'title'})),...(frame.lines??[]).map(line=>({...line,source:'full'}))];
-      const found=lines.map(line=>({...line,name:catalog.get(normalize(line.text))})).filter(line=>line.name);
+      const found=lines.map(line=>{const hit=resolveName(line.text);return hit?{...line,name:hit.name,fuzzy:!hit.exact}:null;}).filter(Boolean);
       // Windows OCR can wrap a card title into two lines. Join only nearby
       // lines in the same card; never fuzzy-match an arbitrary description.
       for(const a of lines)for(const b of lines){
         if(a.source!==b.source||(a.source==='title'&&a.slot!==b.slot))continue;
         if(b.y<=a.y||b.y-a.y>frame.height*0.07||Math.abs(a.x-b.x)>frame.width*0.07)continue;
-        const name=catalog.get(normalize(a.text+b.text));
-        if(name)found.push({...a,name});
+        const hit=resolveName(a.text+b.text);
+        if(hit)found.push({...a,name:hit.name,fuzzy:!hit.exact});
       }
       // Full-frame OCR establishes geometry only from three aligned titles.
       // Once established, a missing neighbour cannot block a stable slot update.
