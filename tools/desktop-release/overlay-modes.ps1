@@ -33,7 +33,7 @@ function Show-QuickConfirmation($confirmation){
 function Save-DisplayMode([string]$mode) {
  if($SelfTest){return}
  if(-not $mode){$mode=$script:displayMode}
- [IO.File]::WriteAllText($displayFile,(@{mode=$mode;subtitle=$script:subtitleMode;speech=$script:speakEnabled;width=$script:narrowWidth;widthVersion=1}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+ [IO.File]::WriteAllText($displayFile,(@{mode=$mode;subtitle=$script:subtitleMode;speech=$script:speakEnabled;width=$script:narrowWidth;widthVersion=1;clickThrough=$script:clickThrough}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
 }
 
 # 监听 overlay-display.json：网页设置页改动后即时生效。

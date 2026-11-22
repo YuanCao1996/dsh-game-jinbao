@@ -243,9 +243,10 @@ if(!$SelfTest){
 }
 function Set-PointerMode([bool]$hotzone){
  if($script:windowHandle -eq [IntPtr]::Zero){return}
- $through=if($script:clickThrough){!($script:interactiveMode -or $hotzone -or $script:dragging -or [Windows.Input.Mouse]::Captured)}else{$false}
- # 悬停在窗口上时也要能接收点击：否则只能靠 Ctrl+Alt+J 进交互模式，热键一失效就彻底点不动。
- $focusable=($script:interactiveMode -or $hotzone) -and !$script:collapsed
+ # 勾选“鼠标穿透”就严格穿透：热区悬停不再把窗口变回可点击，否则会挡住游戏点击。
+ # 要操作悬浮窗按 Ctrl+Alt+J 进交互模式。
+ $through=if($script:clickThrough){-not ($script:interactiveMode -or $script:dragging)}else{$false}
+ $focusable=if($script:clickThrough){$script:interactiveMode -and !$script:collapsed}else{($script:interactiveMode -or $hotzone) -and !$script:collapsed}
  if($script:lastThrough -ne $through -or $script:lastFocusable -ne $focusable){
   [JinbaoOverlayNative]::InputMode($script:windowHandle,$through,$focusable)
   $script:lastThrough=$through;$script:lastFocusable=$focusable
@@ -253,7 +254,7 @@ function Set-PointerMode([bool]$hotzone){
 }
 function Set-Interaction([bool]$enabled){
  $script:interactiveMode=$enabled
- $controls.HintText.Text=if($enabled){'右下角缩放 · Ctrl+滚轮调整正文 · Ctrl+Alt+J 恢复穿透'}else{'右下角拖动缩放 · Ctrl+滚轮调整正文 · Ctrl+Alt+J 输入问题'}
+ $controls.HintText.Text=if($enabled){'交互模式 · Ctrl+Alt+J 恢复鼠标穿透'}else{if($script:clickThrough){'鼠标穿透中 · Ctrl+Alt+J 临时交互'}else{'右下角拖动缩放 · Ctrl+Alt+J 输入问题'}}
  Set-PointerMode $false
 }
 # 透明窗口在改尺寸后偶尔保留上一帧（残影、卡顿一下）：改完尺寸立刻重排并强制重绘。
