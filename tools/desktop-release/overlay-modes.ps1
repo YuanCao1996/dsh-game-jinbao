@@ -62,11 +62,11 @@ function Set-DisplayMode([string]$mode){
   if($mode -notin @('large','narrow','silent')){return}
   $quickConfirm.IsOpen=$false;$script:popupConfirmId=''
   $modeClock.Stop()
-  if($script:displayMode -eq 'large' -and !$script:collapsed -and $window.Width -ge 320 -and $window.Height -ge 300){$script:expandedWidth=$window.Width;$script:expandedHeight=$window.Height}
+  if($script:displayMode -eq 'large' -and !$script:collapsed -and $window.Width -ge 280 -and $window.Height -ge 300){$script:expandedWidth=$window.Width;$script:expandedHeight=$window.Height}
   if($mode -eq 'large'){
     # 一次性切到大框：不要先走窄条布局再改尺寸，否则会看到 126→300→126→380 的闪动和残影。
     $script:collapsed=$false
-    $targetWidth=[Math]::Max(360,[double]$script:expandedWidth)
+    $targetWidth=[Math]::Max(280,[double]$script:expandedWidth)
     $targetHeight=[Math]::Max(520,[double]$script:expandedHeight)
     $script:expandedWidth=$targetWidth;$script:expandedHeight=$targetHeight
     $controls.NarrowPanel.Visibility='Collapsed';$controls.Expanded.Visibility='Visible'
@@ -77,7 +77,7 @@ function Set-DisplayMode([string]$mode){
     # 先设 Width/Height，再设 Min：否则 Min 会先把 126/232 顶到 360/300，
     # 再跳到最终尺寸——这就是展开时多出来的一次尺寸切换。
     $window.Width=$targetWidth;$window.Height=$targetHeight
-    $window.MinWidth=$targetWidth;$window.MinHeight=300
+    $window.MinWidth=280;$window.MinHeight=300
     $controls.MainBorder.Padding='12';$controls.MainBorder.BorderThickness=1;Set-BackgroundOpacity
     $controls.ResizeGrip.Visibility='Visible';$controls.ResizeGrip.Cursor='SizeNWSE';$controls.ResizeGrip.Width=26;$controls.ResizeGrip.Height=26;$controls.ResizeGrip.Margin='0,0,-8,-8'
     $script:unread=0;$controls.BubbleLabel.Text=[char]0x25C9
