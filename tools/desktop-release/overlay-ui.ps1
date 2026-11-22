@@ -82,7 +82,7 @@ function Get-OverlayCategoryColor {
   $script:overlayCategoryColor=@{
    '出装'='#FFD166';'团战'='#F0876B';'符文'='#B79CF0';'进攻'='#7FD1A0';'撤退'='#7FB3D5';
    '阵容'='#C8A6FF';'技能'='#E0B341';'胜率'='#8FBF7F';'局势'='#93A3B4';'开局'='#CBA86C';
-   '阵亡'='#E07A7A';'威胁'='#EF9C6B';'地图'='#9AA8B8';'夸奖'='#DFA0C8';'提问'='#8FB4D8';'回答'='#93A3B4'
+   '阵亡'='#E07A7A';'威胁'='#EF9C6B';'地图'='#9AA8B8';'夸奖'='#DFA0C8';'提问'='#8FB4D8';'回答'='#93A3B4';'观众提问'='#8FB4D8';'观众回复'='#93A3B4'
   }
  }
  return $script:overlayCategoryColor
@@ -243,7 +243,7 @@ if(!$controls.RichContent){return}
     # 单人对局里只有「你」和「她」两个说话人，面板本身就是她的：她的消息不再逐条标「金宝」。
     # 队伍群聊必须知道谁在说话，所以那里照旧显示。
     $soloTimeline=-not ([string]$script:snapshot.teamChatMode -eq 'team')
-    $speakerName=if($row.origin -eq 'team' -and $row.displayName){[string]$row.displayName+$(if($row.champion){' · '+[string]$row.champion}else{''})}elseif($user){if($row.origin -eq 'phone'){'你 · 手机'}else{'你 · 电脑'}}elseif($row.failed){'本次未完成'}elseif($soloTimeline){''}else{'金宝'}
+    $speakerName=if($row.origin -eq 'viewer'){if($user){'观众'}else{'金宝 · 回应观众'}}elseif($row.origin -eq 'team' -and $row.displayName){[string]$row.displayName+$(if($row.champion){' · '+[string]$row.champion}else{''})}elseif($user){if($row.origin -eq 'phone'){'你 · 手机'}else{'你 · 电脑'}}elseif($row.failed){'本次未完成'}elseif($soloTimeline){''}else{'金宝'}
     $speakerColor=if($row.failed){'#F5AD91'}elseif($highlight){'#E7BE79'}else{'#8FA0B0'}
     $repeatSpeaker=(-not $highlight) -and ($speakerName -eq $lastSpeaker)
     $lastSpeaker=if($highlight){''}else{$speakerName}
@@ -283,8 +283,7 @@ if(!$controls.RichContent){return}
      $grid.Children.Add($footerLine)|Out-Null
     }
     $card.Child=$grid;$controls.RichContent.Children.Add($card)|Out-Null
-    $copyMenu=New-Object Windows.Controls.ContextMenu;$copyMenu.Background='#19212A';$copyMenu.Foreground='#E8EEF5';$copyItem=New-Object Windows.Controls.MenuItem;$copyItem.Header='复制这条消息';$copyItem.Tag=[string]$row.text;$copyItem.Add_Click({param($sender,$eventArgs) try{[Windows.Clipboard]::SetText([string]$sender.Tag)}catch{}});$copyMenu.Items.Add($copyItem)|Out-Null;$card.ContextMenu=$copyMenu
-   }
+       }
   }elseif($script:tab -eq 'events'){
    foreach($line in ($controls.PageText.Text -split "`r?`n"|Where-Object {$_})){
     $row=New-Object Windows.Controls.Grid;$row.ColumnDefinitions.Add((New-Object Windows.Controls.ColumnDefinition));$row.ColumnDefinitions.Add((New-Object Windows.Controls.ColumnDefinition));$row.ColumnDefinitions[0].Width=58;$row.ColumnDefinitions[1].Width='*'

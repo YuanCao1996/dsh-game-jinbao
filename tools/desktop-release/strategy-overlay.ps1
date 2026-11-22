@@ -1232,7 +1232,6 @@ try{
     $script:testResult.screenQuestionFallback=$controls.ComposerPlaceholder.Text -like '*看看当前画面*'
     $script:snapshot.suggestedQuestion='这轮海克斯怎么选？';Update-OverlayComposer
     $script:testResult.fullChatMessage=$controls.RichContent.Children[1].Child.Children[1].Text -eq $fullAnswer
-    $script:testResult.messageCopyAvailable=$controls.RichContent.Children[1].ContextMenu.Items[0].Tag -eq $fullAnswer
     $controls.FontSlider.Value=18
     $script:testResult.richFontZoom=$controls.RichContent.Children[1].Child.Children[1].FontSize -eq 18
     $controls.FontSlider.Value=14
