@@ -187,11 +187,33 @@ function Save-JinbaoCardFrames {
  }
  return $saved
 }
+function Get-JinbaoClickSlot([string]$Path,[long]$Since,[long]$Now){
+ try{
+  Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+  $bounds=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+  $H=[double]$bounds.Height
+  $lines=@(Get-Content -LiteralPath $Path -Tail 200 -ErrorAction SilentlyContinue)
+  $hits=@()
+  foreach($line in $lines){
+   try{$click=$line | ConvertFrom-Json}catch{continue}
+   if($click.at -lt $Since -or $click.at -gt $Now){continue}
+   for($slot=0;$slot -lt 3;$slot++){
+    $centerX=$bounds.Width/2+$H*(-0.4713+0.3413*$slot)
+    if([Math]::Abs([double]$click.x-$centerX) -le $H*0.16 -and [double]$click.y -ge $H*0.28 -and [double]$click.y -le $H*0.56){$hits+=$slot}
+   }
+  }
+  $unique=@($hits | Select-Object -Unique)
+  if($unique.Count -eq 1){return [int]$unique[0]}
+ }catch{}
+ return $null
+}
+
 function Invoke-JinbaoCardWatch {
  param(
   [Parameter(Mandatory=$true)][scriptblock]$Capture,
   [int]$TimeoutMs=20000,
   [double]$Threshold=8.0,
+  [string]$ClickLog='',
   [int]$SleepMs=50,
   [scriptblock]$Clock={ [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() },
   [scriptblock]$Sleep={ param($ms) Start-Sleep -Milliseconds $ms },
@@ -265,7 +287,12 @@ function Invoke-JinbaoCardWatch {
   & $Sleep $SleepMs
  }
 
- if($picked -ne $null){ $reason='sole-deviation' } elseif($reason -eq 'undecided'){ $reason='timeout' }
+ if($picked -eq $null -and $ClickLog){
+  $clickSince=[long][Math]::Max([double]($startedAt-1500),[double]$baselineAt)
+  $clickSlot=Get-JinbaoClickSlot $ClickLog $clickSince ([long](& $Clock))
+  if($clickSlot -ne $null){ $picked=$clickSlot; $reason='click' }
+ }
+ if($picked -ne $null){ if($reason -ne 'click'){ $reason='sole-deviation' } } elseif($reason -eq 'undecided'){ $reason='timeout' }
  $best=0;for($i=1;$i -lt 3;$i++){ if($peak[$i] -gt $peak[$best]){ $best=$i } }
  return [pscustomobject]@{picked=$picked;reason=$reason;frames=$frames;peak=$peak;guess=$best;ms=((& $Clock)-$startedAt);baselineFrames=$baselineFrames;lastFrames=$lastFrames}
 }

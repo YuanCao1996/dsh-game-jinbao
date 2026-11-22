@@ -904,7 +904,16 @@ function Pointer-Tick {
  Update-CaptureLease
  $p=New-Object 'JinbaoOverlayNative+Point'
  [JinbaoOverlayNative]::GetCursorPos([ref]$p) | Out-Null
- Update-Drag $p.X $p.Y (([JinbaoOverlayNative]::GetAsyncKeyState(1) -band 0x8000) -ne 0)
+ $leftDown=(([JinbaoOverlayNative]::GetAsyncKeyState(1) -band 0x8000) -ne 0)
+ if($leftDown -and -not $script:leftWasDown){
+  try{
+   $dir=Join-Path $StateDir 'logs';[IO.Directory]::CreateDirectory($dir)|Out-Null
+   $row=@{at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();x=$p.X;y=$p.Y}
+   [IO.File]::AppendAllText((Join-Path $dir 'overlay-clicks.jsonl'),(($row|ConvertTo-Json -Compress)+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+  }catch{}
+ }
+ $script:leftWasDown=$leftDown
+ Update-Drag $p.X $p.Y $leftDown
  Set-PointerMode (Test-PointerHotzone (New-Object Windows.Point($p.X,$p.Y)))
 }
 function Set-CaptureLeaseAffinity([uint32]$affinity){

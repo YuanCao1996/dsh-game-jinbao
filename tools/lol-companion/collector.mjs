@@ -94,7 +94,7 @@ const startCardWatch=offer=>{
  const watchMeta={roll:offer?.roll??null,names:(Array.isArray(offer?.options)?offer.options:[]).map(o=>o?.name).filter(Boolean),startedAt:Date.now(),startedGameTime:lastLiveState?.gameTime??gameTime??null};
  const powershell=join(process.env.SystemRoot??'C:/Windows','System32/WindowsPowerShell/v1.0/powershell.exe');
  let child;
- try{child=spawn(powershell,['-NoProfile','-ExecutionPolicy','Bypass','-File',cardWatchScript,'-Watch','-TimeoutMs','45000'],{windowsHide:true,stdio:['ignore','pipe','ignore']});}catch{return;}
+ try{child=spawn(powershell,['-NoProfile','-ExecutionPolicy','Bypass','-File',cardWatchScript,'-Watch','-TimeoutMs','45000','-ClickLog',join(process.env.JINBAO_STATE_DIR??dirname(folder),'logs','overlay-clicks.jsonl')],{windowsHide:true,stdio:['ignore','pipe','ignore']});}catch{return;}
  cardWatch=child;
  const finish=()=>{
   if(cardWatch===child)cardWatch=null;
