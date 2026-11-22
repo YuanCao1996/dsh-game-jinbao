@@ -107,10 +107,22 @@ export function renderMoment(template, facts = {}) {
 }
 
 // 本局同一条不重复：用尽后重置，避免一局听到两句一样的。
-function chooseMoment(pool, memory, kind, facts) {
+// 跨对局轮换：以前每局都从 cursor=0 开始，所以永远听到第一句（"来啦！这局冲鸭"）。
+// 现在用「角色+类型」做轮子，下一局接着上一局的下一条；进程重启后用对局号做偏移。
+const MOMENT_WHEEL = new Map();
+const hashText = text => {
+  let h = 0;
+  for (const ch of String(text ?? '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h;
+};
+
+function chooseMoment(pool, memory, kind, facts, wheelKey = '') {
   if (!Array.isArray(pool) || !pool.length) return '';
   const used = (memory.used || (memory.used = {}))[kind] || (memory.used[kind] = []);
-  const start = Number((memory.cursor || {})[kind] || 0);
+  const saved = Number((memory.cursor || {})[kind]);
+  const hasWheel = !!wheelKey && MOMENT_WHEEL.has(wheelKey);
+  const wheel = Number(MOMENT_WHEEL.get(wheelKey) ?? 0);
+  const start = Number.isFinite(saved) ? saved : (hasWheel ? wheel : hashText(memory.match) % pool.length);
   const take = skipUsed => {
     for (let step = 0; step < pool.length; step += 1) {
       const index = (start + step) % pool.length;
@@ -119,6 +131,7 @@ function chooseMoment(pool, memory, kind, facts) {
       const text = renderMoment(template, facts);
       if (!text) continue;
       memory.cursor = Object.assign({}, memory.cursor, { [kind]: index + 1 });
+      if (wheelKey) MOMENT_WHEEL.set(wheelKey, (index + 1) % pool.length);
       return { text, template };
     }
     return null;
@@ -210,7 +223,7 @@ export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', c
   // 1) 结束语优先：对局结束的那一刻，别被阵亡/沉默抢先
   if (ended && !memory.emitted.ended) {
     const endVoice = win === true ? voice.endWin : win === false ? voice.endLoss : (voice.endNeutral ?? voice.endLoss);
-    return emit('ended', chooseMoment(endVoice ?? voice.endLoss, memory, 'ended', slots));
+    return emit('ended', chooseMoment(endVoice ?? voice.endLoss, memory, 'ended', slots, role + ':ended'));
   }
 
   // 战术建议刚说过话 → 这一轮不插嘴
@@ -218,7 +231,7 @@ export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', c
 
   // 2) 开局问候：进对局 3 秒后，一局一次
   if (!memory.emitted.opening && Number.isFinite(seconds) && seconds >= OPENING_MIN_CLOCK && !ended) {
-    return emit('opening', chooseMoment(voice.opening, memory, 'opening', slots));
+    return emit('opening', chooseMoment(voice.opening, memory, 'opening', slots, role + ':opening'));
   }
 
   // 3) 阵亡反应：最多 3 次、间隔 ≥45 秒
@@ -230,7 +243,7 @@ export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', c
       memory.lastDeathAt = now;
       // 第一次阵亡不播报：只说「第一次」既生硬又没信息量（用户明确要求去掉这类播报）。
       if (memory.deaths === 1) return null;
-      return emit('death', chooseMoment(voice.death, memory, 'death', slots));
+      return emit('death', chooseMoment(voice.death, memory, 'death', slots, role + ':death'));
     }
   } else if (state.me?.dead !== true) {
     memory.lastDeadSeen = false;
@@ -238,7 +251,7 @@ export function settleHumanMoments(state, now = Date.now(), { role = 'jinbao', c
 
   // 4) 长时间沉默：8 分钟没说过话且这局说过话 → 我还在（一局一次）
   if (!memory.emitted.idle && lastAt > 0 && now - lastAt >= IDLE_AFTER_MS && !ended) {
-    return emit('idle', chooseMoment(voice.idle, memory, 'idle', slots));
+    return emit('idle', chooseMoment(voice.idle, memory, 'idle', slots, role + ':idle'));
   }
   return false;
 }

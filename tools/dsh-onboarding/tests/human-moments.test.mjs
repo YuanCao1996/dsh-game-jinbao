@@ -78,7 +78,7 @@ test('结束语按胜负选措辞，且优先于阵亡与沉默', () => {
 
   const lossState = base({ gameSeconds: 1200 });
   assert.equal(settleHumanMoments(lossState, Date.now(), { role: 'jinbao', clock: 1200, ended: true, win: false }), true);
-  assert.ok(/输|没拿下|没赢/.test(lastText(lossState)), '失败结束语措辞不对: ' + lastText(lossState));
+  assert.ok(/输|没拿下|没赢|可惜|别丧|热身|翻盘/.test(lastText(lossState)), '失败结束语措辞不对: ' + lastText(lossState));
 });
 
 test('长时间沉默：8 分钟没说话才补一句，且只补一次', () => {
@@ -178,4 +178,20 @@ test('叹词按场景出现：失误用哎呦/啊这，好事用哇塞/嘿嘿/�
   // 好消息场景要有偷笑/惊叹
   const good = lines.filter(l => /赢|拿下|上分/.test(l));
   assert.ok(good.some(l => ['哇塞', '嘿嘿', '嘻嘻'].some(w => l.includes(w))), '好消息场景缺少叹词');
+});
+
+// 2026-11-22：玩家反馈"每次都听到 来啦！这局冲鸭"——每局 cursor 都从 0 开始。
+test('连打四局开场白不会永远是同一句', async () => {
+  const mod = await import('../human-moments.mjs');
+  const lines = [];
+  for (let round = 1; round <= 4; round += 1) {
+    const state = {
+      match: 'rotation-' + round, game: 'lol', gameSeconds: 10,
+      me: { champion: '安妮', level: 3 }, allies: [], enemies: [], broadcasts: [],
+    };
+    mod.settleHumanMoments(state, Date.now(), { role: 'jinbao', clock: 10 });
+    lines.push(state.broadcasts.at(-1)?.text ?? '');
+  }
+  assert.ok(lines.every(Boolean), '四局都要有开场白: ' + lines.join(' / '));
+  assert.ok(new Set(lines).size >= 3, '四局至少三种不同开场白，实际: ' + lines.join(' / '));
 });
