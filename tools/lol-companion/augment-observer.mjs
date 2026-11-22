@@ -44,6 +44,7 @@ export function createAugmentObserver(names, emit, {now=Date.now,maxFrameAgeMs=4
   let pending=[null,null,null],suspended=null;
   let zeroStreak=0;
   let firstPartialAt=null;
+  let ignoreUntil=0;
 // Catalog gaps are reported once per match so the shipped list can be extended.
 const unknownNames=new Set();
   let lastValidAt=null,lastCapturedAt=null;
@@ -53,9 +54,16 @@ const unknownNames=new Set();
   return {
     status(){return {...diagnostic};},
     reset(){clearPanel();round=0;suspended=null;lastValidAt=null;lastCapturedAt=null;zeroStreak=0;unknownNames.clear();diagnostic={recognized:0,method:'none'};},
+    // 选出强化后面板会关闭，但 HUD/提示里仍可能残留强化名；先静默 6 秒，
+    // 否则残留文字会被当成同一轮的 reroll，污染排名与推荐。
+    markPicked(){
+      suspended=null;current=[null,null,null];history=[];slots=[[],[],[]];anchors=null;
+      pending=[null,null,null];misses=0;firstPartialAt=null;ignoreUntil=now()+6000;
+    },
     observe(frame){
       if(!frame?.foreground || !frame.available || frame.panelOccluded===true){pending=[null,null,null];diagnostic={recognized:0,method:frame?.method??'none',...(frame?.panelOccluded?{reason:'scoreboard_visible'}:{})};return;}
       const at=now();
+      if(at<ignoreUntil){pending=[null,null,null];diagnostic={recognized:0,method:frame?.method??'none',reason:'post_pick_cooldown'};return;}
       if(frame.capturedAt!==undefined){
         if(!Number.isFinite(frame.capturedAt)||at-frame.capturedAt>maxFrameAgeMs||frame.capturedAt>at+500){pending=[null,null,null];diagnostic={recognized:0,knownSlots:current.filter(Boolean).length,method:frame.method??'none',reason:'capture_stale'};return;}
         if(lastCapturedAt!==null&&frame.capturedAt<=lastCapturedAt){diagnostic={...diagnostic,reason:'duplicate_capture'};return;}

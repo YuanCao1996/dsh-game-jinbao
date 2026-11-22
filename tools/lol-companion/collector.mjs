@@ -140,6 +140,7 @@ const startCardWatch=offer=>{
   if(typeof name!=='string'||!name)return;
   // 判定成功的这一条会把该轮标记为已确认，确认弹窗因此不再出现。
   if(roundKey!==null)decidedRolls.add(roundKey);
+  try{observer.markPicked()}catch{}
   log.append({kind:'augment_picked',who:'self',name,augment:name,roll:offer.roll??null,source:'vision-click',confidence:'high',gameTime:lastLiveState?.gameTime??gameTime??null,visionReason:result.reason??'',visionFrames:result.frames??0});
  };
  child.stdout?.setEncoding('utf8');
