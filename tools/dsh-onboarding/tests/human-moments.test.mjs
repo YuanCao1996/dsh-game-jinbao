@@ -105,18 +105,20 @@ test('换对局后记忆重置', () => {
   assert.deepEqual(state.humanMoments.emitted, {});
 });
 
-test('jinbao 的台词共 36 句，且全部带着事实槽位或短语气口', async () => {
+test('jinbao 的台词 51 句，且全部带着事实槽位或短语气口', async () => {
   const mod = await import('../human-moments.mjs');
   const text = await (await import('node:fs/promises')).readFile(new URL('../human-moments.mjs', import.meta.url), 'utf8');
   const block = text.slice(text.indexOf('  jinbao: {'), text.indexOf('  liurufeng: {'));
   const lines = [...block.matchAll(/'([^']+)'/g)].map(m => m[1]);
-  assert.equal(lines.length, 36, 'jinbao 应为 36 句（去掉第一次阵亡那套），实际 ' + lines.length);
-  const sample = { champion: '安妮', level: 8, opponent: '劫', minute: 10, kills: 3, deaths: 2 };
+  assert.equal(lines.length, 51, 'jinbao 应为 51 句（人味 36 + 触发句 15），实际 ' + lines.length);
+  const sample = { champion: '安妮', level: 8, opponent: '劫', minute: 10, kills: 3, deaths: 2, n: 4, ally: '锐雯' };
   for (const line of lines) {
     // 带槽位的按“填进真实值之后”的长度算，模板本身的字符数没有意义
     const rendered = line.includes('{') ? mod.renderMoment(line, sample) : line;
     assert.ok(rendered, '槽位未填: ' + line);
-    assert.ok(rendered.length <= 14, '过长: ' + rendered + ' (' + rendered.length + '字)');
+    // 原有六类保持短句（≤14 字）；触发句要带次数/名字/英雄，放宽到 26 字。
+    const limit = /\{(n|ally)\}/.test(line) ? 26 : 14;
+    assert.ok(rendered.length <= limit, '过长: ' + rendered + ' (' + rendered.length + '字)');
     assert.ok(!/[。？]$/.test(line), '不要句号或问号结尾: ' + line);
   }
   assert.ok(lines.some(l => l.includes('{champion}')), '缺少英雄槽位');
