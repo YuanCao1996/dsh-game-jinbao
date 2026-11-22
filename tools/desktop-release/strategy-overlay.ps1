@@ -37,6 +37,22 @@ $StateDir=[IO.Path]::GetFullPath($StateDir)
 [IO.Directory]::CreateDirectory($StateDir) | Out-Null
 $stateFile=Join-Path $StateDir 'overlay-state.json'
 $script:lastHeartbeatAt=0
+function Write-OverlayUiLog {
+ try{
+  $confirmVisible=($controls.ConfirmationPanel.Visibility -eq 'Visible')
+  $title=[string]$controls.ConfirmationTitle.Text
+  $hint=[string]$controls.HintText.Text
+  $bubble=[string]$controls.BubbleLabel.Text
+  $choices=@($controls.ConfirmationChoices.Children | ForEach-Object { [string]$_.Content })
+  $sig="$confirmVisible|$title|$hint|$bubble|$($choices -join ',')"
+  if($sig -eq [string]$script:lastUiSig){return}
+  $script:lastUiSig=$sig
+  $row=@{at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();event='ui';mode=[string]$script:displayMode;collapsed=[bool]$script:collapsed;confirmationVisible=$confirmVisible;confirmationTitle=$title;choices=$choices;hint=$hint;bubble=$bubble}
+  $dir=Join-Path $StateDir 'logs';[IO.Directory]::CreateDirectory($dir)|Out-Null
+  $line=($row|ConvertTo-Json -Compress -Depth 4)+[Environment]::NewLine
+  [IO.File]::AppendAllText((Join-Path $dir 'overlay-ui.jsonl'),$line,[Text.UTF8Encoding]::new($false))
+ }catch{}
+}
 function Write-OverlayPageLog([string]$tab,[string]$text){
  try{
   if($text -eq [string]$script:lastPageLogText -and $tab -eq [string]$script:lastPageLogTab){return}
@@ -983,7 +999,7 @@ $window.Add_SourceInitialized({
  }
 })
 $timer=New-Object Windows.Threading.DispatcherTimer;$timer.Interval=[TimeSpan]::FromMilliseconds(250)
-$timer.Add_Tick({Update-State;Update-OverlayPlayback;Write-OverlayHeartbeat;try{Update-NarrowPet -Snapshot $script:snapshot}catch{}})
+$timer.Add_Tick({Update-State;Update-OverlayPlayback;Write-OverlayHeartbeat;Write-OverlayUiLog;try{Update-NarrowPet -Snapshot $script:snapshot}catch{}})
 $pointerTimer=New-Object Windows.Threading.DispatcherTimer;$pointerTimer.Interval=[TimeSpan]::FromMilliseconds(40)
 $pointerTimer.Add_Tick({Pointer-Tick})
 $script:exitApproved=$false;$script:testExitChoice=$true;$script:exitConfirmations=0
