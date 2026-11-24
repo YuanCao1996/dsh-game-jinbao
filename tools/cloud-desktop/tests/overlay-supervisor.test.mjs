@@ -16,7 +16,7 @@ test('missing overlay recovers only after startup grace and repeated exits back 
 });
 test('fresh, collapsed and unresponsive live windows are never relaunched',async()=>{
  const f=fixture();f.setHeartbeat({pid:123,at:1000});f.setRunning(true);await f.supervisor.tick();assert.equal(f.reports.at(-1).state,'healthy');
- f.setClock(30000);await f.supervisor.tick();assert.equal(f.reports.at(-1).state,'unresponsive');assert.equal(f.launches.length,0);await f.supervisor.close();
+ f.setClock(12000);await f.supervisor.tick();assert.equal(f.reports.at(-1).state,'unresponsive');assert.equal(f.launches.length,0);await f.supervisor.close();
 });
 test('user exit and service shutdown never resurrect the window',async()=>{
  const f=fixture();f.setStop(true);await f.supervisor.start();await f.supervisor.tick();assert.equal(f.launches.length,0);
@@ -30,4 +30,13 @@ test('concurrent ticks deduplicate launch and shutdown waits for launch completi
 });
 test('a restored legacy overlay is left to its own host',async()=>{
  const f=fixture();f.setExternal(true);await f.supervisor.start();f.setClock(600000);await f.supervisor.tick();assert.deepEqual(f.launches,[false]);await f.supervisor.close();
+});
+test('同一健康状态会定时重写健康文件',async()=>{
+ const f=fixture();f.setHeartbeat({pid:123,at:1000});f.setRunning(true);
+ await f.supervisor.tick();
+ f.setHeartbeat({pid:123,at:32000});f.setClock(32000);
+ await f.supervisor.tick();
+ assert.deepEqual(f.reports.map(r=>r.state),['healthy','healthy']);
+ assert.equal(f.reports.at(-1).at,32000);
+ await f.supervisor.close();
 });

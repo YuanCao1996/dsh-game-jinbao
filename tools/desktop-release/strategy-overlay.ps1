@@ -714,13 +714,15 @@ function Update-State {
      $script:lastAugmentOfferKey=$offerKey
      $offerText=[string]$script:snapshot.augmentOfferText
      if($offerText -and (Get-Command Add-PlaybackMessage -ErrorAction SilentlyContinue)){
-      Add-PlaybackMessage ([pscustomobject]@{id='augment-offer-'+$offerKey;at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();text=$offerText;priority=1})
+      try{if(Get-Command Remove-AugmentOfferPlayback -ErrorAction SilentlyContinue){Remove-AugmentOfferPlayback}}catch{}
+      Add-PlaybackMessage ([pscustomobject]@{id='augment-offer-'+$offerKey;at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();text=$offerText;priority=1;expiresAt=([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()+45000)})
      }
      # 大框模式不会走窄条播报；主动切到海克斯页，否则看起来像“没识别”。
    if($script:displayMode -eq 'large' -and $script:tab -ne 'augments'){
     $script:augmentRestoreTab=$script:tab;Set-Tab 'augments'
    }
   }elseif(!$offerKey -and [string]$script:lastAugmentOfferKey){
+  try{if(Get-Command Remove-AugmentOfferPlayback -ErrorAction SilentlyContinue){Remove-AugmentOfferPlayback}}catch{}
   $script:lastAugmentOfferKey=''
   if($script:displayMode -eq 'large' -and $script:augmentRestoreTab -and $script:tab -eq 'augments'){Set-Tab $script:augmentRestoreTab}
   $script:augmentRestoreTab=$null
@@ -1234,6 +1236,13 @@ try{
     $script:testResult.narrowMode=$controls.NarrowPanel.Visibility -eq 'Visible' -and $controls.Expanded.Visibility -eq 'Collapsed' -and $window.Height -ge 2*$script:subtitleRowHeight
     $lines=@(Split-Subtitle ('安妮现在先清线，等队友先手，再根据强化选择下一件装备。'*4) 180)
     $script:testResult.subtitleSplits=$lines.Count -gt 2 -and ($lines -join '') -eq ('安妮现在先清线，等队友先手，再根据强化选择下一件装备。'*4)
+    $script:playbackQueue.Clear();if($script:activePlayback){Finish-Playback}
+    Add-PlaybackMessage ([pscustomobject]@{id='augment-offer-expired';at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();text='过期推荐';priority=1;expiresAt=([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()-1)})
+    $script:testResult.offerPlaybackExpired=$script:playbackQueue.Count -eq 0
+    Add-PlaybackMessage ([pscustomobject]@{id='augment-offer-live';at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();text='本轮推荐';priority=1;expiresAt=([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()+45000)})
+    $script:testResult.offerPlaybackQueued=((@($script:playbackQueue|Where-Object{[string]$_.id -eq 'augment-offer-live'}).Count -ge 1) -or ([string]$script:activePlayback.id -eq 'augment-offer-live'))
+    Remove-AugmentOfferPlayback
+    $script:testResult.offerPlaybackPurged=$script:playbackQueue.Count -eq 0 -and !$script:activePlayback
     $script:playbackQueue.Add([pscustomobject]@{id='native-test';at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();text='安妮先清线，选择适合当前阵容的强化。'})
     Playback-Tick;$script:lineElapsed=10000;Playback-Tick
     $script:testResult.subtitleAdvances=$script:subtitleIndex -gt 0 -or $script:playbackPhase -eq 'linger' -or !$script:activePlayback

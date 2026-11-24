@@ -336,6 +336,14 @@ function Show-NarrowPlaceholder {
   $controls.NarrowText.Foreground='#9CAABA'
  }catch{}
 }
+function Remove-AugmentOfferPlayback {
+ # 三选一提示只在本次选卡期间有意义：新 offer / 面板关闭时把旧的排队与正在播的
+ # augment-offer 播报一起丢掉，避免 7 分钟前的推荐在收起后才弹出来。
+ for($i=$script:playbackQueue.Count-1;$i -ge 0;$i--){
+  if([string]$script:playbackQueue[$i].id -like 'augment-offer-*'){$script:playbackQueue.RemoveAt($i)}
+ }
+ if($script:activePlayback -and [string]$script:activePlayback.id -like 'augment-offer-*'){Finish-Playback;Clear-PlaybackRows}
+}
 function Playback-Tick {
  if($script:displayMode -ne 'narrow' -or $script:closing){$modeClock.Stop();return}
  $now=Get-PlaybackNow

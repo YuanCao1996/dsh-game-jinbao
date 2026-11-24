@@ -1,11 +1,16 @@
 ﻿import { humanizeChampions } from '../dsh-coach-server/lib/advice-names.js';
 import { condenseAdvice, stripSources, noiseBroadcast, adviceSimilarity, fitPromptBudget } from './advice-text.mjs';
 import{mkdir,appendFile,writeFile,rename}from'node:fs/promises';import{join}from'node:path';
+import{fixItemNames}from'./item-name-verify.mjs';
 import{stateCoachingTrigger,buildLolCoachingPlan,createAdviceValidity,adviceIsValid}from'../dsh-coach-server/lib/lol-coaching-plan.js';
 import{createCoachScheduler}from'./coach-scheduler.mjs';
 // 配合窗口只取决于双方存活人数差，所以每轮都把人数算好塞进 state 事件。
 // c.allies 在某些采集路径下已经把本人算进去了，先按英雄名去掉本人再补一次，
 // 否则自己会被数两遍，人数差永远偏向我方。
+function contextItemNames(c){
+ const rows=[...(c?.me?.items??[]),...(c?.allies??[]).flatMap(player=>player?.items??[]),...(c?.enemies??[]).flatMap(player=>player?.items??[])];
+ return rows.map(item=>typeof item==='string'?item:String(item?.name??'')).filter(Boolean);
+}
 function aliveCounts(c){
  const self=String(c?.me?.champion??'');
  const count=people=>(Array.isArray(people)?people:[]).filter(p=>p?.dead!==true&&String(p?.champion??'')!==self).length;
@@ -115,7 +120,7 @@ let deathTurns=0;
     if(!stillCurrent(v)||!current||!adviceIsValid(validity,current,now())){note(v,'reply_discarded','context_changed');return;}
     if(typeof answer!=='string'||!answer.trim())throw Error('Empty automatic reply');
     const situationTextRaw=condenseAdvice(stripSources(String(answer)));
-const situationText=humanizeChampions(situationTextRaw);
+const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItemNames(current));
     if(noiseBroadcast(situationText)){note(v,'skip','roster_noise',{stage:'situation'});return;}
     await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:'situation',dimension:'now',broadcast:situationText,validity});rememberAdvice(situationText,'situation');await published(v,{stage:'situation'});store={signature,lastAt:now(),lastValidity:validity};return;
    }
@@ -206,7 +211,7 @@ const situationText=humanizeChampions(situationTextRaw);
     note(v,'coach_late_published',undefined,{stage:plan.stage});
    }
    if(typeof answer!=='string'||!answer.trim())throw Error('Empty automatic reply');
-   const stagedText=humanizeChampions(condenseAdvice(stripSources(String(answer))));
+   const stagedText=fixItemNames(humanizeChampions(condenseAdvice(stripSources(String(answer)))),contextItemNames(current));
    if(noiseBroadcast(stagedText)){note(v,'skip','roster_noise',{stage:plan.stage});return;}
    // 几乎逐字重复的兜底：提示词已经要求换说法，这里只拦「换个标点又播一遍」。
    const previousAdvice=recentAdvice(plan.stage),nextAdvice=stagedText.trim();if(previousAdvice.length>=16&&nextAdvice.length>=16&&adviceSimilarity(previousAdvice,nextAdvice)>=0.8){note(v,'skip','duplicate_advice',{stage:plan.stage});return;}

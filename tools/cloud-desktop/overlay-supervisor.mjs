@@ -7,8 +7,10 @@ export function createOverlaySupervisor({stateDir,launch,now=Date.now,
  stopped=async()=>{try{await access(join(stateDir,'overlay-stopped'));return true;}catch{return false;}},
  alive=pid=>{try{process.kill(pid,0);return true;}catch(error){return error.code==='EPERM';}},
  publish=value=>writeFile(join(stateDir,'overlay-health.json'),JSON.stringify(value),{mode:0o600})}){
- let closed=false,external=false,inFlight=null,lastAttempt=null,status='',attempts=[];
- const report=async(state,extra={})=>{if(status===state)return;status=state;await publish({state,at:now(),...extra}).catch(()=>{});};
+ let closed=false,external=false,inFlight=null,lastAttempt=null,status='',attempts=[],lastReportAt=0;
+ // 状态文件偶尔会写失败（被杀软/句柄占用）且不会重试；同一健康状态也每 30 秒重写一次，
+ // 这样监控/诊断不会永远停在启动时的 starting。
+ const report=async(state,extra={})=>{const changed=status!==state;status=state;if(!changed&&now()-lastReportAt<30000)return;lastReportAt=now();await publish({state,at:now(),...extra}).catch(()=>{});};
  async function attempt(recover){
   lastAttempt=now();if(recover)attempts.push(lastAttempt);
   try{const result=await launch(recover);external=result?.external===true;await report(external?'external':'starting',{recovery:recover});}

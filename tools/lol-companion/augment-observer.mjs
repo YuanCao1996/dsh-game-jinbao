@@ -121,6 +121,9 @@ function isLabelMerge(text){
       for(const line of lines){
        if(line.source!=='title'||!Number.isInteger(line.slot)||line.slot<0||line.slot>2)continue;
        if(catalog.get(normalize(line.text)))continue;
+       // 形近字已在 resolveName 里唯一纠正过的卡，不能再按原始 OCR 文本上报未收录：
+       // 实测「可武器」被纠正成「可靠武器」后，词表缺口日志里仍记了一条「可武器」。
+       if(resolveName(line.text))continue;
        const text=normalize(line.text);
        // 实测候选里混进过玩家名（大乱斗李无敌、一一一恶犬许…）。未收录名字必须更短、
        // 且不含聊天/名号特征，否则宁可报缺卡。

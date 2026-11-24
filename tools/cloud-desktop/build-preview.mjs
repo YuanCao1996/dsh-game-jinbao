@@ -1,4 +1,4 @@
-﻿import {readFile,mkdir,copyFile,writeFile,readdir,stat} from 'node:fs/promises';
+import {readFile,mkdir,copyFile,writeFile,readdir,stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {resolve,relative,dirname,join,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -8,7 +8,7 @@ import {promisify} from 'node:util';
 
 // Separate preview artifact: never changes stable release metadata or update feeds.
 export async function buildPreview({root,out,runtime=process.execPath}) {
- const updateVersion='0.3.22',version=updateVersion+'-standalone-preview.1';
+ const updateVersion='0.3.23',version=updateVersion+'-standalone-preview.1';
  const files=new Set();
  async function include(name) {
   const path=resolve(root,name),local=relative(root,path);
@@ -40,6 +40,8 @@ export async function buildPreview({root,out,runtime=process.execPath}) {
   'tools/dsh-onboarding/exploration-aliases.json','tools/dsh-onboarding/exploration-catalog.json','tools/dsh-onboarding/lol-roster.json',
   // 悬浮窗头像与装备图标的数据文件：运行时读取，模块遍历看不到。
   'tools/dsh-onboarding/champion-aliases.json','tools/dsh-onboarding/item-icon-paths.json',
+  // 播报装备名白名单（模型偶尔写错装备名，出口用它纠偏）。
+  'tools/lol-companion/item-names.json',
   // 成装白名单：图标只缓存/显示成装，散件不进界面也不落盘。
   'tools/dsh-onboarding/completed-item-ids.json',
   ...(await readdir(resolve(root,'tools/dsh-onboarding/exploration-icons')).catch(()=>[]))
