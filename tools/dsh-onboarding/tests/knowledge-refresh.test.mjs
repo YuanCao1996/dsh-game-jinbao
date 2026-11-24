@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,appendFile,readFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,appendFile,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createOverlayService} from '../overlay-state.mjs';
@@ -78,6 +78,71 @@ test('an empty lookup keeps retrying instead of waiting for a context change', a
   } finally {
     await service.close();
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('roster win rates render progressively while the rest are still loading', async () => {
+  // 实测玩家抱怨：进对局后「双方阵容」整列「—」要等所有英雄查完才一起出现。
+  // 现在每查到一个英雄就先写进 knowledge/state，慢的那一个不该拖住已到的人。
+  const { dir, service } = await serviceWith(async (query) => {
+    if (query.dataset === 'aram-ranking') {
+      await new Promise((r) => setTimeout(r, query.query === '阿狸' ? 900 : 10));
+      return { results: [{ data: { name: query.query, title: query.query, winRate: 50, tier: 'T2' } }] };
+    }
+    return { results: query.filter?._type === 'augments' ? AUGMENTS.map((data) => ({ data })) : [] };
+  });
+  try {
+    let firstRatedAt = 0, completeAt = 0;
+    for (let i = 0; i < 300; i += 1) {
+      const rated = service.view().playerRows.filter((row) => row.winRate != null).length;
+      if (rated > 0 && !firstRatedAt) firstRatedAt = Date.now();
+      if (rated >= 10) { completeAt = Date.now(); break; }
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.ok(firstRatedAt, 'at least one win rate should appear');
+    assert.ok(completeAt, 'all ten win rates should be loaded');
+    assert.ok(completeAt - firstRatedAt >= 400, 'rows must be published as they arrive, not only after the slowest lookup: gap ' + (completeAt - firstRatedAt) + 'ms');
+    assert.equal(service.view().playerRows.filter((row) => row.winRate != null).length, 10);
+  } finally {
+    await service.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('ten-player win rates come from the preloaded daily snapshot without a single retrieval call', async () => {
+  // 服务器数据是每日快照：应用空闲时已整份拉好，对局里没有理由再按英雄检索。
+  const dir = await mkdtemp(join(tmpdir(), 'jinbao-snapshot-roster-'));
+  await mkdir(join(dir, 'logs'));
+  const champions = ['虚空女皇', '盖伦', '拉克丝', '赵信', '索拉卡', '锐雯', '劫', '薇恩', '锤石', '阿狸'];
+  await writeFile(join(dir, 'aram-ranking-snapshot.json'), JSON.stringify({
+    at: Date.now(),
+    rows: champions.map((name, index) => ({name, title: name, winRate: 50 + index / 10, tier: 'T2', _type: 'champions'})),
+  }));
+  const at = Date.now();
+  await appendFile(join(dir, 'logs/lol-live.jsonl'), JSON.stringify({
+    game: 'lol', match: 'snap1', kind: 'state', t: at,
+    me: {champion: '虚空女皇'},
+    allies: ['虚空女皇', '盖伦', '拉克丝', '赵信', '索拉卡'].map((champion) => ({champion})),
+    enemies: ['锐雯', '劫', '薇恩', '锤石', '阿狸'].map((champion) => ({champion})),
+  }) + '\n');
+  let aramCalls = 0;
+  const service = await createOverlayService({
+    stateDir: dir,
+    pollMs: 20,
+    search: async (query) => {
+      if (query.dataset === 'aram-ranking') { aramCalls += 1; throw Object.assign(Error('must not fetch'), {status: 503}); }
+      return {results: []};
+    },
+    agentChat: async () => { throw Object.assign(Error('no model'), {status: 503}); },
+  });
+  try {
+    await waitFor(() => service.view().playerRows.length === 10 && service.view().playerRows.every((row) => row.winRate != null), 'snapshot roster');
+    assert.equal(aramCalls, 0, 'roster rows must be served from the local snapshot');
+    const rates = service.view().playerRows.map((row) => row.winRate).sort((a, b) => a - b);
+    assert.deepEqual(rates, [50, 50.1, 50.2, 50.3, 50.4, 50.5, 50.6, 50.7, 50.8, 50.9]);
+  } finally {
+    await service.close();
+    await rm(dir, {recursive: true, force: true});
   }
 });
 

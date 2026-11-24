@@ -1,7 +1,8 @@
-﻿import { commonChampionName } from '../dsh-coach-server/lib/advice-names.js';
+import { commonChampionName } from '../dsh-coach-server/lib/advice-names.js';
 import {activityLine} from './activity-line.mjs';
 import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
 import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId, leaderboardRowData } from './leaderboard-pages.mjs';
+import { createAramSnapshot, preloadAramSnapshot as runAramPreload } from './aram-snapshot.mjs';
 import { mkdir, readdir, stat, open, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
 // 本地英雄定位表（roles + 开团/硬控标记），用于选人阶段的阵容判断。
@@ -1151,8 +1152,16 @@ export function skipStaleHistory({ size, mtimeMs, now = Date.now(), maxAgeMs = S
   if (!Number.isFinite(mtimeMs)) return false;
   return now - mtimeMs > maxAgeMs;
 }
-export async function createOverlayService({ stateDir, agentChat, agentImage, search, pollMs = 500, equipmentDebounceMs=2000, equipmentCooldownMs=30000, equipmentOpeningRetryMs=15000, knowledgeRetryMs=15000,activity,canAutoRequest,experience=null,praiseCloudGraceMs=0 }) {
-  search=createKnowledgeSearch(search);
+export async function createOverlayService({ stateDir, agentChat, agentImage, search, pollMs = 500, equipmentDebounceMs=2000, equipmentCooldownMs=30000, equipmentOpeningRetryMs=15000, knowledgeRetryMs=15000,activity,canAutoRequest,experience=null,praiseCloudGraceMs=0,preloadAramSnapshot=undefined }) {
+  const rawSearch=search;
+  search=createKnowledgeSearch(rawSearch);
+  // 十人胜率是每日快照：空闲时一次预取整份榜单，对局中直接本地查表，不再按英雄检索。
+  // 测试环境默认关闭（会多打约 170 条请求，干扰用例里的检索计数）；线上默认开启。
+  const aramSnapshot = createAramSnapshot({ stateDir });
+  const preloadAram = preloadAramSnapshot === undefined ? !process.env.NODE_TEST_CONTEXT : !!preloadAramSnapshot;
+  const snapshotSearch = preloadAram ? createKnowledgeSearch(rawSearch, { spacingMs: 60, bulkSpacingMs: 25, bulkConcurrency: 3 }) : null;
+  let aramPreloadTask = null;
+  let aramPreloadRetryAt = 0;
   const logs = join(stateDir, 'logs'), output = join(stateDir, 'overlay-state.json');
   // 高光截图：关键事件（多杀/团灭/破水晶/大龙/首杀）各留一张，每局上限 6 张，本机存储。
   const highlights = createHighlights({ stateDir });
@@ -1204,6 +1213,9 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
   // 启动后先给 5 秒宽限：状态可能是空的，此时不该立刻拉总榜（会白白多两次请求）
   const bootAt = Date.now();
   let forceRefresh = false, cached = { key: '', rows: [], candidates: new Map(), heroes: new Map() };
+  // 十人胜率是每日快照，没必要每局重查：跨对局记住 10 分钟，
+  // 同一晚再排到相同英雄时页面直接出数（新对局的 cached.heroes 从这份记忆里补）。
+  const heroMemo = new Map(), HERO_MEMO_TTL_MS = 10 * 60 * 1000;
   let retryKnowledgeAt=Infinity;
   let lastForcedKnowledgeAt=0;
   const contextKey = () => state.game+':'+state.match+':'+state.matchStartedAt+':'+state.me.champion+':'+JSON.stringify([offerNames(state.offers).sort(),[...state.ownedAugments].sort(),rosterChampions(state).sort()]);
@@ -1315,6 +1327,12 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     try{await writeFile(join(stateDir,'knowledge-status.json'),JSON.stringify({at:Date.now(),phase:'started',game:state.game,match:state.match,champion:state.me.champion,rows:(knowledge.rows??[]).length}));}catch{}
     const errors=[];
     const failed=e=>errors.push(Number(e?.status)||503);
+    // 渐进发布时也要带上失败状态：否则页面先看到胜率、状态栏却短暂空白，
+    // 看起来像「数据到了却没加载成功」。最终记录复用同一句话。
+    const knowledgeMessage=()=>errors.includes(429)?'检索请求受限，稍后重试':errors.some(s=>s===401||s===403)?'检索授权暂不可用，请查看设置':errors.length?'检索暂时失败，正在重试':([...cache.heroes.values()].flat().length?'':'未收录匹配的英雄数据');
+    // 上一次刷新失败留下的状态：本轮的 base 查询可能因为 1.2 秒重试间隔被跳过，
+    // 此时 errors 为空并不代表恢复，不能把「检索失败」悄悄清掉（测试与实际都会看到闪烁）。
+    const previousFailure={failed:knowledge.failed===true,message:knowledge.message??''};
     try {
       const offered = offerNames(state.offers).slice(0,3);
       const base = async () => {
@@ -1372,14 +1390,37 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
       }
       await Promise.all([base(),...rosterChampions(state).filter(name=>game==='lol'&&(force||!cache.heroes.has(name))).map(async name=>{
         try{
-          // 先用游戏里的称号查，查不到再用本名查一次：索引里的行以本名为主键，
-          // 只按称号匹配会整批落空（实测一局里十个人全是「—」）。
-          const localName=lolRoster[name]?.name;
-          const terms=(typeof localName==='string'&&localName&&localName!==name)?[name,localName]:[name];
-          for(const term of terms){
-            const result=await search({game,query:term,dataset:'aram-ranking',limit:1});
-            const found=(result.results??[]).map(item=>({...item.data,_viewKind:'hero'})).filter(row=>heroStatMatches(row,name)||heroStatMatches(row,term));
-            if(found.length){cache.heroes.set(name,found);break;}
+          // 先用本地快照：服务器每日榜单已在空闲时整份拉好，对局中查表不等网络；
+          // 快照没有的英雄再回退到会话记忆/单条检索（新英雄或称号变体）。
+          const snapshotRow=aramSnapshot.lookup(name);
+          if(snapshotRow)cache.heroes.set(name,[snapshotRow]);
+          else{
+            // 跨对局记忆命中就不必再查（force 手动刷新也不重拉每日快照）。
+            const memo=heroMemo.get(name);
+            if(memo&&Date.now()-memo.at<HERO_MEMO_TTL_MS)cache.heroes.set(name,memo.rows);
+            else{
+              // 先用游戏里的称号查，查不到再用本名查一次：索引里的行以本名为主键，
+              // 只按称号匹配会整批落空（实测一局里十个人全是「—」）。
+              const localName=lolRoster[name]?.name;
+              const terms=(typeof localName==='string'&&localName&&localName!==name)?[name,localName]:[name];
+              for(const term of terms){
+                const result=await search({game,query:term,dataset:'aram-ranking',limit:1});
+                const found=(result.results??[]).map(item=>({...item.data,_viewKind:'hero'})).filter(row=>heroStatMatches(row,name)||heroStatMatches(row,term));
+                if(found.length){
+                  cache.heroes.set(name,found);
+                  heroMemo.set(name,{at:Date.now(),rows:found});
+                  if(heroMemo.size>200)heroMemo.delete(heroMemo.keys().next().value);
+                  aramSnapshot.remember(name,found[0]);
+                  break;
+                }
+              }
+            }
+          }
+          // 每拿到一个英雄就先把已到的行推给界面：玩家不必等十个人全部查完才看到第一列胜率。
+          // 已经有这行时（手动刷新/跨对局记忆命中）不重复写盘。
+          if(stillCurrent()&&cache.heroes.has(name)&&!(knowledge.rows??[]).some(row=>row?._viewKind==='hero'&&heroStatMatches(row,name))){
+            knowledge={...knowledge,rows:[...offered.flatMap(option=>cache.candidates.get(option)??[]),...cache.rows,...[...cache.heroes.values()].flat()],leaderboard:cache.leaderboard,message:errors.length?knowledgeMessage():(knowledge.message??''),failed:errors.length>0||knowledge.failed===true};
+            await flush();
           }
         }catch(e){failed(e);}
       }),...offered.filter(name=>game==='lol'&&champion&&(force||!cache.candidates.has(name))).map(async name=>{
@@ -1393,7 +1434,10 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
         }
         }catch(e){failed(e); /* Keep successful candidates and retry this slot later. */ }
       })]);
-      if (stillCurrent()) knowledge = { rows: [...offered.flatMap(name=>cache.candidates.get(name)??[]),...cache.rows,...[...cache.heroes.values()].flat()].filter(row => row?._viewKind==='hero'|| (typeof row?.champion === 'string' && row.champion.includes(champion))||row?.name===champion||row?.title===champion), message: errors.includes(429)?'检索请求受限，稍后重试':errors.some(s=>s===401||s===403)?'检索授权暂不可用，请查看设置':errors.length?'检索暂时失败，正在重试':([...cache.heroes.values()].flat().length?'':'未收录匹配的英雄数据'), failed:errors.length>0 };
+      if (stillCurrent()) {
+        const stillFailed = errors.length > 0 || (!cache.baseLoaded && previousFailure.failed);
+        knowledge = { rows: [...offered.flatMap(name=>cache.candidates.get(name)??[]),...cache.rows,...[...cache.heroes.values()].flat()].filter(row => row?._viewKind==='hero'|| (typeof row?.champion === 'string' && row.champion.includes(champion))||row?.name===champion||row?.title===champion), message: errors.length ? knowledgeMessage() : (previousFailure.failed ? previousFailure.message : knowledgeMessage()), failed: stillFailed };
+      }
     } catch (e) {
       if(stillCurrent())knowledge = { message: e.status === 401 || e.status === 403 ? '请在设置页登录并开通攻略检索权限；自带模型密钥与检索权限独立。' : '推荐检索暂时不可用，可在聊天中咨询。' };
     } finally {
@@ -1568,6 +1612,18 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
         const coach = JSON.parse(await readFile(join(stateDir, 'coach_live_state.json'), 'utf8'));
         if (coach.lastReply?.text&&coach.lastReply.match)router.apply({...coach.lastReply,broadcast:coach.lastReply.text},'coach');
       } catch {}
+      // 空闲/选人/加载阶段预取整份十人胜率快照：之后对局中直接本地查表，不再按英雄检索。
+      // 对局进行中不预取，避免和局内检索抢带宽与额度。
+      if(preloadAram&&!aramPreloadTask&&!aramSnapshot.fresh()&&!closed&&Date.now()>=aramPreloadRetryAt){
+        const inLiveGame=state.phase==='InProgress'&&!state.ended&&Date.now()-state.at<30000;
+        if(!inLiveGame&&Date.now()-bootAt>5000){
+          aramPreloadTask=runAramPreload({snapshot:aramSnapshot,search:snapshotSearch,champions:Object.keys(lolRoster)})
+            // 没拉成完整快照就隔 5 分钟再试：服务故障/未登录时不能在每个 poll 里重打 170 条请求。
+            .then(()=>{if(!aramSnapshot.fresh())aramPreloadRetryAt=Date.now()+5*60*1000;})
+            .catch(()=>{aramPreloadRetryAt=Date.now()+5*60*1000;})
+            .finally(()=>{aramPreloadTask=null;});
+        }
+      }
       const key = contextKey();
       if(key!==knowledgeKey){
         knowledgeKey=key;knowledge=cached.key===baseContextKey()?{rows:knowledge.rows??[]}:{};
@@ -1675,6 +1731,6 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
         throw e;
       } finally { busy = false; await flush(); }
     },
-    async close() { closed = true; search.close(); equipmentCoach.close(); clearInterval(timer); await writes.catch(() => {}); await memory.flush(); },
+    async close() { closed = true; search.close(); snapshotSearch?.close(); equipmentCoach.close(); clearInterval(timer); await writes.catch(() => {}); await memory.flush(); },
   };
 }

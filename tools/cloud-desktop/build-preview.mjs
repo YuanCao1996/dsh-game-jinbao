@@ -8,7 +8,7 @@ import {promisify} from 'node:util';
 
 // Separate preview artifact: never changes stable release metadata or update feeds.
 export async function buildPreview({root,out,runtime=process.execPath}) {
- const updateVersion='0.2.40',version=updateVersion+'-standalone-preview.1';
+ const updateVersion='0.3.17',version=updateVersion+'-standalone-preview.1';
  const files=new Set();
  async function include(name) {
   const path=resolve(root,name),local=relative(root,path);
