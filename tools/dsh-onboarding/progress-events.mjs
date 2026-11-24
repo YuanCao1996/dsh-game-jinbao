@@ -1,4 +1,4 @@
-﻿import {isCompletedItem} from '../lol-companion/item-policy.mjs';
+import {isCompletedItem} from '../lol-companion/item-policy.mjs';
 import {recordChoice} from './choice-reactions.mjs';
 const clean=value=>typeof value==='string'?value.trim().slice(0,120):'';
 export function progressSeconds(value,fallback=null){
@@ -101,8 +101,8 @@ export function observeEquipment(state){
     }
     const previous=state.equipmentSnapshots.get(key);state.equipmentSnapshots.set(key,current);
     if(!previous)continue; // First observation is a baseline, never a fabricated purchase.
-    const added=[],removed=[];
-    for(const [id,item] of current){const n=item.count-(previous.get(id)?.count??0);if(n>0&&item.completed)added.push(item.name+(n>1?' ×'+n:''));}
+    const added=[],removed=[],addedRows=[];
+    for(const [id,item] of current){const n=item.count-(previous.get(id)?.count??0);if(n>0&&item.completed){added.push(item.name+(n>1?' ×'+n:''));addedRows.push({id:String(id),name:item.name,count:n});}}
     // 买装备的反馈：日志里没有 purchase 事件，只能靠 items 差分发现「多了一件成装」。
     if(player===state.me&&added.length){
       for(const name of added){
@@ -112,7 +112,7 @@ export function observeEquipment(state){
     }
     for(const [id,item] of previous){const n=item.count-(current.get(id)?.count??0);if(n>0&&item.completed)removed.push(item.name+(n>1?' ×'+n:''));}
     if(added.length&&state.enemies.includes(player)){
-      state.completedEquipmentEvents=[...(state.completedEquipmentEvents??[]),{at:state.at,time:state.gameSeconds,hero:player.champion,items:added}].slice(-12);
+      state.completedEquipmentEvents=[...(state.completedEquipmentEvents??[]),{at:state.at,time:state.gameSeconds,hero:player.champion,items:added,itemRows:addedRows}].slice(-12);
       // 关键装备立刻说一句，不用等模型（实测中娅那次等了约 3 分钟）。
       for(const text of threatAlerts(state,player.champion,added)){
         state.broadcasts=[...(state.broadcasts??[]),{at:Number(state.at)||Date.now(),text,priority:2,localAlert:true,expiresAt:(Number(state.at)||Date.now())+15000}].slice(-12);

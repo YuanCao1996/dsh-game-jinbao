@@ -7,6 +7,118 @@ function New-OverlaySurfaceBrush([string]$hex){
  $color=[Windows.Media.ColorConverter]::ConvertFromString($hex);$color.A=[byte][Math]::Round(255*$controls.OpacitySlider.Value/100*0.45)
  return New-Object Windows.Media.SolidColorBrush($color)
 }
+# ── 图片：英雄头像（随包本地图）与装备图标（本机服务缓存） ───────────────
+# 头像走随包的 exploration-icons + champion-aliases 映射，完全离线；
+# 装备图标走 /item-icon/<id>.png（服务端首次拉 CDN 并落盘），断网时自动退回文字。
+$script:championAliasMap=$null
+$script:championIconFileMap=$null
+$script:championIconCache=@{}
+$script:itemIconCache=@{}
+$script:itemStripKey=''
+$script:overlayServerBase=$null
+function Get-OverlayNormalizedKey([string]$value){return (($value -replace '[\s·・()（）]','').ToLowerInvariant())}
+function Get-ChampionAliasMap {
+ if($null -ne $script:championAliasMap){return $script:championAliasMap}
+ $map=@{}
+ try{
+  $path=Join-Path (Join-Path $PSScriptRoot '..\dsh-onboarding') 'champion-aliases.json'
+  $json=[IO.File]::ReadAllText($path,[Text.Encoding]::UTF8) | ConvertFrom-Json
+  foreach($property in $json.PSObject.Properties){$key=Get-OverlayNormalizedKey $property.Name;if($key){$map[$key]=[string]$property.Value}}
+ }catch{}
+ $script:championAliasMap=$map;return $map
+}
+function Get-ChampionIconFileMap {
+ if($null -ne $script:championIconFileMap){return $script:championIconFileMap}
+ $map=@{}
+ try{
+  $dir=Join-Path (Join-Path $PSScriptRoot '..\dsh-onboarding') 'exploration-icons'
+  if(Test-Path $dir){foreach($file in [IO.Directory]::GetFiles($dir,'*.jpg')){$key=Get-OverlayNormalizedKey ([IO.Path]::GetFileNameWithoutExtension($file));if($key){$map[$key]=$file}}}
+ }catch{}
+ $script:championIconFileMap=$map;return $map
+}
+function Get-ChampionIconImage([string]$name){
+ $key=Get-OverlayNormalizedKey $name;if(!$key){return $null}
+ $alias=(Get-ChampionAliasMap)[$key]
+ if(!$alias){return $null}
+ $cacheKey=$alias.ToLowerInvariant()
+ if($script:championIconCache.ContainsKey($cacheKey)){return $script:championIconCache[$cacheKey]}
+ $file=(Get-ChampionIconFileMap)[(Get-OverlayNormalizedKey $alias)]
+ if(!$file){return $null}
+ try{
+  $bmp=New-Object Windows.Media.Imaging.BitmapImage
+  $bmp.BeginInit()
+  $bmp.CacheOption=[Windows.Media.Imaging.BitmapCacheOption]::OnLoad
+  $bmp.CreateOptions=[Windows.Media.Imaging.BitmapCreateOptions]::IgnoreImageCache
+  $bmp.DecodePixelWidth=48
+  $bmp.UriSource=New-Object System.Uri($file)
+  $bmp.EndInit();$bmp.Freeze()
+  $script:championIconCache[$cacheKey]=$bmp
+  return $bmp
+ }catch{return $null}
+}
+function New-ChampionCell([string]$name,[double]$font,[string]$tone){
+ $cell=New-Object Windows.Controls.Grid
+ $iconColumn=New-Object Windows.Controls.ColumnDefinition;$iconColumn.Width='Auto';$cell.ColumnDefinitions.Add($iconColumn)|Out-Null
+ $textColumn=New-Object Windows.Controls.ColumnDefinition;$textColumn.Width=[Windows.GridLength]::new(1,[Windows.GridUnitType]::Star);$cell.ColumnDefinitions.Add($textColumn)|Out-Null
+ $tile=New-Object Windows.Controls.Border
+ $tile.Width=18;$tile.Height=18;$tile.CornerRadius=[Windows.CornerRadius]::new(9);$tile.Margin='0,0,5,0';$tile.VerticalAlignment='Center'
+ $image=Get-ChampionIconImage $name
+ if($image){$brush=New-Object Windows.Media.ImageBrush($image);$brush.Stretch=[Windows.Media.Stretch]::UniformToFill;$tile.Background=$brush}
+ else{
+  $tile.Background=New-OverlaySurfaceBrush '#2A3642'
+  $initial=New-OverlayLabel $(if($name){$name.Substring(0,1)}else{'?'}) 9 '#C9D3DD'
+  $initial.TextWrapping='NoWrap';$initial.LineHeight=12;$initial.HorizontalAlignment='Center';$initial.VerticalAlignment='Center'
+  $tile.Child=$initial
+ }
+ $cell.Children.Add($tile)|Out-Null
+ $label=New-OverlayLabel $name $font $tone
+ $label.TextWrapping='NoWrap';$label.TextTrimming='CharacterEllipsis';$label.VerticalAlignment='Center';$label.LineHeight=[Math]::Ceiling($font*1.4)
+ [Windows.Controls.Grid]::SetColumn($label,1);$cell.Children.Add($label)|Out-Null
+ return $cell
+}
+function Get-OverlayServerBase {
+ if($script:overlayServerBase -ne $null){return $script:overlayServerBase}
+ $base=''
+ try{
+  $url=[IO.File]::ReadAllText((Join-Path $StateDir 'settings-link.txt')).Trim()
+  if($url){$base=([Uri]$url).GetLeftPart([UriPartial]::Authority)}
+ }catch{}
+ $script:overlayServerBase=$base;return $base
+}
+function Get-OverlayItemBrush([string]$id){
+ if($script:itemIconCache.ContainsKey($id)){return $script:itemIconCache[$id]}
+ $base=Get-OverlayServerBase
+ if(-not $base -or $id -notmatch '^\d+$'){return $null}
+ try{
+  $bmp=New-Object Windows.Media.Imaging.BitmapImage
+  $bmp.BeginInit();$bmp.UriSource=New-Object System.Uri("$base/item-icon/$id.png");$bmp.DecodePixelWidth=40;$bmp.EndInit()
+  $brush=New-Object Windows.Media.ImageBrush($bmp);$brush.Stretch=[Windows.Media.Stretch]::UniformToFill
+  $script:itemIconCache[$id]=$brush
+  return $brush
+ }catch{return $null}
+}
+function New-OverlayItemTile([string]$id,[string]$label){
+ $tile=New-Object Windows.Controls.Border
+ $tile.Width=18;$tile.Height=18;$tile.CornerRadius=[Windows.CornerRadius]::new(4);$tile.Margin='0,0,3,0'
+ $tile.ToolTip=$label
+ $brush=Get-OverlayItemBrush $id
+ if($brush){$tile.Background=$brush}else{$tile.Background=New-OverlaySurfaceBrush '#33404D'}
+ return $tile
+}
+function Update-ItemStrip {
+ if(!$script:snapshot){return}
+ $self=@($script:snapshot.selfItemRows | Where-Object {$_ -and $_.id})
+ $enemy=@($script:snapshot.enemyKeyItemRows | Where-Object {$_ -and $_.id})
+ $key=(@($self|ForEach-Object {[string]$_.id}) -join ',')+'|'+(@($enemy|ForEach-Object {[string]$_.id}) -join ',')
+ if($key -eq $script:itemStripKey){return}
+ $script:itemStripKey=$key
+ $controls.ItemStrip.Children.Clear()
+ $controls.EnemyItemStrip.Children.Clear()
+ foreach($row in $self){$controls.ItemStrip.Children.Add((New-OverlayItemTile ([string]$row.id) ([string]$row.name)))|Out-Null}
+ foreach($row in $enemy){$controls.EnemyItemStrip.Children.Add((New-OverlayItemTile ([string]$row.id) (([string]$row.hero+' · '+[string]$row.name).Trim())))|Out-Null}
+ $controls.ItemStripPanel.Visibility=if($self.Count){'Visible'}else{'Collapsed'}
+ $controls.EnemyItemStripPanel.Visibility=if($enemy.Count){'Visible'}else{'Collapsed'}
+}
 function Update-OverlayComposer {
  if(!$controls.ComposerPlaceholder){return}
  $controls.ComposerPlaceholder.Visibility=if($controls.QuestionBox.Text){'Collapsed'}else{'Visible'}
@@ -99,6 +211,39 @@ function Update-ChatJump {
  if($script:scrollFollow){$script:scrollFollow[$script:tab]=$gap -le 24}
  $controls.LatestMessageButton.Visibility=if(($script:tab -eq 'advice' -or $script:tab -eq 'chat') -and $gap -gt 32){'Visible'}else{'Collapsed'}
 }
+# 消息里的表格行：阵营 / 英雄 / 胜率 / 强度 四列对齐。
+# 之前把阵容拼成一行文字，中文字宽不齐看起来很乱，这里按列排版。
+function Add-OverlayTableRow($cells,[bool]$isHead,[double]$font,[bool]$isMe){
+ $row=New-Object Windows.Controls.Grid
+ $specs=@(@(32,0),@(1.0,0),@(60,1),@(44,2))
+ foreach($spec in $specs){
+  $column=New-Object Windows.Controls.ColumnDefinition
+  if([double]$spec[0] -le 1){$column.Width=[Windows.GridLength]::new([double]$spec[0],[Windows.GridUnitType]::Star)}
+  else{$column.Width=[Windows.GridLength]::new([double]$spec[0],[Windows.GridUnitType]::Pixel)}
+  $row.ColumnDefinitions.Add($column)|Out-Null
+ }
+ for($i=0;$i -lt 4;$i++){
+  $value=if($i -lt $cells.Count){[string]$cells[$i]}else{""}
+  $align=$specs[$i][1]
+  $tone=if($isHead){"#8B99A6"}elseif($isMe){"#E7BE79"}else{"#E4EBF2"}
+  if($isMe -and $i -eq 0 -and $value){$value="▶"}
+  # 英雄列在数据行里带头像；表头保持纯文字。
+  if(-not $isHead -and $i -eq 1){
+   $cell=New-ChampionCell $value ([Math]::Max(11,$font-1)) $tone
+   $cell.Margin="6,1,0,1"
+   [Windows.Controls.Grid]::SetColumn($cell,$i);$row.Children.Add($cell)|Out-Null
+   continue
+  }
+  $label=New-OverlayLabel $value ([Math]::Max(11,$font-1)) $tone
+  $label.TextTrimming="CharacterEllipsis"
+  $label.TextAlignment=if($align -eq 1){"Right"}elseif($align -eq 2){"Center"}else{"Left"}
+  $label.Margin=if($i -gt 0){"6,1,0,1"}else{"0,1,0,1"}
+  if($isHead -or $isMe){$label.FontWeight="SemiBold"}
+  [Windows.Controls.Grid]::SetColumn($label,$i)
+  $row.Children.Add($label)|Out-Null
+ }
+ return $row
+}
 function Update-OverlaySurface([bool]$force=$false){
  Update-StatusDot
  # 三选一按游戏面板的「左/中/右」排成三列：每列一顶帽+排名+名字+品质，
@@ -147,32 +292,6 @@ function Add-OverlaySlots($slots,[double]$font){
   }
  }
  return $grid
-}
-# 消息里的表格行：阵营 / 英雄 / 胜率 / 强度 四列对齐。
-# 之前把阵容拼成一行文字，中文字宽不齐看起来很乱，这里按列排版。
-function Add-OverlayTableRow($cells,[bool]$isHead,[double]$font,[bool]$isMe){
- $row=New-Object Windows.Controls.Grid
- $specs=@(@(32,0),@(1.0,0),@(60,1),@(44,2))
- foreach($spec in $specs){
-  $column=New-Object Windows.Controls.ColumnDefinition
-  if([double]$spec[0] -le 1){$column.Width=[Windows.GridLength]::new([double]$spec[0],[Windows.GridUnitType]::Star)}
-  else{$column.Width=[Windows.GridLength]::new([double]$spec[0],[Windows.GridUnitType]::Pixel)}
-  $row.ColumnDefinitions.Add($column)|Out-Null
- }
- for($i=0;$i -lt 4;$i++){
-  $value=if($i -lt $cells.Count){[string]$cells[$i]}else{""}
-  $align=$specs[$i][1]
-  $tone=if($isHead){"#8B99A6"}elseif($isMe){"#E7BE79"}else{"#E4EBF2"}
-  if($isMe -and $i -eq 0 -and $value){$value="▶"}
-  $label=New-OverlayLabel $value ([Math]::Max(11,$font-1)) $tone
-  $label.TextTrimming="CharacterEllipsis"
-  $label.TextAlignment=if($align -eq 1){"Right"}elseif($align -eq 2){"Center"}else{"Left"}
-  $label.Margin=if($i -gt 0){"6,1,0,1"}else{"0,1,0,1"}
-  if($isHead -or $isMe){$label.FontWeight="SemiBold"}
-  [Windows.Controls.Grid]::SetColumn($label,$i)
-  $row.Children.Add($label)|Out-Null
- }
- return $row
 }
 if(!$controls.RichContent){return}
  Update-OverlayComposer

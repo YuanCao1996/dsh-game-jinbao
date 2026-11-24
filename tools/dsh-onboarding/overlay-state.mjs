@@ -725,6 +725,31 @@ export function overlayView(state, knowledge = {}) {
   const rows = knowledge.rows ?? [];
   const hero = rows.find(row => row._viewKind==='hero' && heroStatMatches(row,me.champion));
   const own = items(state.game==='lol'?list(me.items).filter(isCompletedItem):me.items);
+  // 当前装备与敌方关键成装的结构化行：界面按 id 取本地图标，文字仍由下面的字符串负责。
+  const selfItemRows = (()=>{
+    if(state.game!=='lol')return [];
+    return list(me.items).filter(isCompletedItem).map(item=>({id:String(item?.id??''),name:String(item?.name??'').trim()}))
+      .filter(item=>/^\d+$/.test(item.id)&&item.name).slice(0,6);
+  })();
+  const enemyKeyItemRows = (()=>{
+    if(state.game!=='lol')return [];
+    const idByName=new Map();
+    for(const player of state.enemies??[])for(const item of list(player?.items))if(item&&item.name&&/^\d+$/.test(String(item?.id??'')))idByName.set(String(item.name),String(item.id));
+    const result=[],seen=new Set();
+    for(const event of [...(state.completedEquipmentEvents??[])].reverse()){
+      const candidates=Array.isArray(event?.itemRows)&&event.itemRows.length
+        ? event.itemRows
+        : (event?.items??[]).map(name=>{const bare=String(name??'').replace(/ ×\d+$/,'');return {id:idByName.get(bare)??'',name:bare};});
+      for(const item of candidates){
+        const id=String(item?.id??''),name=String(item?.name??'').trim();
+        if(!/^\d+$/.test(id)||!name||seen.has(id))continue;
+        seen.add(id);result.push({id,name,hero:String(event?.hero??'')});
+        if(result.length>=6)break;
+      }
+      if(result.length>=6)break;
+    }
+    return result;
+  })();
   const players = [...state.allies.map(p => ({ ...p, side: '友' })), ...state.enemies.map(p => ({ ...p, side: '敌' })),...state.bench.map(p=>({...p,side:'备选'}))];
   if(!players.length&&me.champion)players.push({...me,side:'我'});
   // 数据里的英雄名带称号（如"虚空女皇 卑尔维斯"），界面只显示名字部分。
@@ -1090,6 +1115,8 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
     confirmation:augmentConfirmation(state,rows,Date.now(),{panelOpen:(state.offers??[]).length>0}),
     heroStats,
     playerRows,
+    selfItemRows,
+    enemyKeyItemRows,
     stats: heroStats+'\n\n'+roster.join('\n'),
     teamfight: state.teamfight || '可在聊天中询问本局团战打法；建议会结合双方阵容和当前装备。',
     // The events page now mirrors exactly the window the Agent receives, so "why did it

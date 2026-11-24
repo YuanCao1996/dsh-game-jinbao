@@ -1,5 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {createLocalExploration} from './exploration-local.mjs';
+import {createItemIconStore} from './item-icons.mjs';
 import { createAnnotations, ANNOTATION_TAGS } from './annotations.mjs';
 import { createHighlights, matchFolder } from './highlights.mjs';
 import { createBilibiliDanmaku, createViewerFilter } from '../lol-companion/danmaku-bridge.mjs';
@@ -60,6 +61,8 @@ export async function createSetupServer({credentials,stateDir,port=3084,coachPor
  // 探索记录改为本地版：不联网、不上传、没有排行榜（排行榜/跨设备同步才需要服务器）。
 const explorationCatalog=JSON.parse(readFileSync(new URL('./exploration-catalog.json',import.meta.url),'utf8'));
 const exploration=createLocalExploration({stateDir,catalog:explorationCatalog});
+ // 装备图标：首次按 id 从公开 CDN 拉一张并缓存到状态目录，之后完全本地读取。
+ const itemIcons=createItemIconStore({stateDir});
  // 批注追加式存储；高光截图默认开启（只截游戏画面、本机存储、可关闭）。
  const annotations = createAnnotations({ stateDir });
  const highlights = createHighlights({ stateDir, enabled: () => highlightSettings.enabled });
@@ -420,6 +423,13 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
     if(!iconBytes){send(res,404,{error:'icon missing'});return;}
     res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'public, max-age=604800','Content-Length':iconBytes.length});
     res.end(iconBytes);return;
+   }
+   // 装备图标本地缓存：/item-icon/<id>.png。首次请求走 CDN 并落盘，之后不再联网。
+   if(req.method==='GET'&&req.url.startsWith('/item-icon/')){
+    const id=decodeURIComponent(String(req.url.slice('/item-icon/'.length))).replace(/\.png$/i,'');
+    let icon=null;try{icon=await itemIcons.get(id);}catch{}
+    if(!icon){send(res,404,{error:'icon missing'});return;}
+    res.writeHead(200,{'Content-Type':icon.type,'Cache-Control':'public, max-age=604800','Content-Length':icon.bytes.length});res.end(icon.bytes);return;
    }
    if(req.method==='GET'&&req.url==='/exploration'){
     res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' blob: https://game.gtimg.cn; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});

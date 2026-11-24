@@ -8,7 +8,7 @@ import {promisify} from 'node:util';
 
 // Separate preview artifact: never changes stable release metadata or update feeds.
 export async function buildPreview({root,out,runtime=process.execPath}) {
- const updateVersion='0.3.17',version=updateVersion+'-standalone-preview.1';
+ const updateVersion='0.3.18',version=updateVersion+'-standalone-preview.1';
  const files=new Set();
  async function include(name) {
   const path=resolve(root,name),local=relative(root,path);
@@ -38,6 +38,8 @@ export async function buildPreview({root,out,runtime=process.execPath}) {
   'tools/dsh-onboarding/diary.html',
   // 探索图鉴改版后新增的运行时数据：本地探索服务用 readFileSync 读，模块遍历看不到它们。
   'tools/dsh-onboarding/exploration-aliases.json','tools/dsh-onboarding/exploration-catalog.json','tools/dsh-onboarding/lol-roster.json',
+  // 悬浮窗头像与装备图标的数据文件：运行时读取，模块遍历看不到。
+  'tools/dsh-onboarding/champion-aliases.json','tools/dsh-onboarding/item-icon-paths.json',
   ...(await readdir(resolve(root,'tools/dsh-onboarding/exploration-icons')).catch(()=>[]))
     .filter(name=>/\.(jpg|png)$/i.test(name))
     .map(name=>'tools/dsh-onboarding/exploration-icons/'+name),

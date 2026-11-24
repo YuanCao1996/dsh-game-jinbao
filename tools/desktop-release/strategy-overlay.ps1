@@ -144,6 +144,14 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      </WrapPanel>
      <TextBlock x:Name="LauncherText" Visibility="Collapsed" Foreground="#FBBF24" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"/>
      <TextBlock x:Name="UpdateText" Foreground="#94A3B8" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
+     <StackPanel x:Name="ItemStripPanel" Orientation="Horizontal" Margin="0,4,0,0" Visibility="Collapsed">
+      <TextBlock Text="装备" Foreground="#7C8B99" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
+      <StackPanel x:Name="ItemStrip" Orientation="Horizontal"/>
+     </StackPanel>
+     <StackPanel x:Name="EnemyItemStripPanel" Orientation="Horizontal" Margin="0,2,0,0" Visibility="Collapsed">
+      <TextBlock Text="敌方" Foreground="#7C8B99" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
+      <StackPanel x:Name="EnemyItemStrip" Orientation="Horizontal"/>
+     </StackPanel>
      <Button x:Name="ActionButton" Content="微信登录" HorizontalAlignment="Left" Visibility="Collapsed"/>
     </StackPanel>
     <StackPanel x:Name="Tabs" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,0,4"/>
@@ -232,6 +240,7 @@ foreach($name in @('StatusDot','StatusText','ComposerActions')){$controls[$name]
 foreach($name in @('NarrowPetImage','NarrowPetTail','NarrowBubble')){$controls[$name]=$window.FindName($name)}
 $controls.PlayersTable=$window.FindName('PlayersTable');$controls.LeaderboardTable=$window.FindName('LeaderboardTable')
 $controls.UpdateText=$window.FindName('UpdateText')
+foreach($name in @('ItemStripPanel','ItemStrip','EnemyItemStripPanel','EnemyItemStrip')){$controls[$name]=$window.FindName($name)}
 foreach($name in @('ResizeGrip','AppearancePanel','FontSlider','FontText')){$controls[$name]=$window.FindName($name)}
 foreach($name in @('NarrowText','PreviousSubtitle','OutgoingSubtitle')){$controls[$name]=$window.FindName($name)}
 # 字幕条本身的高度只由文字决定：形象再大也只让窗口变高，气泡保持文字高度并垂直居中，
@@ -465,6 +474,12 @@ function Add-PlayerTableRow($values,[bool]$heading,[int]$index) {
   $grid.ColumnDefinitions.Add($column)
  }
  for($i=0;$i -lt $values.Count;$i++){
+  if(!$heading -and $i -eq 1){
+   $cell=New-ChampionCell ([string]$values[$i]) ([Math]::Max(11,$controls.FontSlider.Value-2)) '#E2E8F0'
+   $cell.Margin='2,6,2,6'
+   [Windows.Controls.Grid]::SetColumn($cell,$i);$grid.Children.Add($cell) | Out-Null
+   continue
+  }
   $label=New-Object Windows.Controls.TextBlock
   $label.Text=[string]$values[$i];$label.FontSize=[Math]::Max(11,$controls.FontSlider.Value-2);$label.Padding='2,8,2,8';$label.TextWrapping='Wrap';$label.VerticalAlignment='Center'
   $label.Foreground=if($heading){'#9CAABA'}elseif($i -eq 3 -and $values[$i] -eq 'T0'){'#EDC989'}else{'#E2E8F0'}
@@ -482,7 +497,7 @@ function Hide-OverlayHint { if($controls.HintText){$controls.HintText.Visibility
 
 
 # 渲染一行总榜。列宽用比例（星号），窗口缩放时各列同比例变化，永远对齐。
-function Add-LeaderboardRow($values,[double[]]$ratios,[int[]]$aligns,[int[]]$autos,[int[]]$fixeds) {
+function Add-LeaderboardRow($values,[double[]]$ratios,[int[]]$aligns,[int[]]$autos,[int[]]$fixeds,[string]$IconName='') {
  $grid=New-Object Windows.Controls.Grid
  for($ci=0;$ci -lt $ratios.Count;$ci++){
   $column=New-Object Windows.Controls.ColumnDefinition
@@ -494,6 +509,12 @@ function Add-LeaderboardRow($values,[double[]]$ratios,[int[]]$aligns,[int[]]$aut
   $grid.ColumnDefinitions.Add($column)
  }
  for($i=0;$i -lt $values.Count;$i++){
+  if($IconName -and $i -eq 1){
+   $cell=New-ChampionCell ([string]$values[$i]) ([Math]::Max(11,$controls.FontSlider.Value-3)) '#E2E8F0'
+   $cell.Margin='10,2,0,2'
+   [Windows.Controls.Grid]::SetColumn($cell,$i);$grid.Children.Add($cell) | Out-Null
+   continue
+  }
   $label=New-Object Windows.Controls.TextBlock
   $label.Text=[string]$values[$i]
   $label.FontSize=[Math]::Max(11,$controls.FontSlider.Value-3)
@@ -583,7 +604,7 @@ function Update-Page {
   Add-LeaderboardRow $headValues $ratios $aligns $autos $fixeds
   foreach($lbRow in @($lbRows)){
    $values=if($lbChampion){@($lbRow.tier,$lbRow.name,$lbRow.winRate,$lbRow.champion)}else{@($lbRow.tier,$lbRow.name,$lbRow.winRate)}
-   Add-LeaderboardRow $values $ratios $aligns $autos $fixeds
+   Add-LeaderboardRow $values $ratios $aligns $autos $fixeds $(if($lbChampion){''}else{[string]$lbRow.name})
   }
   $controls.LeaderboardTable.Visibility='Visible'
   $script:leaderboardActive=$true
@@ -1015,7 +1036,7 @@ $window.Add_SourceInitialized({
  }
 })
 $timer=New-Object Windows.Threading.DispatcherTimer;$timer.Interval=[TimeSpan]::FromMilliseconds(250)
-$timer.Add_Tick({Update-State;Update-OverlayPlayback;Write-OverlayHeartbeat;Write-OverlayUiLog;try{Update-NarrowPet -Snapshot $script:snapshot}catch{}})
+$timer.Add_Tick({Update-State;try{Update-ItemStrip}catch{};Update-OverlayPlayback;Write-OverlayHeartbeat;Write-OverlayUiLog;try{Update-NarrowPet -Snapshot $script:snapshot}catch{}})
 $pointerTimer=New-Object Windows.Threading.DispatcherTimer;$pointerTimer.Interval=[TimeSpan]::FromMilliseconds(40)
 $pointerTimer.Add_Tick({Pointer-Tick})
 $script:exitApproved=$false;$script:testExitChoice=$true;$script:exitConfirmations=0
@@ -1353,6 +1374,17 @@ try{
     $repeatSpeakerNodes=@($entries[1].Child.Children[0].Children|Where-Object {[string]$_.Text -eq '金宝'}).Count
     $script:testResult.groupedTimeInGutter=($entries.Count -eq 3) -and ($gutterTime -match '\d{2}:\d{2}') -and ($repeatSpeakerNodes -eq 0)
     $script:snapshot=$saved;Update-OverlaySurface $true
+    # 图片：英雄头像走随包本地图；装备图标条按结构化行建控件（离线时退回占位色块，不抛错）。
+    $script:testResult.championIconResolved=$null -ne (Get-ChampionIconImage '铁血狼母')
+    $script:testResult.championIconFallback=$null -eq (Get-ChampionIconImage '绝不是英雄')
+    $script:testResult.championCell=((New-ChampionCell '铁血狼母' 12 '#E2E8F0').Children.Count -eq 2)
+    $lineupRow=Add-OverlayTableRow @('友','铁血狼母','53.55%','T3') $false 12 $false
+    $script:testResult.lineupRowWithAvatar=($lineupRow.Children.Count -eq 4) -and ($lineupRow.Children[1] -is [Windows.Controls.Grid]) -and ($lineupRow.Children[1].Children.Count -eq 2)
+    $iconFixture=[pscustomobject]@{game='lol';selfItemRows=@([pscustomobject]@{id='3031';name='无尽之刃'},[pscustomobject]@{id='3006';name='狂战士胫甲'});enemyKeyItemRows=@([pscustomobject]@{id='3153';name='破败王者之刃';hero='锐雯'})}
+    $savedIcons=$script:snapshot;$script:snapshot=$iconFixture;$script:itemStripKey='';Update-ItemStrip
+    $script:testResult.itemStripIcons=($controls.ItemStrip.Children.Count -eq 2) -and ($controls.EnemyItemStrip.Children.Count -eq 1)
+    $script:testResult.itemStripVisible=($controls.ItemStripPanel.Visibility -eq 'Visible') -and ($controls.EnemyItemStripPanel.Visibility -eq 'Visible')
+    $script:snapshot=$savedIcons;$script:itemStripKey=''
     $script:testResult.closed=$script:closing
    });$testing.Start()
   }
