@@ -53,7 +53,10 @@
 - `strategy-overlay.ps1 -SelfTest`：新增播放队列断言全部 true。
 - 海克斯观察器回归：6/6 通过；未知卡链路 1/1 通过。
 - 装备名纠偏 4/4 通过。
-- 构建产物：待本机构建后补全哈希。
+- 全量 zip：`43,169,930` 字节，sha256 `29a2839e149cde29891cd4ddf30699e2252b5daed4f6671bd0001ac82728a420`
+- manifest sha256：`1293349109dc8da16047f2729e51cf899778b66e2c560b2d1275864f97229fd4`
+- 应用层 zip：`8,088,440` 字节，sha256 `192f65affeb7934d7e76b15b073bcc9531b994ed1e3e050874ed7495857f0854`
+- 构建 worktree：`C:\Users\Administrator\jinbao-build-0323`（HEAD `86d6cd0`），产物 `jinbao-out-0323` / `jinbao-dist-0323`。
 
 ## 线上服务端改动记录
 
