@@ -133,8 +133,8 @@ export function initialOverlayState() {
 }
 // Pure projection shared by live polling and log replay tests. Epoch time only orders
 // records; the displayed clock always comes from the game's elapsed seconds.
-// 待确认的已选：面板关闭或换轮才落账；同轮刷新掉这张说明视觉误判，直接丢弃。
-function settlePendingPick(state,reason){
+// 普通待确认的已选在面板关闭或换轮时落账；可靠视觉点击立即记账；同轮刷新掉这张说明误判，丢弃。
+function settlePendingPick(state,reason,closedAt=0){
   const pending=state.pendingPick;
   if(!pending)return null;
   state.pendingPick=null;
@@ -142,6 +142,9 @@ function settlePendingPick(state,reason){
   const before=[...state.ownedAugments];
   projectProgressEvent(state,pending.event);
   trackAugmentRound(state,pending.event,before);
+  const round=(state.augmentRounds??[]).find(row=>pending.roll!=null&&String(row.id)===String(pending.roll))
+    ??[...(state.augmentRounds??[])].reverse().find(row=>row.confirmed?.includes(pending.name));
+  if(round){round.closed=true;round.closedAt=Number(closedAt)||eventTimestamp(pending.event)||Date.now();}
   return pending.name;
 }
 
@@ -223,6 +226,9 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     Object.assign(state, initialOverlayState(), { match, matchStartedAt:at, game: event.game });
     resetHumanMoments(state);
   }
+  // Historical files can discover the live clock before the delayed game_start marker.
+  // Settle a pick waiting for the panel close so match metadata cannot leave it unrecorded.
+  if(event.kind==='game_start'&&continueStart&&state.pendingPick)settlePendingPick(state,'close',at);
   state.at = at;
   state.game = event.game;
   // Unrelated events must not make a previously observed hero appear fresh.
@@ -314,7 +320,7 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   if (event.kind === 'augment_offer') {
     // 轮次变化说明上一轮已结束：把待确认的已选落账；同轮刷新则视为误判丢弃。
     if(state.pendingPick){
-      const sameRoll=event.roll==null||state.pendingPick.roll==null||event.roll===state.pendingPick.roll;
+      const sameRoll=event.roll==null||state.pendingPick.roll==null||String(event.roll)===String(state.pendingPick.roll);
       settlePendingPick(state,sameRoll?'reroll':'round');
     }
     if((event.roll!=null&&event.roll!==state.offerRound)||!state.offers.length)state.offerHistory=[];
@@ -332,7 +338,9 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     const lastPick=state.lastPick??null;
     const freshPick=!!lastPick&&Date.now()-Number(lastPick.at??0)<20000;
     const rolled=offerNames(state.offers);
-    if(freshPick&&rolled.length&&!rolled.includes(lastPick.name)){
+    const currentRoll=event.roll??state.offerRound??null;
+    const samePickRound=lastPick?.roll!=null&&currentRoll!=null&&String(lastPick.roll)===String(currentRoll);
+    if(freshPick&&samePickRound&&rolled.length&&!rolled.includes(lastPick.name)){
       state.ownedAugments=state.ownedAugments.filter(name=>name!==lastPick.name);
       state.notices=(state.notices??[]).filter(n=>n.key!=='aug-picked:'+lastPick.name);
       // 视觉认错又没把握时别猜：标记成待确认，等 trackAugmentRound 跑完再收尾
@@ -360,7 +368,7 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   }
   if (event.kind === 'augment_offer_closed'){
     // 面板关掉说明这一轮结束了，视觉看到的这张就是最终选择。
-    settlePendingPick(state,'close');
+    settlePendingPick(state,'close',at);
     state.offers=[];
     // 这一轮完全没判定出来（视觉盲区/歧义）时，把轮次置为已关闭未确认，
     // 三秒后悬浮窗会弹「刚才选了哪个」，由玩家点一下，而不是静默跳过。
@@ -384,7 +392,8 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
   if(event.kind==='augment_picked'&&!(event.source==='team-user-confirmed')){
     const name=event.augment??event.name;
     const open=offerNames(state.offers);
-    if(name&&open.includes(name)){
+    const trustedVisionPick=event.source==='vision-click'&&event.confidence==='high';
+    if(name&&open.includes(name)&&!trustedVisionPick){
       state.pendingPick={name,event,roll:event.roll??state.offerRound??null,at:Date.now()};
       return state;
     }
