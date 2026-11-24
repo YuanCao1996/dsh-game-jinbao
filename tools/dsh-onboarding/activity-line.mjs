@@ -23,7 +23,7 @@ export function activityLine(base,state,now=Date.now()){
   q.lastChatAt=now;
  }
  q.seen.add(key);
-  q.pending.push({id:'event-'+createHash('sha256').update(String(key)).digest('hex').slice(0,20),task:'events',topic:'本局事件',kind:e.kind,clock:e.time??'',label:String(e.text).replace(/\s+/g,' ').slice(0,180),phase:'done',expires:now+24000});
+  q.pending.push({id:'event-'+createHash('sha256').update(String(key)).digest('hex').slice(0,20),task:'events',topic:'本局事件',kind:e.kind,clock:e.time??'',label:String(e.text).replace(/\s+/g,' ').slice(0,180),phase:'done',expires:now+24000,...(e.equipment?{equipment:e.equipment}:{})});
  }
  // Bound bursts: newest six announcements, one readable slot per four seconds.
  q.pending=q.pending.filter(e=>e.expires>now).slice(-6);

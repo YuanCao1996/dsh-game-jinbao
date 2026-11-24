@@ -6,12 +6,12 @@ export function progressSeconds(value,fallback=null){
   const m=typeof value==='string'&&/^(\d{1,3}):(\d{2})$/.exec(value);
   return m?Number(m[1])*60+Number(m[2]):fallback;
 }
-export function addProgressEvent(state,key,description,seconds,topic,kind){
+export function addProgressEvent(state,key,description,seconds,topic,kind,extra){
   if(state.events.some(e=>e.key===key))return;
   const time=Number.isFinite(seconds)&&seconds>=0?String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(Math.floor(seconds%60)).padStart(2,'0'):'时间未知';
   // `kind` travels with the event so the Agent can tell an equipment change from an
   // augment confirmation without spending a query round-trip to find out.
-  state.events.push({key,text:description,time,...(topic?{topic}:{}),...(typeof kind==='string'&&kind?{kind:kind.slice(0,40)}:{})});
+  state.events.push({key,text:description,time,...(topic?{topic}:{}),...(typeof kind==='string'&&kind?{kind:kind.slice(0,40)}:{}),...(extra&&typeof extra==='object'?extra:{})});
   // 装备更新与聊天 OCR 都在事件流里之后，40 条会被瞬间刷掉关键事件，放到 200。
   state.events=state.events.slice(-200);
 }
@@ -115,9 +115,12 @@ export function observeEquipment(state){
       state.completedEquipmentEvents=[...(state.completedEquipmentEvents??[]),{at:state.at,time:state.gameSeconds,hero:player.champion,items:added,itemRows:addedRows}].slice(-12);
       // 关键装备立刻说一句，不用等模型（实测中娅那次等了约 3 分钟）。
       for(const text of threatAlerts(state,player.champion,added)){
-        state.broadcasts=[...(state.broadcasts??[]),{at:Number(state.at)||Date.now(),text,priority:2,localAlert:true,expiresAt:(Number(state.at)||Date.now())+15000}].slice(-12);
+        const row=addedRows.find(item=>item?.name&&text.includes(String(item.name)))??null;
+        state.broadcasts=[...(state.broadcasts??[]),{at:Number(state.at)||Date.now(),text,priority:2,localAlert:true,expiresAt:(Number(state.at)||Date.now())+15000,
+          ...(row?{equipment:{hero:player.champion,items:[{id:String(row.id),name:String(row.name)}]}}:{})}].slice(-12);
       }
     }
-    if(added.length||removed.length)addProgressEvent(state,JSON.stringify(['inventory',key,state.at,added,removed]),`装备更新：${player.champion}`+(added.length?' · 新增 '+added.join('、'):'')+(removed.length?' · 移除 '+removed.join('、'):''),state.gameSeconds,'equipment','inventory');
+    if(added.length||removed.length)addProgressEvent(state,JSON.stringify(['inventory',key,state.at,added,removed]),`装备更新：${player.champion}`+(added.length?' · 新增 '+added.join('、'):'')+(removed.length?' · 移除 '+removed.join('、'):''),state.gameSeconds,'equipment','inventory',
+      state.enemies.includes(player)&&addedRows.length?{equipment:{hero:player.champion,items:addedRows}}:undefined);
   }
 }

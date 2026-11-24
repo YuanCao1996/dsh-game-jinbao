@@ -106,20 +106,28 @@ function New-OverlayItemTile([string]$id,[string]$label){
  if($brush){$tile.Background=$brush}else{$tile.Background=New-OverlaySurfaceBrush '#33404D'}
  return $tile
 }
+function New-EquipmentStrip($equipment,[double]$font){
+ if(!$equipment -or !$equipment.hero){return $null}
+ $items=@($equipment.items | Where-Object {$_ -and $_.id})
+ $panel=New-Object Windows.Controls.WrapPanel
+ $panel.Orientation='Horizontal';$panel.Margin='0,1,0,3';$panel.VerticalAlignment='Center'
+ $heroCell=New-ChampionCell ([string]$equipment.hero) ([Math]::Max(11,$font-1)) '#E4EBF2'
+ $heroCell.Margin='0,0,3,0';$panel.Children.Add($heroCell)|Out-Null
+ $verb=New-OverlayLabel '出了' ([Math]::Max(10,$font-2)) '#8FA0B0'
+ $verb.TextWrapping='NoWrap';$verb.VerticalAlignment='Center';$verb.Margin='0,0,4,0'
+ $panel.Children.Add($verb)|Out-Null
+ foreach($item in $items){$panel.Children.Add((New-OverlayItemTile ([string]$item.id) ([string]$item.name)))|Out-Null}
+ return $panel
+}
 function Update-ItemStrip {
  if(!$script:snapshot){return}
- $self=@($script:snapshot.selfItemRows | Where-Object {$_ -and $_.id})
- $enemy=@($script:snapshot.enemyKeyItemRows | Where-Object {$_ -and $_.id})
- $key=(@($self|ForEach-Object {[string]$_.id}) -join ',')+'|'+(@($enemy|ForEach-Object {[string]$_.id}) -join ',')
+ $rows=@($script:snapshot.recommendedItemRows | Where-Object {$_ -and $_.id})
+ $key=(@($rows|ForEach-Object {[string]$_.id}) -join ',')
  if($key -eq $script:itemStripKey){return}
  $script:itemStripKey=$key
  $controls.ItemStrip.Children.Clear()
- $controls.EnemyItemStrip.Children.Clear()
- foreach($row in $self){$controls.ItemStrip.Children.Add((New-OverlayItemTile ([string]$row.id) ([string]$row.name)))|Out-Null}
- foreach($row in $enemy){$controls.EnemyItemStrip.Children.Add((New-OverlayItemTile ([string]$row.id) (([string]$row.hero+' · '+[string]$row.name).Trim())))|Out-Null}
- $controls.SelfItemLabel.Visibility=if($self.Count){'Visible'}else{'Collapsed'}
- $controls.EnemyItemLabel.Visibility=if($enemy.Count){'Visible'}else{'Collapsed'}
- $controls.ItemStripPanel.Visibility=if($self.Count -or $enemy.Count){'Visible'}else{'Collapsed'}
+ foreach($row in $rows){$controls.ItemStrip.Children.Add((New-OverlayItemTile ([string]$row.id) ([string]$row.name)))|Out-Null}
+ $controls.ItemStripPanel.Visibility=if($rows.Count){'Visible'}else{'Collapsed'}
 }
 function Update-OverlayComposer {
  if(!$controls.ComposerPlaceholder){return}
@@ -378,6 +386,10 @@ if(!$controls.RichContent){return}
      $header.Children.Add($tag)|Out-Null
     }
     $grid.Children.Add($header)|Out-Null
+    if($row.equipment){
+     $equipmentStrip=New-EquipmentStrip $row.equipment $font
+     if($equipmentStrip){$grid.Children.Add($equipmentStrip)|Out-Null}
+    }
     $body=New-OverlayLabel ([string]$row.text) $font $(if($user){'#CBD5E1'}elseif($row.failed){'#F5AD91'}else{'#EBF0F5'})
     Set-HighlightedText $body ([string]$row.text)
     $grid.Children.Add($body)|Out-Null

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createItemIconStore, ITEM_ICON_CDN_ROOT} from '../item-icons.mjs';
@@ -44,6 +44,7 @@ test('prefetch warms every bundled mapping entry and skips already cached files'
   const store = createItemIconStore({
     stateDir: dir,
     paths: {'1001': 'assets/a.png', '3031': 'assets/b.png', '3153': 'assets/c.png'},
+    completedIds: ['1001', '3031', '3153'],
     fetchImpl: async () => { calls += 1; return new Response(png, {status: 200, headers: {'content-type': 'image/png'}}); },
   });
   try {
@@ -66,6 +67,7 @@ test('prefetch stops after repeated failures and when the caller asks it to stop
   const failing = createItemIconStore({
     stateDir: dir,
     paths: Object.fromEntries(Array.from({length: 20}, (_, i) => [String(1000 + i), 'assets/x.png'])),
+    completedIds: Array.from({length: 20}, (_, i) => String(1000 + i)),
     fetchImpl: async () => new Response('no', {status: 503}),
   });
   const result = await failing.prefetch({concurrency: 2, spacingMs: 0, stopAfterFailures: 3});
@@ -77,6 +79,7 @@ test('prefetch stops after repeated failures and when the caller asks it to stop
   const stopping = createItemIconStore({
     stateDir: dir,
     paths: {'2001': 'assets/a.png', '2002': 'assets/b.png', '2003': 'assets/c.png'},
+    completedIds: ['2001', '2002', '2003'],
     fetchImpl: async () => new Response(png, {status: 200, headers: {'content-type': 'image/png'}}),
   });
   let done = 0;
@@ -84,6 +87,31 @@ test('prefetch stops after repeated failures and when the caller asks it to stop
   assert.equal(stopped.stopped, true);
   assert.ok(stopped.added <= 2);
   await rm(dir, {recursive: true, force: true});
+});
+
+test('components are neither served nor kept on disk', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'jinbao-item-prune-'));
+  const cache = join(dir, 'item-icons');
+  await mkdir(cache, {recursive: true});
+  await writeFile(join(cache, '3031.png'), png);
+  await writeFile(join(cache, '1036.png'), png); // 长剑：散件，历史缓存
+  const store = createItemIconStore({
+    stateDir: dir,
+    paths: {'3031': 'assets/a.png', '1036': 'assets/b.png'},
+    completedIds: ['3031'],
+    fetchImpl: async () => { throw Error('network must not be used'); },
+  });
+  try {
+    assert.equal(store.has('1036'), false);
+    assert.equal(await store.get('1036'), null, 'component ids must not be served even if cached');
+    assert.equal(store.has('3031'), true);
+    const removed = await store.prune();
+    assert.equal(removed, 1);
+    await assert.rejects(readFile(join(cache, '1036.png')));
+    assert.equal((await readFile(join(cache, '3031.png'))).length, png.length);
+  } finally {
+    await rm(dir, {recursive: true, force: true});
+  }
 });
 
 test('icon store returns null for unknown ids, failed downloads and oversized responses', async () => {

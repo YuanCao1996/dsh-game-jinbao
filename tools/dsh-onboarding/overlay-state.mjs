@@ -8,6 +8,8 @@ import { join } from 'node:path';
 // 本地英雄定位表（roles + 开团/硬控标记），用于选人阶段的阵容判断。
 import { readFileSync as readRosterSync } from 'node:fs';
 const lolRoster=(()=>{try{return JSON.parse(readRosterSync(new URL('./lol-roster.json',import.meta.url),'utf8'));}catch{return {};}})();
+// 成装白名单：图标只缓存/显示成装，散件不进界面也不落盘。
+const completedItemIdSet=(()=>{try{return new Set(JSON.parse(readRosterSync(new URL('./completed-item-ids.json',import.meta.url),'utf8')).map(String));}catch{return new Set();}})();
 import { WZRY_ADAPTER } from '../dsh-coach-server/lib/adapters/wzry.js';
 import { projectWzryFacts } from '../dsh-coach-server/lib/adapters/wzry-facts.js';
 import { createMatchTracker } from '../dsh-coach-server/lib/match-tracker.js';
@@ -725,27 +727,16 @@ export function overlayView(state, knowledge = {}) {
   const rows = knowledge.rows ?? [];
   const hero = rows.find(row => row._viewKind==='hero' && heroStatMatches(row,me.champion));
   const own = items(state.game==='lol'?list(me.items).filter(isCompletedItem):me.items);
-  // 当前装备与敌方关键成装的结构化行：界面按 id 取本地图标，文字仍由下面的字符串负责。
-  const selfItemRows = (()=>{
+  // 推荐装备：取资料库首套核心出装里的成装（itemIds 已由服务端给出），只显示成装图标。
+  const recommendedItemRows=(()=>{
     if(state.game!=='lol')return [];
-    return list(me.items).filter(isCompletedItem).map(item=>({id:String(item?.id??''),name:String(item?.name??'').trim()}))
-      .filter(item=>/^\d+$/.test(item.id)&&item.name).slice(0,6);
-  })();
-  const enemyKeyItemRows = (()=>{
-    if(state.game!=='lol')return [];
-    const idByName=new Map();
-    for(const player of state.enemies??[])for(const item of list(player?.items))if(item&&item.name&&/^\d+$/.test(String(item?.id??'')))idByName.set(String(item.name),String(item.id));
-    const result=[],seen=new Set();
-    for(const event of [...(state.completedEquipmentEvents??[])].reverse()){
-      const candidates=Array.isArray(event?.itemRows)&&event.itemRows.length
-        ? event.itemRows
-        : (event?.items??[]).map(name=>{const bare=String(name??'').replace(/ ×\d+$/,'');return {id:idByName.get(bare)??'',name:bare};});
-      for(const item of candidates){
-        const id=String(item?.id??''),name=String(item?.name??'').trim();
-        if(!/^\d+$/.test(id)||!name||seen.has(id))continue;
-        seen.add(id);result.push({id,name,hero:String(event?.hero??'')});
-        if(result.length>=6)break;
-      }
+    const build=rows.find(row=>row?._type==='coreBuilds');if(!build)return [];
+    const parse=value=>{if(Array.isArray(value))return value;try{const parsed=JSON.parse(value);return Array.isArray(parsed)?parsed:[]}catch{return []}};
+    const ids=parse(build.itemIds),names=parse(build.items),seen=new Set(),result=[];
+    for(let index=0;index<ids.length;index++){
+      const id=String(ids[index]);
+      if(!completedItemIdSet.has(id)||seen.has(id))continue;
+      seen.add(id);result.push({id,name:String(names[index]??'')});
       if(result.length>=6)break;
     }
     return result;
@@ -1115,8 +1106,7 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
     confirmation:augmentConfirmation(state,rows,Date.now(),{panelOpen:(state.offers??[]).length>0}),
     heroStats,
     playerRows,
-    selfItemRows,
-    enemyKeyItemRows,
+    recommendedItemRows,
     stats: heroStats+'\n\n'+roster.join('\n'),
     teamfight: state.teamfight || '可在聊天中询问本局团战打法；建议会结合双方阵容和当前装备。',
     // The events page now mirrors exactly the window the Agent receives, so "why did it
@@ -1128,7 +1118,7 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
    // player exchanged are merged into a single chronological stream, oldest first.
    thread: (() => {
     const turns = state.chat.filter(r => !r.hidden).map(r => ({ role: r.role, origin: r.origin ?? '', text: r.origin==='viewer'?(r.role==='user'?'观众 · '+(r.nick||'观众')+'：':'回应观众：')+r.text:r.text, failed: r.failed === true, at: Number(r.at) || 0, kind: 'chat' }));
-    const spoken = state.broadcasts.filter(b=>!b.viewerReply).map(b => ({ role: 'assistant', origin: 'coach', text: b.text, at: Number(b.at) || 0, kind: b.topic === 'praise' ? 'praise' : 'advice', dimension: b.dimension ?? '', stage: b.stage ?? '' }));
+    const spoken = state.broadcasts.filter(b=>!b.viewerReply).map(b => ({ role: 'assistant', origin: 'coach', text: b.text, at: Number(b.at) || 0, kind: b.topic === 'praise' ? 'praise' : 'advice', dimension: b.dimension ?? '', stage: b.stage ?? '', ...(b.equipment?{equipment:b.equipment}:{}) }));
     // 原海克斯页/胜率页的内容以同一条时间线出现，玩家不用切页就能看到。
     // table/footer 透传给渲染层：阵容这类内容排成四列表格，比拼一行文字整齐得多。
     const notices = (state.notices ?? []).map(n => ({ role: 'assistant', origin: 'coach', text: n.text, at: n.at, kind: 'notice', dimension: n.dimension ?? '', stage: n.stage ?? '', ...(n.table?{table:n.table}:{}) , ...(n.footer?{footer:n.footer}:{}) , ...(n.slots?{slots:n.slots}:{}) }));

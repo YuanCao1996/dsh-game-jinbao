@@ -43,6 +43,34 @@ $controls.ActivityMenuItem.Add_Click({
   $controls.ActivityMenuItem.IsEnabled=$false
  }catch{$controls.HintText.Text='设置保存失败，请在网页设置中重试。'}
 })
+function New-AgentActivityEquipment([hashtable]$equipment,[double]$size=16){
+ $panel=New-Object Windows.Controls.StackPanel
+ $panel.Orientation='Horizontal';$panel.VerticalAlignment='Center';$panel.Margin='0,0,4,0'
+ $hero=[string]$equipment.hero
+ $avatar=New-Object Windows.Controls.Border
+ $avatar.Width=$size;$avatar.Height=$size;$avatar.CornerRadius=[Windows.CornerRadius]::new([double]($size/2))
+ $avatar.Margin='0,0,3,0';$avatar.VerticalAlignment='Center';$avatar.ToolTip=$hero
+ $image=Get-ChampionIconImage $hero
+ if($image){$brush=New-Object Windows.Media.ImageBrush($image);$brush.Stretch=[Windows.Media.Stretch]::UniformToFill;$avatar.Background=$brush}
+ else{
+  $avatar.Background=New-OverlaySurfaceBrush '#2A3642'
+  $initial=New-OverlayLabel $(if($hero){$hero.Substring(0,1)}else{'?'}) 8 '#C9D3DD'
+  $initial.TextWrapping='NoWrap';$initial.LineHeight=11;$initial.HorizontalAlignment='Center';$initial.VerticalAlignment='Center';$avatar.Child=$initial
+ }
+ $panel.Children.Add($avatar)|Out-Null
+ foreach($item in @($equipment.items)){
+  if(!$item -or !$item.id){continue}
+  $panel.Children.Add((New-OverlayItemTile ([string]$item.id) ([string]$item.name)))|Out-Null
+ }
+ return $panel
+}
+function Set-AgentActivityEquipment($line,$equipment){
+ $line.Inlines.Clear()
+ $container=New-Object Windows.Documents.InlineUIContainer
+ $container.Child=(New-AgentActivityEquipment $equipment 16)
+ $line.Inlines.Add($container)
+ $line.Inlines.Add((New-Object Windows.Documents.Run(' ')))
+}
 function Update-AgentActivity {
  if($script:activityJob -and $script:activityJob.State -ne 'Running'){
   $result=Receive-Job $script:activityJob -ErrorAction SilentlyContinue;Remove-Job $script:activityJob -Force -ErrorAction SilentlyContinue;$script:activityJob=$null
@@ -73,7 +101,11 @@ function Update-AgentActivity {
    $duration=if($null -ne $row.elapsedMs){' · '+([Math]::Round([double]$row.elapsedMs/1000,1))+'秒'}else{''}
    $learn=([string]$row.topic -eq '我记点经验')
    $line.ToolTip=([string]$row.clock)+'  '+([string]$row.label)+$(if($row.phase -in @('failed','unavailable','cancelled')){' · '+$phase+$duration}else{''})
-   $line.Text=if($learn){'✔ '+([string]$row.label)}else{([string]$row.clock)+'  '+([string]$row.label)+$(if($row.task -eq 'events'){''}elseif($row.phase -in @('failed','unavailable','cancelled')){' · '+$phase+$duration}else{''})}
+   $lineText=if($learn){'✔ '+([string]$row.label)}else{([string]$row.clock)+'  '+([string]$row.label)+$(if($row.task -eq 'events'){''}elseif($row.phase -in @('failed','unavailable','cancelled')){' · '+$phase+$duration}else{''})}
+   if($row.equipment){
+    Set-AgentActivityEquipment $line $row.equipment
+    $line.Inlines.Add((New-Object Windows.Documents.Run($lineText)))
+   }else{$line.Text=$lineText}
    # row.text is deliberately not rendered: it is what made each entry several lines.
    $line.Foreground=if($row.task -eq 'events'){switch -Regex ([string]$row.kind){'augment'{'#C8A6FF'}'inventory|purchase'{'#E7BE79'}'Ace|kill|Kill|Death|death'{'#F5AD91'}default{'#7FD1A0'}}}elseif($learn){'#7FD1A0'}else{switch([string]$row.phase){'running'{'#E7BE79'}'failed'{'#F5AD91'}'draft'{'#AEBECE'}default{'#94A3B8'}}}
   }

@@ -145,10 +145,8 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      <TextBlock x:Name="LauncherText" Visibility="Collapsed" Foreground="#FBBF24" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"/>
      <TextBlock x:Name="UpdateText" Foreground="#94A3B8" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
      <WrapPanel x:Name="ItemStripPanel" Orientation="Horizontal" Margin="0,4,0,0" Visibility="Collapsed">
-      <TextBlock x:Name="SelfItemLabel" Text="装备" Foreground="#7C8B99" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
+      <TextBlock x:Name="ItemStripLabel" Text="推荐装备" Foreground="#7C8B99" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
       <StackPanel x:Name="ItemStrip" Orientation="Horizontal" VerticalAlignment="Center"/>
-      <TextBlock x:Name="EnemyItemLabel" Text="敌方" Foreground="#7C8B99" FontSize="10" VerticalAlignment="Center" Margin="12,0,6,0"/>
-      <StackPanel x:Name="EnemyItemStrip" Orientation="Horizontal" VerticalAlignment="Center"/>
      </WrapPanel>
      <Button x:Name="ActionButton" Content="微信登录" HorizontalAlignment="Left" Visibility="Collapsed"/>
     </StackPanel>
@@ -238,7 +236,7 @@ foreach($name in @('StatusDot','StatusText','ComposerActions')){$controls[$name]
 foreach($name in @('NarrowPetImage','NarrowPetTail','NarrowBubble')){$controls[$name]=$window.FindName($name)}
 $controls.PlayersTable=$window.FindName('PlayersTable');$controls.LeaderboardTable=$window.FindName('LeaderboardTable')
 $controls.UpdateText=$window.FindName('UpdateText')
-foreach($name in @('ItemStripPanel','ItemStrip','EnemyItemStrip','SelfItemLabel','EnemyItemLabel')){$controls[$name]=$window.FindName($name)}
+foreach($name in @('ItemStripPanel','ItemStrip','ItemStripLabel')){$controls[$name]=$window.FindName($name)}
 foreach($name in @('ResizeGrip','AppearancePanel','FontSlider','FontText')){$controls[$name]=$window.FindName($name)}
 foreach($name in @('NarrowText','PreviousSubtitle','OutgoingSubtitle')){$controls[$name]=$window.FindName($name)}
 # 字幕条本身的高度只由文字决定：形象再大也只让窗口变高，气泡保持文字高度并垂直居中，
@@ -1379,10 +1377,12 @@ try{
     $script:testResult.championCell=((New-ChampionCell '铁血狼母' 12 '#E2E8F0').Children.Count -eq 2)
     $lineupRow=Add-OverlayTableRow @('友','铁血狼母','53.55%','T3') $false 12 $false
     $script:testResult.lineupRowWithAvatar=($lineupRow.Children.Count -eq 4) -and ($lineupRow.Children[1] -is [Windows.Controls.Grid]) -and ($lineupRow.Children[1].Children.Count -eq 2)
-    $iconFixture=[pscustomobject]@{game='lol';selfItemRows=@([pscustomobject]@{id='3031';name='无尽之刃'},[pscustomobject]@{id='3006';name='狂战士胫甲'});enemyKeyItemRows=@([pscustomobject]@{id='3153';name='破败王者之刃';hero='锐雯'})}
+    $iconFixture=[pscustomobject]@{game='lol';recommendedItemRows=@([pscustomobject]@{id='3031';name='无尽之刃'},[pscustomobject]@{id='3006';name='狂战士胫甲'})}
     $savedIcons=$script:snapshot;$script:snapshot=$iconFixture;$script:itemStripKey='';Update-ItemStrip
-    $script:testResult.itemStripIcons=($controls.ItemStrip.Children.Count -eq 2) -and ($controls.EnemyItemStrip.Children.Count -eq 1)
-    $script:testResult.itemStripVisible=($controls.ItemStripPanel.Visibility -eq 'Visible') -and ($controls.SelfItemLabel.Visibility -eq 'Visible') -and ($controls.EnemyItemLabel.Visibility -eq 'Visible')
+    $script:testResult.itemStripIcons=($controls.ItemStrip.Children.Count -eq 2)
+    $script:testResult.itemStripVisible=($controls.ItemStripPanel.Visibility -eq 'Visible') -and ($controls.ItemStripLabel.Visibility -eq 'Visible')
+    $equipStrip=New-EquipmentStrip ([pscustomobject]@{hero='皮城女警';items=@([pscustomobject]@{id='3031';name='无尽之刃'})}) 12
+    $script:testResult.equipmentEventIcons=($null -ne $equipStrip) -and ($equipStrip.Children.Count -ge 3)
     $script:snapshot=$savedIcons;$script:itemStripKey=''
     $script:testResult.closed=$script:closing
    });$testing.Start()
