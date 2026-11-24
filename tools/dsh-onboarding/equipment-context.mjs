@@ -1,6 +1,13 @@
 ﻿import {rankedAugments,offerNames} from './augment-ranking.mjs';
 import {isCompletedItem} from '../lol-companion/item-policy.mjs';
 
+const eventTime=event=>{
+  const numeric=Number(event?.t??event?.at);
+  if(Number.isFinite(numeric)&&numeric>0)return numeric;
+  const parsed=Date.parse(event?.timestamp??event?.at??'');
+  return Number.isFinite(parsed)?parsed:Date.now();
+};
+
 export function trackAugmentRound(state,event,previousOwned) {
   if(event.kind==='augment_offer'){
     const id=event.roll??state.offerRound??state.augmentRounds.length+1;
@@ -10,7 +17,7 @@ export function trackAugmentRound(state,event,previousOwned) {
     state.augmentRounds=state.augmentRounds.slice(-12);
   }
   if(event.kind==='augment_offer_closed'){
-    const round=state.augmentRounds.find(r=>r.id===(event.roll??state.offerRound));if(round){round.closed=true;round.closedAt=Number(event.t)||Date.now();
+    const round=state.augmentRounds.find(r=>r.id===(event.roll??state.offerRound));if(round){round.closed=true;round.closedAt=eventTime(event);
      // The player picked a card whose name never got read; remember which position so the
      // confirmation prompt can say which one is unknown instead of only a count.
      if(Number.isInteger(event.slot)&&event.slot>=0&&event.slot<3)round.unreadSlot=event.slot;}
@@ -24,7 +31,7 @@ export function trackAugmentRound(state,event,previousOwned) {
   // 名字错了。规则：高置信度自己的公告、落在该轮关闭后 90 秒内、且名字在该轮候选里出现过
   // （或该轮有未读出的槽位），才替换该轮的记录。
   if(event.kind==='augment_mutate'&&event.who==='self'&&event.confidence==='high'){
-    const announced=event.augment??event.name, at=Number(event.t)||Date.now();
+    const announced=event.augment??event.name, at=eventTime(event);
     if(announced){
       const round=[...state.augmentRounds].reverse().find(r=>r.closed&&r.closedAt&&at-r.closedAt>=0&&at-r.closedAt<=90000
         &&((r.confirmed.length===1&&r.confirmed[0]!==announced)||r.confirmed.length===0)
