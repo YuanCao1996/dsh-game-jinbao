@@ -12,9 +12,12 @@ const pickOf = (list, seed) => list[Math.abs(Number(seed) || 0) % list.length];
 
 export function viewerReply(question, facts = {}, seed = 0) {
   const text = String(question ?? '').trim();
+  const greeting=text.replace(/@?金宝/g,'').trim();
+  if(/^(你好[呀啊哇]?|您好|哈喽|嗨|hello|hi)[\s!！。~～]*$/i.test(greeting))return pickOf(['你好呀，欢迎来直播间！','嗨，欢迎！想聊这局就直接问我。'],seed);
+  if(/^(谢谢[你啦啊]?|多谢|感谢|thanks)[\s!！。~～]*$/i.test(greeting))return '不客气，一起看这局！';
   const champion = String(facts.champion ?? '').trim();
   const kda = Array.isArray(facts.kda) ? facts.kda.join('/') : '';
-  const gold = Number.isFinite(Number(facts.gold)) ? Number(facts.gold) : null;
+  const gold = facts.gold!==null&&facts.gold!==undefined&&facts.gold!==''&&Number.isFinite(Number(facts.gold)) ? Number(facts.gold) : null;
   const next = String(facts.nextItem ?? '').trim();
   const items = Array.isArray(facts.items) ? facts.items.filter(Boolean) : [];
   const augments = Array.isArray(facts.augments) ? facts.augments.filter(Boolean) : [];
@@ -29,14 +32,14 @@ export function viewerReply(question, facts = {}, seed = 0) {
   if (ITEM_HINTS.test(text)) {
     if (next) return pickOf([`下一件推荐 ${next}。`, `按计划下一件是 ${next}。`], seed);
     if (items.length) return `目前出了 ${items.slice(-2).join('、')}，下一件等局面再定。`;
-    return '还没出成装，先看金币和对面。';
+    return '暂未读取到装备，不能确定下一件。';
   }
   if (AUGMENT_HINTS.test(text)) {
     if (augments.length) return `这局拿了 ${augments.join('、')}。`;
-    return '这局海克斯还没确认，等三选一出来再说。';
+    return '暂未读取到已选海克斯，不能确认。';
   }
   if (ENEMY_HINTS.test(text) && enemies.length) {
     return `对面有 ${enemies.slice(0, 4).join('、')}，盯住最肥的那个。`;
   }
-  return pickOf(['这个问题我得看下局势。', '收到，我正在看这一波。', '等我两秒，正在看数据。'], seed);
+  return '这个问题还缺少对局信息，暂时不能确定。';
 }

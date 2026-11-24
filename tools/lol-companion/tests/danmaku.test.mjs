@@ -87,6 +87,12 @@ test('问对面时点名真实敌人', () => {
 
 test('没有对应数据时如实说不知道，不编造', () => {
   const reply = viewerReply('你觉得这把能赢吗', { champion: '赫卡里姆' });
-  assert.ok(/正在看|等两秒|看下局势/.test(reply), reply);
+  assert.ok(/缺少对局信息|不能确定/.test(reply), reply);
   assert.ok(reply.length <= 40);
+});
+test('greetings stay natural without swallowing a real equipment question',()=>{
+ assert.match(viewerReply('@金宝 你好呀'),/你好|欢迎/);
+ assert.doesNotMatch(viewerReply('@金宝 你好呀'),/局势|两秒/);
+ assert.match(viewerReply('@金宝 你好，下一件出什么',{nextItem:'振奋盔甲'}),/振奋盔甲/);
+ assert.match(viewerReply('@金宝 谢谢你'),/不客气/);
 });

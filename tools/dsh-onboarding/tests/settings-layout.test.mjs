@@ -7,16 +7,18 @@ const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8'
 
 function harness() {
   const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, {
-    hidden: false, value: '', textContent: '', disabled: false,
+    hidden: false, value: '', textContent: '', disabled: false, dataset: {}, addEventListener() {},
     classList: { toggle() {} }, querySelector() { return { textContent: '' }; },
   }]));
   let status = { mode: 'cloud', baseUrl: '', model: '', emailEnabled: true, agentRuntime: 'standalone' };
   let requests = [];
+  let stream = {};
   const context = vm.createContext({ URL, Date, console, location: { hash: '#test', pathname: '/' },
     history: { replaceState() {} }, document: { hidden: false, getElementById: id => elements.get(id) },
     setInterval() {}, setTimeout() {}, clearTimeout() {}, window: {},
     fetch: async (url, options = {}) => {
       if (url === '/api/status') return Response.json(status);
+      if (url === '/api/stream') return Response.json(stream);
       if (url === '/api/model') {
         const body = JSON.parse(options.body); requests.push(body);
         status = { ...status, ...body, apiKey: undefined, byokConfigured: true };
@@ -24,8 +26,10 @@ function harness() {
       return Response.json({});
     },
   });
+  for(const [id,element] of elements){context[id]=element;element.setAttribute=()=>{};element.removeAttribute=()=>{};}
+  context.window.fetch=context.fetch;context.window.addEventListener=()=>{};
   vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1], context);
-  return { elements, context, requests, async refresh() { await vm.runInContext('refresh(true)', context); } };
+  return { elements, context, requests, setStream(value) {stream=value;}, async refresh() { await vm.runInContext('refresh(true)', context); } };
 }
 
 test('settings script compiles; security nonce and existing diagnostics are preserved', () => {
@@ -67,4 +71,20 @@ test('invalid model fields send no request; successful save clears key and dirty
   assert.equal(h.elements.get('apiKey').value, '');
   assert.equal(h.elements.get('save').disabled, true);
   assert.equal(h.elements.get('modelSaveState').textContent, '设置已保存');
+});
+
+test('stream hint distinguishes local answers, actual cloud answers and uncertain tasks', async()=>{
+ const h=harness();
+ const base={enabled:true,status:'authorized',roomId:'2948407',metrics:{received:1,accepted:1,replied:1}};
+ for(const [extra,expected] of [
+   [{audienceAgent:{configured:false}},/本地简短回复/],
+   [{audienceAgent:{configured:true},metrics:{...base.metrics,lastReplySource:'agent'}},/最近一条由云端/],
+   [{audienceAgent:{configured:true,transport:{uncertain:true}}},/状态待确认.*暂停/],
+   [{audienceAgent:{configured:true,transport:{busy:true}}},/正在回答/],
+ ]){
+   h.setStream({...base,...extra});
+   await vm.runInContext('loadStreamSettings(false)',h.context);
+   assert.match(h.elements.get('streamHint').textContent,expected);
+   assert.equal(h.elements.get('streamRecover').hidden,extra.audienceAgent?.transport?.uncertain!==true);
+ }
 });

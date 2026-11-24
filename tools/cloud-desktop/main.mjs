@@ -1,5 +1,7 @@
 import{createCloudCapture}from'./capture.mjs';
 import{createCloudCoach}from'./auto-coach.mjs';
+import{createAudienceTaskAgent}from'./audience-task-agent.mjs';
+import{createAudiencePendingStore}from'./audience-pending.mjs';
 import{claimInstance}from'./instance.mjs';
 import{createEventQuery}from'./event-query.mjs';
 import{createRuntimeRouter}from'./runtime-router.mjs';
@@ -105,8 +107,14 @@ const updates=createStandaloneUpdates({root,stateDir,restart:process.connected?a
 const teamFlag=await readTeamFlag(stateDir).catch(()=>({enabled:false,byokHost:false}));
 const teamRoomsEnabled=args.includes('--team-rooms')||teamFlag.enabled;
 const teamByokEnabled=args.includes('--team-byok-host')||teamFlag.byokHost;
-setup=await createSetupServer({credentials,stateDir,port,storage,cloudAgent:agent,localAgent:agent,runtimeId:'standalone',teamRooms:teamRoomsEnabled,teamHostPreview:teamByokEnabled&&!!teamCacheStore&&!!teamCacheReports&&!!teamUsageOutbox,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError:!teamUsageOutbox,teamCacheError:!teamCacheStore||!teamCacheReports,activity,diagnostics,speech,canAutoRequest:pacing.canRequest,prepareModel:async config=>{if(config.mode==='byok')try{await locateNativeModules({stateDir,desktopPath:config.desktopPath});const validation=await createLocalAgent({stateDir,getConfig:()=>config,getKey:async()=>'',getContext:async()=>({})});await validation.close();}catch{throw Object.assign(Error('Local DSH unavailable'),{status:409,code:'local_dsh_unavailable'});}},onModelChange:()=>agent.reconfigure(),updateController:updates,observation,nativeInstaller,logSource,userMemory,diary});
+const audienceAgent=args.includes('--audience-agent-preview')?createAudienceTaskAgent({enabled:true,
+ roomBindingEnabled:true,
+ stableIdentity:true,
+ pendingStore:createAudiencePendingStore(stateDir),
+ getToken:async()=>setup?.config().mode==='cloud'?(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value:null}):null;
+setup=await createSetupServer({credentials,stateDir,port,storage,cloudAgent:agent,localAgent:agent,audienceAgent,runtimeId:'standalone',teamRooms:teamRoomsEnabled,teamHostPreview:teamByokEnabled&&!!teamCacheStore&&!!teamCacheReports&&!!teamUsageOutbox,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError:!teamUsageOutbox,teamCacheError:!teamCacheStore||!teamCacheReports,activity,diagnostics,speech,canAutoRequest:pacing.canRequest,prepareModel:async config=>{if(config.mode==='byok')try{await locateNativeModules({stateDir,desktopPath:config.desktopPath});const validation=await createLocalAgent({stateDir,getConfig:()=>config,getKey:async()=>'',getContext:async()=>({})});await validation.close();}catch{throw Object.assign(Error('Local DSH unavailable'),{status:409,code:'local_dsh_unavailable'});}},onModelChange:()=>agent.reconfigure(),updateController:updates,observation,nativeInstaller,logSource,userMemory,diary});
 const version=JSON.parse(await readFile(join(root,'package.json'),'utf8')).version+' (独立预览)';
+await audienceAgent?.recover();
 // Reuse the server's existing IP-based trial seats. A remembered login or an
 // explicit local-mode choice always wins; exhausted seats fall back to email UI.
 const loginTask=!args.includes('--headless')?setup.ensureTrialLogin().catch(()=>{}):Promise.resolve();
