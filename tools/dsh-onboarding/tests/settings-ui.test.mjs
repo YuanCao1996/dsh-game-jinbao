@@ -29,6 +29,8 @@ test('settings visibly switches from binding form to signed-in card and back on 
   if(route==='logout')method=null;
   return Response.json({status:'approved'});
  }});
+ for(const [id,element] of elements){context[id]=element;element.dataset={};element.addEventListener=()=>{};element.setAttribute=()=>{};element.removeAttribute=()=>{};}
+ context.window.fetch=context.fetch;context.window.addEventListener=()=>{};
  vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1],context);
  await vm.runInContext('refresh(true)',context);
  assert.equal(elements.get('emailBind').hidden,false);

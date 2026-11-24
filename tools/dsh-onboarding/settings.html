@@ -99,6 +99,7 @@
     <label><input id="streamShowNick" type="checkbox" style="width:auto;margin-right:6px">显示观众昵称</label>
     <label><input id="streamReply" type="checkbox" style="width:auto;margin-right:6px">允许回应观众（只上屏不朗读）</label>
     <button id="streamSave">保存主播设置</button>
+    <button id="streamRecover" hidden type="button" onclick="recoverAudienceTask()">核对未完成任务</button>
   </div>
   <p class="hint" id="streamHint">房间号在直播间地址里：live.bilibili.com/<b>6650029</b>。</p>
 </section>
@@ -280,6 +281,7 @@ async function loadStreamSettings(statusOnly=false){
     el('streamShowNick').checked=data.showNick!==false;
     el('streamReply').checked=data.reply!==false;
     }
+    if(el('streamRecover'))el('streamRecover').hidden=data.audienceAgent?.transport?.uncertain!==true;
     const pill=el('streamStatus');
     if(pill){
       const map={idle:'未开启',connected:'已连接，等待认证',authorized:'已就绪',connecting:'连接中…',reconnecting:'连接中断，正在自动重连…',disconnected:'已断开',error:'连接失败',closed:'已关闭'};
@@ -288,7 +290,20 @@ async function loadStreamSettings(statusOnly=false){
       pill.dataset.bad=data.status==='error'?'true':'false';
     }
     if(el('streamHint'))el('streamHint').textContent=data.lastError?'最近一次连接错误：'+({connection_failed:'网络连接失败',connection_closed:'连接已断开',connection_timeout:'连接或认证超时',auth_failed:'弹幕认证失败',auth_invalid:'认证响应异常',message_decode_failed:'消息解析异常',room_not_found:'直播间不存在'}[data.lastError]||'连接暂不可用'):(data.status==='authorized'?'已连接直播间，等待观众弹幕。':'填写直播间地址中的数字房间号。');
+    if(data.enabled&&el('streamHint')){
+      const remote=data.audienceAgent?.transport;
+      el('streamHint').textContent+=' '+(remote?.uncertain?'云端任务状态待确认，已暂停新的云端观众请求，仍可提供本地简短回复。':remote?.busy?'观众助手正在回答。':data.reply!==false&&data.audienceAgent?.configured&&data.audienceAgent?.roomConfigured===false?'云端房间授权未确认，当前不会调用云端模型。':data.metrics?.lastReplySource==='agent'?'最近一条由云端观众助手回答。':data.metrics?.lastReplySource==='local'||!data.audienceAgent?.configured?'当前使用本地简短回复。':'已配置云端观众助手，等待提问验证。');
+    }
   }catch{}
+}
+async function recoverAudienceTask(){
+ const button=el('streamRecover');button.disabled=true;
+ try{
+  const result=await api('stream/recover',{});
+  await loadStreamSettings(false);
+  el('streamHint').textContent=result.recovered?'旧任务已核对，可以继续接收观众提问。':'暂未确认旧任务状态，已保留记录；稍后可再次核对。';
+ }catch{el('streamHint').textContent='暂时无法核对，旧任务记录已保留。';}
+ finally{button.disabled=false;}
 }
 async function saveStreamSettings(){
   const payload={
