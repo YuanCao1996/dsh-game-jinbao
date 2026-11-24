@@ -38,6 +38,54 @@ test('icon store keeps a whitelist, caches downloads and dedupes concurrent requ
   }
 });
 
+test('prefetch warms every bundled mapping entry and skips already cached files', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'jinbao-item-prefetch-'));
+  let calls = 0;
+  const store = createItemIconStore({
+    stateDir: dir,
+    paths: {'1001': 'assets/a.png', '3031': 'assets/b.png', '3153': 'assets/c.png'},
+    fetchImpl: async () => { calls += 1; return new Response(png, {status: 200, headers: {'content-type': 'image/png'}}); },
+  });
+  try {
+    const first = await store.prefetch({concurrency: 2, spacingMs: 0});
+    assert.deepEqual({total: first.total, added: first.added, failed: first.failed}, {total: 3, added: 3, failed: 0});
+    assert.equal(calls, 3);
+    assert.equal(await store.cachedCount(), 3);
+    // 第二次启动：只补缺失的，不再联网。
+    calls = 0;
+    const second = await store.prefetch({concurrency: 2, spacingMs: 0});
+    assert.equal(second.total, 0);
+    assert.equal(calls, 0);
+  } finally {
+    await rm(dir, {recursive: true, force: true});
+  }
+});
+
+test('prefetch stops after repeated failures and when the caller asks it to stop', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'jinbao-item-prefetch-'));
+  const failing = createItemIconStore({
+    stateDir: dir,
+    paths: Object.fromEntries(Array.from({length: 20}, (_, i) => [String(1000 + i), 'assets/x.png'])),
+    fetchImpl: async () => new Response('no', {status: 503}),
+  });
+  const result = await failing.prefetch({concurrency: 2, spacingMs: 0, stopAfterFailures: 3});
+  assert.equal(result.stopped, true);
+  assert.equal(result.added, 0);
+  assert.ok(result.failed >= 3, 'failed ' + result.failed);
+  assert.ok(result.failed < result.total, 'must not try every entry after repeated failures');
+
+  const stopping = createItemIconStore({
+    stateDir: dir,
+    paths: {'2001': 'assets/a.png', '2002': 'assets/b.png', '2003': 'assets/c.png'},
+    fetchImpl: async () => new Response(png, {status: 200, headers: {'content-type': 'image/png'}}),
+  });
+  let done = 0;
+  const stopped = await stopping.prefetch({concurrency: 1, spacingMs: 0, shouldStop: () => done++ >= 1});
+  assert.equal(stopped.stopped, true);
+  assert.ok(stopped.added <= 2);
+  await rm(dir, {recursive: true, force: true});
+});
+
 test('icon store returns null for unknown ids, failed downloads and oversized responses', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'jinbao-item-icons-'));
   const bad = createItemIconStore({

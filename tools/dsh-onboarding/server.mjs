@@ -345,6 +345,28 @@ const overlay=await createOverlayService({stateDir,activity,canAutoRequest,exper
   search:async query=>{const token=await resolve('cloud');if(!token)throw error(401);return remote(runtimeId==='standalone'?'/desktop/agent-preview/knowledge':'/site/search',token,query);},
  });
  const phoneSync=await createPhoneSync({stateDir,view:overlay.view,ask:overlay.ask,getToken:syncToken,serviceBaseUrl:service,fetchImpl});
+ // 装备图标提前采集：空闲时把随包映射里的全部图标缓存到状态目录，
+ // 第一次遇到某件装备就能立即显示；对局中暂停，断网/连续失败会退避。
+ const itemIconPrefetch={task:null,done:false,retryAt:0,timer:null};
+ const itemGameActive=()=>{try{const view=overlay.view();return !!view.match&&!view.ended&&(view.gameTime!=='等待对局'||view.phase==='ChampSelect')&&Date.now()-view.updatedAt<30000;}catch{return false;}};
+ const warmItemIcons=async()=>{
+  if(itemIconPrefetch.done||itemIconPrefetch.task||Date.now()<itemIconPrefetch.retryAt)return;
+  if(itemGameActive())return;
+  itemIconPrefetch.task=(async()=>{
+   try{
+    const result=await itemIcons.prefetch({concurrency:3,spacingMs:25,shouldStop:itemGameActive});
+    if(result.stopped)itemIconPrefetch.retryAt=Date.now()+5*60*1000;
+    // 个别图标在 CDragon 上本来就可能缺失，不值得每 10 分钟重试整轮。
+    else if(result.failed>2)itemIconPrefetch.retryAt=Date.now()+10*60*1000;
+    else itemIconPrefetch.done=true;
+   }catch{itemIconPrefetch.retryAt=Date.now()+10*60*1000;}
+  })().finally(()=>{itemIconPrefetch.task=null;});
+ };
+ // 测试会注入假的 fetchImpl：不在这里发真实网络请求。真实运行默认开启。
+ if(fetchImpl===fetch&&!process.env.NODE_TEST_CONTEXT){
+  itemIconPrefetch.timer=setInterval(()=>{void warmItemIcons();},30000);itemIconPrefetch.timer.unref?.();
+  setTimeout(()=>{void warmItemIcons();},8000).unref?.();
+ }
  const memories=userMemory??createUserMemory({stateDir});
  // 开黑桥可以随时建/拆：设置页打开开关就立刻生效，不用重启。
  const teamOptions={stateDir,serviceBaseUrl:service,getToken:()=>resolve('cloud'),getFacts:()=>overlay.getTeamFacts(),fetchImpl,
@@ -934,6 +956,6 @@ if(input.clickThrough!==undefined&&typeof input.clickThrough!=='boolean')throw e
  renewTimer.unref?.();
  let httpClosing;
  const stopAccepting=()=>{accepting=false;team?.stopAccepting();if(!httpClosing){httpClosing=new Promise(resolve=>server.close(()=>resolve()));server.closeAllConnections();}};
- const stopSetup=createShutdown({quiesce:stopAccepting,steps:[['renewal',()=>{clearInterval(renewTimer);}],['commands',()=>mutation],['stream',stopStream],['phone',()=>phoneSync.close()],['team',()=>team?.close()],['memories',()=>memories.close()],['overlay',()=>overlay.close()],['http',()=>httpClosing]]});
+ const stopSetup=createShutdown({quiesce:stopAccepting,steps:[['renewal',()=>{clearInterval(renewTimer);}],['item_icons',()=>{clearInterval(itemIconPrefetch.timer);}],['commands',()=>mutation],['stream',stopStream],['phone',()=>phoneSync.close()],['team',()=>team?.close()],['memories',()=>memories.close()],['overlay',()=>overlay.close()],['http',()=>httpClosing]]});
  return {url,settingsLinkSaved,port:server.address().port,stopAccepting,view:overlay.view,config:()=>({...config}),ensureTrialLogin:()=>locked(async()=>{if(config.mode!=='cloud'||await resolve('cloud'))return;await acceptCloud(await remote('/desktop/auth/ip/register',null,{}));}),search:async query=>{const token=await resolve('cloud');if(!token)throw error(401);return remote('/site/search',token,query);},close:async()=>{if((await stopSetup()).failed.length)throw Error('setup_shutdown_failed');}};
 }
