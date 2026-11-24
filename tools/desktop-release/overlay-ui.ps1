@@ -100,6 +100,7 @@ function Get-OverlayItemBrush([string]$id){
 function New-OverlayItemTile([string]$id,[string]$label){
  $tile=New-Object Windows.Controls.Border
  $tile.Width=18;$tile.Height=18;$tile.CornerRadius=[Windows.CornerRadius]::new(4);$tile.Margin='0,0,3,0'
+ $tile.BorderBrush=New-OverlaySurfaceBrush '#3A4756';$tile.BorderThickness=1
  $tile.ToolTip=$label
  $brush=Get-OverlayItemBrush $id
  if($brush){$tile.Background=$brush}else{$tile.Background=New-OverlaySurfaceBrush '#33404D'}
@@ -116,8 +117,9 @@ function Update-ItemStrip {
  $controls.EnemyItemStrip.Children.Clear()
  foreach($row in $self){$controls.ItemStrip.Children.Add((New-OverlayItemTile ([string]$row.id) ([string]$row.name)))|Out-Null}
  foreach($row in $enemy){$controls.EnemyItemStrip.Children.Add((New-OverlayItemTile ([string]$row.id) (([string]$row.hero+' · '+[string]$row.name).Trim())))|Out-Null}
- $controls.ItemStripPanel.Visibility=if($self.Count){'Visible'}else{'Collapsed'}
- $controls.EnemyItemStripPanel.Visibility=if($enemy.Count){'Visible'}else{'Collapsed'}
+ $controls.SelfItemLabel.Visibility=if($self.Count){'Visible'}else{'Collapsed'}
+ $controls.EnemyItemLabel.Visibility=if($enemy.Count){'Visible'}else{'Collapsed'}
+ $controls.ItemStripPanel.Visibility=if($self.Count -or $enemy.Count){'Visible'}else{'Collapsed'}
 }
 function Update-OverlayComposer {
  if(!$controls.ComposerPlaceholder){return}

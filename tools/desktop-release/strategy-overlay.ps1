@@ -144,14 +144,12 @@ if(!$owned){$mutex.Dispose();Write-Output 'Jinbao strategy overlay is already ru
      </WrapPanel>
      <TextBlock x:Name="LauncherText" Visibility="Collapsed" Foreground="#FBBF24" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"/>
      <TextBlock x:Name="UpdateText" Foreground="#94A3B8" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
-     <StackPanel x:Name="ItemStripPanel" Orientation="Horizontal" Margin="0,4,0,0" Visibility="Collapsed">
-      <TextBlock Text="装备" Foreground="#7C8B99" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
-      <StackPanel x:Name="ItemStrip" Orientation="Horizontal"/>
-     </StackPanel>
-     <StackPanel x:Name="EnemyItemStripPanel" Orientation="Horizontal" Margin="0,2,0,0" Visibility="Collapsed">
-      <TextBlock Text="敌方" Foreground="#7C8B99" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
-      <StackPanel x:Name="EnemyItemStrip" Orientation="Horizontal"/>
-     </StackPanel>
+     <WrapPanel x:Name="ItemStripPanel" Orientation="Horizontal" Margin="0,4,0,0" Visibility="Collapsed">
+      <TextBlock x:Name="SelfItemLabel" Text="装备" Foreground="#7C8B99" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
+      <StackPanel x:Name="ItemStrip" Orientation="Horizontal" VerticalAlignment="Center"/>
+      <TextBlock x:Name="EnemyItemLabel" Text="敌方" Foreground="#7C8B99" FontSize="10" VerticalAlignment="Center" Margin="12,0,6,0"/>
+      <StackPanel x:Name="EnemyItemStrip" Orientation="Horizontal" VerticalAlignment="Center"/>
+     </WrapPanel>
      <Button x:Name="ActionButton" Content="微信登录" HorizontalAlignment="Left" Visibility="Collapsed"/>
     </StackPanel>
     <StackPanel x:Name="Tabs" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,0,0,4"/>
@@ -240,7 +238,7 @@ foreach($name in @('StatusDot','StatusText','ComposerActions')){$controls[$name]
 foreach($name in @('NarrowPetImage','NarrowPetTail','NarrowBubble')){$controls[$name]=$window.FindName($name)}
 $controls.PlayersTable=$window.FindName('PlayersTable');$controls.LeaderboardTable=$window.FindName('LeaderboardTable')
 $controls.UpdateText=$window.FindName('UpdateText')
-foreach($name in @('ItemStripPanel','ItemStrip','EnemyItemStripPanel','EnemyItemStrip')){$controls[$name]=$window.FindName($name)}
+foreach($name in @('ItemStripPanel','ItemStrip','EnemyItemStrip','SelfItemLabel','EnemyItemLabel')){$controls[$name]=$window.FindName($name)}
 foreach($name in @('ResizeGrip','AppearancePanel','FontSlider','FontText')){$controls[$name]=$window.FindName($name)}
 foreach($name in @('NarrowText','PreviousSubtitle','OutgoingSubtitle')){$controls[$name]=$window.FindName($name)}
 # 字幕条本身的高度只由文字决定：形象再大也只让窗口变高，气泡保持文字高度并垂直居中，
@@ -710,6 +708,7 @@ function Update-State {
   $changed=(!$script:snapshot -or !$script:renderedTab -or [string]$next.($script:tab) -ne [string]$script:snapshot.($script:tab))
   $enteredSelection=$next.phase -eq 'ChampSelect' -and (!$script:snapshot -or $script:snapshot.phase -ne 'ChampSelect')
   $script:snapshot=$next
+  try{Update-ItemStrip}catch{}
    # 海克斯三选一出现时主动弹一次窄条：空闲时条子是收起的，没有这条就不会“弹”。
    try{
     $offerKey=[string]$script:snapshot.augmentOfferKey
@@ -1383,7 +1382,7 @@ try{
     $iconFixture=[pscustomobject]@{game='lol';selfItemRows=@([pscustomobject]@{id='3031';name='无尽之刃'},[pscustomobject]@{id='3006';name='狂战士胫甲'});enemyKeyItemRows=@([pscustomobject]@{id='3153';name='破败王者之刃';hero='锐雯'})}
     $savedIcons=$script:snapshot;$script:snapshot=$iconFixture;$script:itemStripKey='';Update-ItemStrip
     $script:testResult.itemStripIcons=($controls.ItemStrip.Children.Count -eq 2) -and ($controls.EnemyItemStrip.Children.Count -eq 1)
-    $script:testResult.itemStripVisible=($controls.ItemStripPanel.Visibility -eq 'Visible') -and ($controls.EnemyItemStripPanel.Visibility -eq 'Visible')
+    $script:testResult.itemStripVisible=($controls.ItemStripPanel.Visibility -eq 'Visible') -and ($controls.SelfItemLabel.Visibility -eq 'Visible') -and ($controls.EnemyItemLabel.Visibility -eq 'Visible')
     $script:snapshot=$savedIcons;$script:itemStripKey=''
     $script:testResult.closed=$script:closing
    });$testing.Start()
