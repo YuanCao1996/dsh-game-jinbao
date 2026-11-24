@@ -45,3 +45,13 @@
 - 诊断期间曾多次手动启动/停止应用，出现过程序被外部结束的情况，属于本地调试干扰；
   正常从桌面快捷方式启动不受影响。
 - 未上传服务器、未修改线上 feed / 官网 / GitHub；commit 仅本地。
+## 渠道同步（2026-11-24）
+
+- 应用内 feed：`https://api.jinbaoai.top/downloads/jinbao/latest.json`（已备份旧 latest.json，签名校验通过）；
+- 下载目录：`/var/lib/jinbao-independent-downloads/v0.3.22/`（全量 + 应用层 + SHA256SUMS.txt）；
+- nginx：新增 `/downloads/jinbao/v0.3.22/*` 三个 location，`nginx -t` 通过并 reload；
+- 官网：`https://www.jinbaoai.top/` 的 Windows 下载按钮改为 v0.3.22；
+- GitHub Releases：`v0.3.22-standalone-preview.1`（tag 指向 `b545a47`），两个资产均可下载；
+- 代码：`main` 已推送到 `origin/main`（含 0.3.17–0.3.22 提交）。
+
+> 线上 feed / 官网 / GitHub 已切到 0.3.22。
