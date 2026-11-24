@@ -43,7 +43,7 @@ $controls.ActivityMenuItem.Add_Click({
   $controls.ActivityMenuItem.IsEnabled=$false
  }catch{$controls.HintText.Text='设置保存失败，请在网页设置中重试。'}
 })
-function New-AgentActivityEquipment([hashtable]$equipment,[double]$size=16){
+function New-AgentActivityEquipment($equipment,[double]$size=16){
  $panel=New-Object Windows.Controls.StackPanel
  $panel.Orientation='Horizontal';$panel.VerticalAlignment='Center';$panel.Margin='0,0,4,0'
  $hero=[string]$equipment.hero
@@ -136,5 +136,9 @@ function Test-AgentActivitySurface {
  Set-Tab 'advice';Set-DisplayMode 'narrow';$script:testResult.activityHiddenNarrow=$controls.AgentActivityPanel.Visibility -eq 'Collapsed'
  Set-DisplayMode 'large';$activity.enabled=$false;Update-AgentActivity
  $script:testResult.activityOffClears=$controls.AgentActivityPanel.Visibility -eq 'Collapsed' -and $controls.AgentActivityRows.Children.Count -eq 0
+ $activity.enabled=$false;$activity.rows=@();$activity.instanceId='equipment-test'
+ $equipTest=[pscustomobject]@{hero='皮城女警';items=@([pscustomobject]@{id='3031';name='无尽之刃'})}
+ $equipPanel=New-AgentActivityEquipment $equipTest 16
+ $script:testResult.activityEquipmentInline=($null -ne $equipPanel) -and ($equipPanel.Children.Count -ge 2)
  $script:snapshot=$before;Update-Page
 }
