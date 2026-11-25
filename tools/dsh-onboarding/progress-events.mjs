@@ -67,6 +67,12 @@ export function projectProgressEvent(state,event){
    if(!selections.some(row=>row.key===key)){
     selections.push({key,at:Date.now(),gameSeconds:seconds,hero:String(heroTitle),side,augment,confirmed,source:String(event.source??'')});
     state.augmentSelections=selections.slice(-24);
+    // 敌方高威胁强化：像敌方关键成装一样立刻喊一句。
+    if(side==='enemy'&&HIGH_THREAT_AUGMENTS.has(augment)){
+     const alertText='敌方'+String(heroTitle||'敌人')+'选了'+augment+'，要小心这个强化！';
+     const recent=(state.broadcasts??[]).some(row=>row&&row.text===alertText&&Date.now()-Number(row.at||0)<120000);
+     if(!recent)state.broadcasts=[...(state.broadcasts??[]),{at:Date.now(),text:alertText,priority:3,localAlert:true,expiresAt:Date.now()+15000}].slice(-12);
+    }
    }
   }
     // A countdown-default pick is what the player actually ended up with, even though it
@@ -107,6 +113,14 @@ export function threatAlerts(state,hero,added){
  }
  return alerts;
 }
+
+// 敌方选了这些强化时立刻提醒，并触发一条针对建议。
+// 先按已知高威胁名单兜底；后续拿到适配排名可以再细化。
+export const HIGH_THREAT_AUGMENTS=new Set([
+ '珠光护手','终极唤醒','魔法转物理','双刀流','巨人杀手','沃格勒特的巫师帽','钢化你心',
+ '科学狂人','逃跑计划','缩小引擎','扳机炼狱','炼狱龙魂','下雪天','最终形态','飞升仪式',
+ '全套武装','大地觉醒','物理转魔法','心灵弹幕','超负荷','终极符文','加速死亡',
+]);
 
 export function observeEquipment(state){
   const seen=new Set();

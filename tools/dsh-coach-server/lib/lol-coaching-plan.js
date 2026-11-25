@@ -58,6 +58,7 @@ const TASKS = {
   death: '刚刚阵亡，利用等待复活时间给两条调整：下次可购买时优先补哪件装备/组件，复活后下一波配合谁、避开什么威胁。结合当前金币、装备、全部已选强化和敌方变化；缺少死亡过程证据不要编造死因或责怪操作。没有商店权限事实时不要断言现在可以买。',
   purchase: '购买决策窗口：根据现有金币、已拥有装备、全部强化、敌方装备，推荐本次优先一件装备或组件，并说明针对谁、为什么。价格与合成件已随事实给出，直接采用、不要重复检索；事实里没有的才用资料工具，查不到就不要断言买得起。已买的不再重复推荐；播报只讲成装，不要提散件/组件装备，也不要播报购买散件；仅有散件的成装不要重复提醒合成，直接讲下一件成装；canShop未确认则使用“下次可购买时”。',
   enemyChange: '对面装备或强化发生变化：指出新增/变化的具体装备或强化、属于哪位英雄，以及它影响自己的哪种打法。只选择确实会改变决策的威胁，给改目标、进场顺序或出装调整之一；变化不关键就静默。不把装备消失或缺失识别说成新增，不知道归属就明确未知。',
+  enemyAugment: '敌方刚拿到高威胁海克斯。用两短句给针对性应对：第一句说这个强化让对面哪个英雄变强、强在哪；第二句说你接下来怎么调整（先打谁/躲什么/下一件出什么）。只依据 facts.enemyAugment 和已确认阵容装备，不编造效果数值，不重复面板。',
   selection: '从我当前英雄和实际可换的备选席中推荐首选与一个备选。结合本模式英雄胜率/强度和队友阵容缺口（前排、开团、清线、伤害类型），说明换或不换的原因；推荐两项本模式可用的召唤师技能及使用目的。不要推荐不在备选席的英雄；敌方未显示就不要猜对手。',
   loading: '用双方已知英雄点名说明这局的优势、最大威胁和取胜条件；英雄样本胜率不是本局获胜概率。给出适合自己英雄的出门装备及理由，再给6级前的消耗/清线/站位与配合方案。加载页不知道实际等级，不要宣称所有人都没大招。',
   opening: '给当前英雄的出门/下一购买窗口装备建议，并围绕双方阵容说明6级前先做什么、躲谁的哪个关键技能、配合哪位队友。已经拿到的强化要一起算：如果强化点名了某件装备，六件顺序里必须安排它。自己未到6级不代表所有人没有大招；特殊英雄机制先核实。',
@@ -118,6 +119,7 @@ export function buildLolCoachingPlan(events = [], current = null) {
   else if (events.some(e => e.coachTrigger === 'turret')) stage = 'turret';
   else if (events.some(e => e.coachTrigger === 'death') && me.dead === true) stage = 'death';
   else if (events.some(e => e.coachTrigger === 'coordination')) stage = 'coordination';
+  else if (events.some(e => e.coachTrigger === 'enemyAugment')) stage = 'enemyAugment';
   else if (events.some(e => e.coachTrigger === 'purchase')) stage = 'purchase';
   else if (events.some(e => e.coachTrigger === 'enemyChange')) stage = 'enemyChange';
   else if (events.some(e => e.coachTrigger === 'ultimate')) stage = 'ultimate';
@@ -137,6 +139,7 @@ export function buildLolCoachingPlan(events = [], current = null) {
     allies: list(current?.allies ?? roster.allies).map(hero),
     enemies: list(current?.enemies ?? roster.enemies).map(hero),
     ownedAugments: current?.ownedAugments ?? s.teamfight?.pickedAugments ?? [],
+  enemyAugment: (events.find(e=>e.coachTrigger==='enemyAugment')?.enemyAugment) ?? null,
     // 本局双方名单（称号）：人名只能从这里取，避免编造不存在的英雄。
     lineup: {
       self: String(me?.champion ?? ''),
@@ -335,7 +338,7 @@ export function createAdviceValidity(stage, current, now = Date.now()) {
   if (!current) return null;
   // 开局规划讲的是整局的六件装备顺序，有效期按整局给。依赖项必须和 adviceIsValid
   // 里重算的那份一致，否则规划一生成就会被判成过期（opening 走默认依赖）。
-  const ttl = stage === 'opening' ? 600000 : (['death','purchase','enemyChange','situation','ace','inhib','objective','turret','coordination'].includes(stage) ? 45000 : 90000);
+  const ttl = stage === 'opening' ? 600000 : (['death','purchase','enemyChange','enemyAugment','situation','ace','inhib','objective','turret','coordination'].includes(stage) ? 45000 : 90000);
   return {version:1,match:current.match,stage,createdAt:now,expiresAt:now+ttl,
     dependencies:dependencies(current,stage)};
 }

@@ -3,6 +3,7 @@ import { condenseAdvice, stripSources, noiseBroadcast, adviceSimilarity, fitProm
 import{mkdir,appendFile,writeFile,rename}from'node:fs/promises';import{join}from'node:path';
 import{fixItemNames,unknownItemMentions}from'./item-name-verify.mjs';
 import{stateCoachingTrigger,buildLolCoachingPlan,createAdviceValidity,adviceIsValid}from'../dsh-coach-server/lib/lol-coaching-plan.js';
+import{HIGH_THREAT_AUGMENTS}from'../dsh-onboarding/progress-events.mjs';
 import{createCoachScheduler}from'./coach-scheduler.mjs';
 // 配合窗口只取决于双方存活人数差，所以每轮都把人数算好塞进 state 事件。
 // c.allies 在某些采集路径下已经把本人算进去了，先按英雄名去掉本人再补一次，
@@ -60,7 +61,7 @@ let deathTurns=0;
  // Stages whose advice is still useful when it lands late; everything else is tied to a
  // window that closes (death, champion select, live offers, objectives).
  const LATE_ACTIONABLE=new Set(['postAugment','ultimate','situation','enemyChange','purchase']);
- const DIMENSION={ace:'map',turret:'map',inhib:'map',objective:'map',purchase:'build',enemyChange:'risk',augment:'augment',postAugment:'augment',death:'now',situation:'now',coordination:'now',ultimate:'plan',opening:'plan',loading:'plan',selection:'plan',ended:'now'};
+ const DIMENSION={ace:'map',turret:'map',inhib:'map',objective:'map',purchase:'build',enemyChange:'risk',enemyAugment:'risk',augment:'augment',postAugment:'augment',death:'now',situation:'now',coordination:'now',ultimate:'plan',opening:'plan',loading:'plan',selection:'plan',ended:'now'};
  const live=v=>v&&['lol','wzry','generic'].includes(v.game)&&v.match&&!v.ended&&v.phase!=='CapturePaused'&&Number.isFinite(v.updatedAt)&&now()-v.updatedAt<=30000&&v.updatedAt<=now()+500;
  const stillCurrent=v=>{const latest=view();return !closed&&live(latest)&&latest.game===v.game&&latest.match===v.match;};
  const note=(v,action,reason,extra={})=>{
@@ -160,6 +161,10 @@ const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItem
    else if(pendingCoordination)events=[{kind:'state',coachTrigger:'coordination',state:{...c.me,time:c.gameSeconds,enemyItems:(c.enemies??[]).flatMap(p=>p.items??[]),...aliveCounts(c)}}];
 
    else if((c.completedEquipmentEvents??[]).some(e=>e.at>(store.equipmentAt??0)))events=[{kind:'state',coachTrigger:'enemyChange'}];
+  else if((c.augmentSelections??[]).some(row=>row.side==='enemy'&&HIGH_THREAT_AUGMENTS.has(row.augment)&&row.at>(store.enemyAugmentAt??0))){
+   const hit=[...(c.augmentSelections??[])].reverse().find(row=>row.side==='enemy'&&HIGH_THREAT_AUGMENTS.has(row.augment)&&row.at>(store.enemyAugmentAt??0));
+   events=[{kind:'state',coachTrigger:'enemyAugment',enemyAugment:hit}];
+  }
    else if(Number(c.gameSeconds)>0){const event={kind:'state',state:{...c.me,time:c.gameSeconds,enemyItems:(c.enemies??[]).flatMap(p=>p.items??[]),...aliveCounts(c)}};event.coachTrigger=stateCoachingTrigger(event,nextStore);if(event.coachTrigger)events=[event];}
    // Dying is the most actionable automatic turn, and it must not depend on an earlier
    // publish having taught the coach the alive baseline (a busy queue swallows those).
@@ -175,7 +180,7 @@ const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItem
    // 空档看门狗：4 分钟没建议就补一次；连续失败时也照样尝试（见上面的 watchdogDue）。
    if(watchdogDue){
     try{
-     const urgent=events.some(e=>e.kind==='augment_offer'||['death','augment','objective','ace','inhib','turret','coordination','enemyChange','postAugment'].includes(e.coachTrigger));
+     const urgent=events.some(e=>e.kind==='augment_offer'||['death','augment','objective','ace','inhib','turret','coordination','enemyChange','enemyAugment','postAugment'].includes(e.coachTrigger));
      if(!urgent){events=[{kind:'state',coachTrigger:'situation'}];}
      store.watchdogAt=now();
      note(v,'watchdog','long_silence',{silenceMs:Math.round(watchdogSilence/1000)});
@@ -240,6 +245,7 @@ const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItem
    // showing new candidates must not swallow a concurrent confirmed selection.
    if(plan.stage==='loading')nextStore.loadingKey=loadingKey;
    if(plan.stage==='enemyChange')nextStore.equipmentAt=Math.max(...(c.completedEquipmentEvents??[]).map(e=>e.at),0);
+  if(plan.stage==='enemyAugment')nextStore.enemyAugmentAt=Math.max(...(c.augmentSelections??[]).filter(row=>row.side==='enemy').map(row=>Number(row.at)||0),0);
    store=nextStore;
    if(plan.stage==='augment')offers=offerKey;
    if(plan.stage==='postAugment'){owned=ownedKey;ownedCount=Number(v.ownedAugmentCount??0);}
