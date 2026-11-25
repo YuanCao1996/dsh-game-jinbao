@@ -56,6 +56,19 @@ export function projectProgressEvent(state,event){
     const hero=namedHero(state,event),owner=own?'自己':hero??'归属未确认';
     addProgressEvent(state,JSON.stringify(['augment',event.kind,owner,augment,confirmed]),`海克斯选择：${owner} · ${augment}`,seconds,'augment-selection',event.kind);
     if(own&&!state.ownedAugments.includes(augment))state.ownedAugments.push(augment);
+  // 队友/敌方的选择也消费成结构化记录（同“敌方出装事件”），供时间线与模型事实使用。
+  // ownedAugments 仍然只装本人，避免把队友强化算到自己头上。
+  const heroTitle=hero??event.champion??event.championTitle??'';
+  const heroId=identity(heroTitle);
+  const side=own?'self':state.enemies.some(player=>identity(player.champion)===heroId)?'enemy':state.allies.some(player=>identity(player.champion)===heroId)?'ally':'unknown';
+  if(heroTitle||augment){
+   const selections=state.augmentSelections??(state.augmentSelections=[]);
+   const key=JSON.stringify([event.kind,heroId,augment,seconds]);
+   if(!selections.some(row=>row.key===key)){
+    selections.push({key,at:Date.now(),gameSeconds:seconds,hero:String(heroTitle),side,augment,confirmed,source:String(event.source??'')});
+    state.augmentSelections=selections.slice(-24);
+   }
+  }
     // A countdown-default pick is what the player actually ended up with, even though it
     // is not a user choice. Keep it separately so advice can account for it and label it.
     if(isOwn(state,event)&&event.source==='countdown-default-confirmed'&&event.confidence!=='low'){

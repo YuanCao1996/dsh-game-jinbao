@@ -129,7 +129,7 @@ export function clock(seconds) {
 export function initialOverlayState() {
   return { game: null, mode: '', match: null, at: 0, selfIdentityAt: 0, matchStartedAt: 0, gameSeconds: null, ended: false, phase: '',observedMatch:false,
     me: {}, allies: [], enemies: [], bench: [], playerStats: [], enemyItems: [], events: [], equipmentSnapshots:new Map(), activityEvents:[],
-    ownedAugments: [], revealedAugments: [], augmentRounds: [], offers: [], offerRound: null, offerHistory: [], augmentCaptureAvailable: null, augmentCaptureReason: '', equipment: '', equipmentStatus:'', equipmentAssumptions: [], augmentAdvice: '', teamfight: '', broadcasts: [], chat: [],
+    ownedAugments: [], revealedAugments: [], augmentSelections: [], augmentRounds: [], offers: [], offerRound: null, offerHistory: [], augmentCaptureAvailable: null, augmentCaptureReason: '', equipment: '', equipmentStatus:'', equipmentAssumptions: [], augmentAdvice: '', teamfight: '', broadcasts: [], chat: [],
     agentStatus:'', agentError:'', coachStatus:null, praiseChains:{}, notices:[], noticeWinRate:null,
     // 触发型台词（连杀被终结/五杀被抢/队友挂机/首次上手/连胜）由这里排队，交给 settleExtraMoments 渲染。
     pendingMoments: [], killStreak: 0, allyWatch: {}, firstChampionChecked: false };

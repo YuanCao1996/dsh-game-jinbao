@@ -54,6 +54,7 @@ export function cloudContext(memory,game,match,{eventQuery=false,observationPlan
   recentEquipment,
   priorOpeningPlan:c?.openingBuild?{text:String(c.openingBuild).slice(0,160)}:null,
   recentAdvice:(c?.broadcasts??[]).slice(-2).map(broadcast=>String(broadcast?.text??'').slice(0,120)).filter(Boolean),
+  augmentSelections:(c?.augmentSelections??[]).slice(-6).map(row=>({hero:String(row?.hero??''),side:String(row?.side??''),augment:String(row?.augment??''),gameSeconds:row?.gameSeconds??null})),
   userNotes:Array.isArray(c?.userNotes)?c.userNotes.slice(-3):[]};
 
  const value={current_match_state:{game_id:game,status:c?'observed':'unknown',revision:c?.at??0,captured_at_ms:c?.at??Date.now(),

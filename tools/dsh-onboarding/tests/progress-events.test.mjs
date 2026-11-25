@@ -6,7 +6,7 @@ import {createChatObserver,createChatCatalogReader} from '../../lol-companion/ch
 test('historical purchase and augment formats remain visible, retain match time and never assign teammates or low confidence picks to self',()=>{
  const s=initialOverlayState();let at=1;
  const emit=e=>applyOverlayEvent(s,{game:'lol',t:++at,...e},'game');
- emit({kind:'game_start',me:{champion:'安妮'}});
+ emit({kind:'game_start',me:{champion:'安妮'},allies:[{champion:'锐雯'}]});
  emit({kind:'chat_events',events:[{kind:'purchase',time:'03:56',item:'残疫',itemId:223118},{kind:'purchase',time:'04:00',itemUnresolved:true},{kind:'kill',text:'隐藏玩家'}]});
  emit({kind:'augment_picked',name:'不动如山',source:'ocr-inferred',confidence:'low',roll:1});
  emit({kind:'augment_mutate',augment:'珠光护手',champion:'锐雯',who:'ally',confidence:'high',time:'13:06'});
@@ -14,6 +14,9 @@ test('historical purchase and augment formats remain visible, retain match time 
  assert.deepEqual(s.ownedAugments,[]);
  emit({kind:'augment_mutate',augment:'终极唤醒',champion:'安妮',who:'self',confidence:'high',time:'14:02'});
  assert.deepEqual(s.ownedAugments,['终极唤醒']);
+  assert.equal(s.augmentSelections.length,4,'本人/队友/未知的选择都消费成记录');
+  assert.ok(s.augmentSelections.some(row=>row.side==='ally'&&row.augment==='珠光护手'));
+  assert.ok(s.augmentSelections.some(row=>row.side==='self'&&row.augment==='终极唤醒'));
  const events=overlayView(s).events;
  assert.match(events,/03:56 .*购买装备：残疫/);assert.doesNotMatch(events,/装备名称未识别/);
  assert.match(events,/海克斯选择.*不动如山/);assert.match(events,/13:06 海克斯选择：锐雯 · 珠光护手/);
