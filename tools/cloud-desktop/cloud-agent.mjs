@@ -4,6 +4,7 @@ import {serviceUrl,limitedJson} from '../dsh-game-services/client.mjs';
 import {equipmentContext} from '../dsh-onboarding/equipment-context.mjs';
 import {eventWindow} from '../dsh-coach-server/lib/event-window.mjs';
 import {roleInstruction} from './roles.mjs';
+import {commonChampionName} from '../dsh-coach-server/lib/advice-names.js';
 const fail=(status,message)=>Object.assign(Error(message),{status});
 export function agentQuestion(request){
  let message=request.question;
@@ -29,6 +30,12 @@ export function cloudContext(memory,game,match,{eventQuery=false,observationPlan
  const compact=value=>typeof value==='string'?value.slice(0,120):value&&typeof value==='object'?Object.fromEntries(['name','id','count','level','ready','cooldown'].filter(k=>['string','number','boolean'].includes(typeof value[k])).map(k=>[k,typeof value[k]==='string'?value[k].slice(0,120):value[k]])):value;
  const player=p=>p?Object.fromEntries(['champion','level','gold','dead','hpPct','k','d','a','items','spells','canShop','respawn'].filter(k=>p[k]!==undefined).map(k=>[k,Array.isArray(p[k])?p[k].slice(0,8).map(compact):compact(p[k])])):undefined;
  const equipment=c&&game!=='generic'?equipmentContext({...c,me:c.me??{},enemies:c.enemies??[],ownedAugments:c.ownedAugments??[],augmentRounds:c.augmentRounds??[]}):undefined;
+ // 双方十人名单直接注入模型上下文：称号 + 常用名。
+ // 以前提示词要求“只用 facts.lineup”，但请求里根本没这个字段，模型只能从
+ // team_chat 的 OCR 名字里猜，实测因此编出了不在本局的“腕豪/瑟提”。
+ const rosterEntry=entry=>{const title=String(entry?.champion??'').trim();return title?{title,common:String(commonChampionName(title)||title)}:null};
+ const selfEntry=rosterEntry(c?.me),allyEntries=(c?.allies??[]).slice(0,5).map(rosterEntry).filter(Boolean),enemyEntries=(c?.enemies??[]).slice(0,5).map(rosterEntry).filter(Boolean);
+ const lineup=(selfEntry||allyEntries.length||enemyEntries.length)?{self:selfEntry,allies:allyEntries,enemies:enemyEntries,all:[selfEntry,...allyEntries,...enemyEntries].filter(Boolean).map(entry=>entry.title),common:[selfEntry,...allyEntries,...enemyEntries].filter(Boolean).map(entry=>entry.common)}:undefined;
  const value={current_match_state:{game_id:game,status:c?'observed':'unknown',revision:c?.at??0,captured_at_ms:c?.at??Date.now(),
   game_seconds:c?.gameSeconds,mode:c?.mode,phase:c?.phase,me:player(c?.me),allies:c?.allies?.slice(0,5).map(player),enemies:c?.enemies?.slice(0,5).map(player),
   generic_state:game==='generic'?c?.me?.genericState:undefined,
@@ -36,7 +43,7 @@ export function cloudContext(memory,game,match,{eventQuery=false,observationPlan
   bench:c?.phase==='ChampSelect'?c?.bench?.slice(0,20):undefined,
   offers:c?.offers?.slice(0,6).map(compact),owned_augments:c?.ownedAugments?.slice(0,12).map(compact),
   equipment_decision:equipment?{...equipment,currentItems:equipment.currentItems.slice(0,8).map(compact),enemies:equipment.enemies.slice(0,5).map(e=>({hero:String(e.hero??'').slice(0,120),items:e.items.slice(0,8).map(compact)})),unassignedEnemyItems:equipment.unassignedEnemyItems.slice(0,8).map(compact),confirmedAugments:equipment.confirmedAugments.slice(0,12).map(compact),assumedAugments:equipment.assumedAugments.slice(0,6)}:undefined},
-  events:eventWindow(c?.events).rows,client_context:{game_id:game,mode:c?.mode??'',capabilities:{event_query_v1:eventQuery,observation_plan_v1:game==='generic'&&observationPlan,user_memory_v1:userMemory,experience_v1:experience},user_memory:{confirmed_preferences:(memory.preferences??[]).slice(-6)},team_chat:(Array.isArray(c?.chat)?c.chat.filter(row=>row&&row.origin==='team'&&row.text).slice(-6).map(row=>({who:String(row.displayName??'').slice(0,24),champion:String(row.champion??'').slice(0,24),text:String(row.text).slice(0,80),self:row.self===true})):[])}};
+  events:eventWindow(c?.events).rows,client_context:{game_id:game,mode:c?.mode??'',capabilities:{event_query_v1:eventQuery,observation_plan_v1:game==='generic'&&observationPlan,user_memory_v1:userMemory,experience_v1:experience},user_memory:{confirmed_preferences:(memory.preferences??[]).slice(-6)},team_chat:(Array.isArray(c?.chat)?c.chat.filter(row=>row&&row.origin==='team'&&row.text).slice(-6).map(row=>({who:String(row.displayName??'').slice(0,24),text:String(row.text).slice(0,80),self:row.self===true})):[]),lineup}};
  const oversized=()=>Buffer.byteLength(JSON.stringify(value))>24000;
  while(oversized()&&value.events.length){value.events.shift();value.client_context.context_reduced=true;}
  while(oversized()&&value.client_context.user_memory.confirmed_preferences.length){value.client_context.user_memory.confirmed_preferences.shift();value.client_context.context_reduced=true;}

@@ -90,3 +90,12 @@ test('closing waits for the in-flight cloud task cancellation before allowing pr
  await polling;await agent.close();await failed;
  assert.equal(cancelled,true);assert.equal(agent.busy(),false);
 });
+
+test('模型上下文注入双方名单，并去掉聊天区 OCR 的 champion 字段',()=>{
+ const memory={preferences:[],current:{game:'lol',match:'one',at:1,me:{champion:'战争之影'},allies:[{champion:'巨魔之王'}],enemies:[{champion:'德玛西亚皇子'}],chat:[{origin:'team',displayName:'队友',champion:'腕豪',text:'Noble 战争之影'}]}};
+ const value=cloudContext(memory,'lol','one');
+ assert.deepEqual(value.client_context.lineup.all,['战争之影','巨魔之王','德玛西亚皇子']);
+ assert.equal(value.client_context.lineup.common[0],'赫卡里姆');
+ assert.equal(value.client_context.lineup.self.common,'赫卡里姆');
+ assert.equal('champion' in value.client_context.team_chat[0],false,'OCR 猜的英雄名不再进上下文');
+});
