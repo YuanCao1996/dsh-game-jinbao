@@ -16,7 +16,7 @@ test('historical purchase and augment formats remain visible, retain match time 
  assert.deepEqual(s.ownedAugments,['终极唤醒']);
  const events=overlayView(s).events;
  assert.match(events,/03:56 .*购买装备：残疫/);assert.doesNotMatch(events,/装备名称未识别/);
- assert.match(events,/疑似海克斯选择.*不动如山/);assert.match(events,/13:06 海克斯选择：锐雯 · 珠光护手/);
+ assert.match(events,/海克斯选择.*不动如山/);assert.match(events,/13:06 海克斯选择：锐雯 · 珠光护手/);
  assert.match(events,/归属未确认 · 双刀流/);assert.doesNotMatch(events,/隐藏玩家|ocr-inferred|source/);
 });
 

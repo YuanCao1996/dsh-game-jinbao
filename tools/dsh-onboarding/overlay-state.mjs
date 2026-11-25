@@ -323,6 +323,9 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     if((event.roll!=null&&event.roll!==state.offerRound)||!state.offers.length)state.offerHistory=[];
     state.offerRound=event.roll??state.offerRound;
     state.offers=list(event.options??event.cards??event.augments).slice(0,3);
+    const previousRoll=state.augmentRecommendation?.roll;
+    if(event.roll!=null&&previousRoll!=null&&String(event.roll)!==String(previousRoll))state.augmentRecommendation=null;
+    state.offerWasReroll=event.reroll===true;
     // 面板又出现说明上一拍「关闭」是视觉闪断：把最近这一轮重新打开，
     // 否则玩家还没点，悬浮窗就会弹「刚才选了哪个」的确认面板。
     const reopened=(state.augmentRounds??[]).at(-1);
@@ -822,8 +825,18 @@ const playerRows = players.map(p => {
       const rankOfSlot=entry=>{const hit=/^No\.(\d+)$/.exec(String(entry.rank??''));return hit?Number(hit[1]):null;};
       const rankedSlots=slots.map(entry=>({entry,value:rankOfSlot(entry)})).filter(item=>item.value!=null);
       const bestSlot=rankedSlots.sort((a,b)=>a.value-b.value)[0]??null;
+      // 刷新后出现排名更高的卡：如果上一张已经播过推荐，补一句“选这个”。
+      const previousRecommendation=state.augmentRecommendation;
+      if(state.offerWasReroll&&previousRecommendation&&bestSlot&&Number.isFinite(Number(previousRecommendation.rank))&&bestSlot.value<Number(previousRecommendation.rank)&&previousRecommendation.name!==bestSlot.entry.name){
+       const fixKey='aug-fix:'+roundKey+':'+bestSlot.entry.name;
+       noticePush(state,fixKey,{at:Date.now(),stage:'augment',dimension:'augment',
+        text:'海克斯刷新 · '+bestSlot.entry.name+' 排名更高',
+        brief:'哎呀不对，'+bestSlot.entry.name+'的排名更高，选这个！'});
+      }
+      state.augmentRecommendation=bestSlot?{name:bestSlot.entry.name,rank:bestSlot.value,roll:round,at:Date.now()}:previousRecommendation;
+      state.offerWasReroll=false;
       const offerBrief=!bestSlot?'三个都没进榜，建议刷新换一批'
-        :bestSlot.value>30?'三个排名都在 30 名以外，建议刷新看看':('推荐选 '+bestSlot.entry.name+'（'+bestSlot.entry.rank+(bestSlot.entry.tier?' '+bestSlot.entry.tier:'')+'）');
+        :bestSlot.value>30?'三个都排名靠后':('推荐选 '+bestSlot.entry.name+'（'+bestSlot.entry.rank+(bestSlot.entry.tier?' '+bestSlot.entry.tier:'')+'）');
       // 窄条弹窗用的一行摘要：悬浮窗在空闲时是收起的，靠这条 playback 把排名弹出来。
       state.augmentOfferKey = roundKey;
       // 窄条一行放不下 30 个字：标题只给推荐，三张卡按 2+1 拆成短行。
@@ -928,11 +941,14 @@ footer:full?(ratesComplete?teamWinRates:(alliesRated>=5?'加权样本 · 我方 
           '阵容判断  '+verdict,
           ...(role?['你的角色  '+role]:[]),
         ];
-        noticeUpsert(state,'selection-roles',{
+        const selectionCreated=noticeUpsert(state,'selection-roles',{
           at:Date.now(),stage:'selection',dimension:'plan',
           text:'选人建议 · '+String(me.champion??'本局')+'\n'+lines.join('\n'),
           brief:(role||verdict).slice(0,90),
         });
+        if(selectionCreated){
+          state.broadcasts=[...(state.broadcasts??[]),{at:Date.now(),text:'选人建议：'+String(role||verdict).slice(0,50),priority:2,localAlert:true,expiresAt:Date.now()+15000}].slice(-12);
+        }
       }
     }
     // 4) 局势估计：十人胜率没凑齐之前不播报——缺人的估算会误导，玩家会以为那就是双方强度。

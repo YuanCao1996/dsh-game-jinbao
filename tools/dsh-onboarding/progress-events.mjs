@@ -46,9 +46,15 @@ export function projectProgressEvent(state,event){
     const confirmed=event.confidence!=='low'&&event.source!=='ocr-inferred'&&event.source!=='countdown-default-confirmed';
     // Only an explicit manual confirmation or an explicit chat/log record may mark an
     // augment as owned. Attribution is never bypassed by a capture source.
-    const own=confirmed&&isOwn(state,event);
+    // 日志/聊天里已经点名到本人时，即使置信度标 low 也按“已选”消费：
+    // 实测玩家自己的 augment_mutate 常被解析成 who=other/unknown + confidence=low，
+    // 但英雄名对得上，只展示不消费会让“本局已选”漏卡。
+    const selfIdentity=identity(state.me.champion);
+    const namedSelf=[event.champion,event.championTitle].filter(Boolean).map(identity).includes(selfIdentity)&&!!state.me.champion;
+    const identified=isOwn(state,event)||(event.who!=='ally'&&event.who!=='enemy'&&namedSelf);
+    const own=identified&&(confirmed||event.source==='log-confirmed');
     const hero=namedHero(state,event),owner=own?'自己':hero??'归属未确认';
-    addProgressEvent(state,JSON.stringify(['augment',event.kind,owner,augment,confirmed]),`${confirmed?'海克斯选择':'疑似海克斯选择'}：${owner} · ${augment}`,seconds,'augment-selection',event.kind);
+    addProgressEvent(state,JSON.stringify(['augment',event.kind,owner,augment,confirmed]),`海克斯选择：${owner} · ${augment}`,seconds,'augment-selection',event.kind);
     if(own&&!state.ownedAugments.includes(augment))state.ownedAugments.push(augment);
     // A countdown-default pick is what the player actually ended up with, even though it
     // is not a user choice. Keep it separately so advice can account for it and label it.
@@ -71,7 +77,7 @@ const THREAT_RULES=[
  {test:/荆棘/,reason:'别硬接普攻'},
  // 只认水银饰带（解控）：水银之靴是常见的魔抗鞋，报成「出了水银」既含糊又误导。
  {test:/水银饰带/,reason:'控制技能留一手'},
- {test:/无尽|死亡之帽/,reason:'爆发起来了，别单吃'},
+ {test:/无尽|死亡之帽/,reason:'爆发起来了，要小心！'},
  {test:/救赎|钢铁烈阳/,reason:'有保命装，别硬上'},
 ];
 export function threatAlerts(state,hero,added){
