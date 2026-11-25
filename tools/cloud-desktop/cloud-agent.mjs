@@ -36,6 +36,26 @@ export function cloudContext(memory,game,match,{eventQuery=false,observationPlan
  const rosterEntry=entry=>{const title=String(entry?.champion??'').trim();return title?{title,common:String(commonChampionName(title)||title)}:null};
  const selfEntry=rosterEntry(c?.me),allyEntries=(c?.allies??[]).slice(0,5).map(rosterEntry).filter(Boolean),enemyEntries=(c?.enemies??[]).slice(0,5).map(rosterEntry).filter(Boolean);
  const lineup=(selfEntry||allyEntries.length||enemyEntries.length)?{self:selfEntry,allies:allyEntries,enemies:enemyEntries,all:[selfEntry,...allyEntries,...enemyEntries].filter(Boolean).map(entry=>entry.title),common:[selfEntry,...allyEntries,...enemyEntries].filter(Boolean).map(entry=>entry.common)}:undefined;
+ // 提示词引用的 facts.* 字段也直接给一份，别让模型只能靠工具或聊天区猜。
+ const itemName=item=>typeof item==='string'?item:String(item?.name??'');
+ const itemsOf=player=>(player?.items??[]).map(itemName).filter(Boolean).slice(0,8);
+ const equipmentEvents=Array.isArray(c?.completedEquipmentEvents)?c.completedEquipmentEvents:[];
+ const recentEquipment=equipmentEvents.slice(-3).map(event=>{
+  const when=Number(event?.at);
+  const seconds=Number(event?.time);
+  const minutesAgo=Number.isFinite(seconds)&&Number.isFinite(Number(c?.gameSeconds))?Math.max(0,Math.round((Number(c.gameSeconds)-seconds)/60)):Number.isFinite(when)&&Number.isFinite(Number(c?.at))?Math.max(0,Math.round((Number(c.at)-when)/60000)):null;
+  return {hero:String(event?.hero??''),items:(event?.items??[]).map(String).slice(0,4),minutesAgo};
+ }).filter(event=>event.minutesAgo!==null?event.minutesAgo<=3:true);
+ const multikillEvent=[...(c?.events??[])].reverse().find(event=>event?.kind==='event'&&String(event.name??event.EventName??'')==='Multikill');
+ const facts={lineup,
+  me:c?.me?{champion:String(c.me.champion??''),common:String(commonChampionName(c.me.champion??'')||''),level:c.me.level??null,gold:c.me.gold??null,dead:c.me.dead??null,hpPct:c.me.hpPct??null,kda:[c.me.k,c.me.d,c.me.a].every(value=>Number.isFinite(Number(value)))?[Number(c.me.k),Number(c.me.d),Number(c.me.a)]:null,items:itemsOf(c.me)}:null,
+  offers:(c?.offers??[]).map(offer=>String(offer?.name??'')).filter(Boolean).slice(0,6),
+  multikill:{streak:Number.isFinite(Number(multikillEvent?.KillStreak))?Number(multikillEvent.KillStreak):null},
+  recentEquipment,
+  priorOpeningPlan:c?.openingBuild?{text:String(c.openingBuild).slice(0,160)}:null,
+  recentAdvice:(c?.broadcasts??[]).slice(-2).map(broadcast=>String(broadcast?.text??'').slice(0,120)).filter(Boolean),
+  userNotes:Array.isArray(c?.userNotes)?c.userNotes.slice(-3):[]};
+
  const value={current_match_state:{game_id:game,status:c?'observed':'unknown',revision:c?.at??0,captured_at_ms:c?.at??Date.now(),
   game_seconds:c?.gameSeconds,mode:c?.mode,phase:c?.phase,me:player(c?.me),allies:c?.allies?.slice(0,5).map(player),enemies:c?.enemies?.slice(0,5).map(player),
   generic_state:game==='generic'?c?.me?.genericState:undefined,
@@ -43,7 +63,7 @@ export function cloudContext(memory,game,match,{eventQuery=false,observationPlan
   bench:c?.phase==='ChampSelect'?c?.bench?.slice(0,20):undefined,
   offers:c?.offers?.slice(0,6).map(compact),owned_augments:c?.ownedAugments?.slice(0,12).map(compact),
   equipment_decision:equipment?{...equipment,currentItems:equipment.currentItems.slice(0,8).map(compact),enemies:equipment.enemies.slice(0,5).map(e=>({hero:String(e.hero??'').slice(0,120),items:e.items.slice(0,8).map(compact)})),unassignedEnemyItems:equipment.unassignedEnemyItems.slice(0,8).map(compact),confirmedAugments:equipment.confirmedAugments.slice(0,12).map(compact),assumedAugments:equipment.assumedAugments.slice(0,6)}:undefined},
-  events:eventWindow(c?.events).rows,client_context:{game_id:game,mode:c?.mode??'',capabilities:{event_query_v1:eventQuery,observation_plan_v1:game==='generic'&&observationPlan,user_memory_v1:userMemory,experience_v1:experience},user_memory:{confirmed_preferences:(memory.preferences??[]).slice(-6)},team_chat:(Array.isArray(c?.chat)?c.chat.filter(row=>row&&row.origin==='team'&&row.text).slice(-6).map(row=>({who:String(row.displayName??'').slice(0,24),text:String(row.text).slice(0,80),self:row.self===true})):[]),lineup}};
+  events:eventWindow(c?.events).rows,client_context:{game_id:game,mode:c?.mode??'',capabilities:{event_query_v1:eventQuery,observation_plan_v1:game==='generic'&&observationPlan,user_memory_v1:userMemory,experience_v1:experience},user_memory:{confirmed_preferences:(memory.preferences??[]).slice(-6)},team_chat:(Array.isArray(c?.chat)?c.chat.filter(row=>row&&row.origin==='team'&&row.text).slice(-6).map(row=>({who:String(row.displayName??'').slice(0,24),text:String(row.text).slice(0,80),self:row.self===true})):[]),lineup,facts}};
  const oversized=()=>Buffer.byteLength(JSON.stringify(value))>24000;
  while(oversized()&&value.events.length){value.events.shift();value.client_context.context_reduced=true;}
  while(oversized()&&value.client_context.user_memory.confirmed_preferences.length){value.client_context.user_memory.confirmed_preferences.shift();value.client_context.context_reduced=true;}

@@ -98,4 +98,7 @@ test('模型上下文注入双方名单，并去掉聊天区 OCR 的 champion �
  assert.equal(value.client_context.lineup.common[0],'赫卡里姆');
  assert.equal(value.client_context.lineup.self.common,'赫卡里姆');
  assert.equal('champion' in value.client_context.team_chat[0],false,'OCR 猜的英雄名不再进上下文');
+ assert.equal(value.client_context.facts.lineup.self.common,'赫卡里姆','facts.lineup 也要有');
+ assert.deepEqual(value.client_context.facts.me.items,[],'facts.me.items 直接给模型');
+ assert.deepEqual(value.client_context.facts.multikill,{streak:null});
 });

@@ -1,7 +1,7 @@
 ﻿import { humanizeChampions, lineupOf, adviceNameIssues, describeIssues } from '../dsh-coach-server/lib/advice-names.js';
 import { condenseAdvice, stripSources, noiseBroadcast, adviceSimilarity, fitPromptBudget } from './advice-text.mjs';
 import{mkdir,appendFile,writeFile,rename}from'node:fs/promises';import{join}from'node:path';
-import{fixItemNames}from'./item-name-verify.mjs';
+import{fixItemNames,unknownItemMentions}from'./item-name-verify.mjs';
 import{stateCoachingTrigger,buildLolCoachingPlan,createAdviceValidity,adviceIsValid}from'../dsh-coach-server/lib/lol-coaching-plan.js';
 import{createCoachScheduler}from'./coach-scheduler.mjs';
 // 配合窗口只取决于双方存活人数差，所以每轮都把人数算好塞进 state 事件。
@@ -132,6 +132,8 @@ const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItem
     if(noiseBroadcast(situationText)){note(v,'skip','roster_noise',{stage:'situation'});return;}
  const situationNameProblem=championNameProblem(situationText,current);
  if(situationNameProblem){note(v,'skip','champion_name_rejected',{stage:'situation',detail:situationNameProblem});return;}
+ const situationItemProblem=unknownItemMentions(situationText,contextItemNames(current));
+ if(situationItemProblem){note(v,'skip','item_name_rejected',{stage:'situation',detail:situationItemProblem});return;}
     await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:'situation',dimension:'now',broadcast:situationText,validity});rememberAdvice(situationText,'situation');await published(v,{stage:'situation'});store={signature,lastAt:now(),lastValidity:validity};return;
    }
    const offerKey=JSON.stringify([c.augmentRounds?.at(-1)?.id,c.offers??[]]),ownedKey=JSON.stringify([c.ownedAugments??[],c.revealedAugments??[]]),selectionKey=JSON.stringify([c.phase,c.me?.champion,c.bench,c.allies]);
@@ -225,6 +227,8 @@ const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItem
    if(noiseBroadcast(stagedText)){note(v,'skip','roster_noise',{stage:plan.stage});return;}
  const stagedNameProblem=championNameProblem(stagedText,current);
  if(stagedNameProblem){note(v,'skip','champion_name_rejected',{stage:plan.stage,detail:stagedNameProblem});return;}
+ const stagedItemProblem=unknownItemMentions(stagedText,contextItemNames(current));
+ if(stagedItemProblem){note(v,'skip','item_name_rejected',{stage:plan.stage,detail:stagedItemProblem});return;}
    // 几乎逐字重复的兜底：提示词已经要求换说法，这里只拦「换个标点又播一遍」。
    const previousAdvice=recentAdvice(plan.stage),nextAdvice=stagedText.trim();if(previousAdvice.length>=16&&nextAdvice.length>=16&&adviceSimilarity(previousAdvice,nextAdvice)>=0.8){note(v,'skip','duplicate_advice',{stage:plan.stage});return;}
    await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:plan.stage,priority:['ace','inhib','augment','death','purchase','enemyChange','objective','turret','coordination'].includes(plan.stage)?2:1,dimension:DIMENSION[plan.stage]??'now',broadcast:stagedText,validity});rememberAdvice(stagedText,plan.stage);
