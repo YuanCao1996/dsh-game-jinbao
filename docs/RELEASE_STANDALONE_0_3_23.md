@@ -62,3 +62,14 @@
 
 - `jinbao-desktop-agent-preview.service` 热修已上线；原文件备份见上。
 - 未改线上 feed / 官网 / GitHub。
+## 渠道同步（2026-11-25）
+
+- 应用内 feed：`https://api.jinbaoai.top/downloads/jinbao/latest.json` 已切到 0.3.23，签名校验通过；
+- 下载目录：`/var/lib/jinbao-independent-downloads/v0.3.23/`（全量 + 应用层 + SHA256SUMS.txt，HTTP 200）；
+- nginx：新增 `/downloads/jinbao/v0.3.23/*` 三个 location，`nginx -t` 通过并 reload；
+- 官网：`https://www.jinbaoai.top/` Windows 下载按钮已改为 v0.3.23；
+- GitHub Releases：`v0.3.23-standalone-preview.1`（tag 指向 `4b8cdb6`），两个资产均上传并可下载；
+- 代码：`main` 已推送到 `origin/main`（`4b8cdb6`）。
+- 本机：已通过更新流程安装并运行 `0.3.23-standalone-preview.1`；成装图标缓存 502 张；云端 agent 实测 5.2 秒正常回答。
+
+> 线上 feed / 官网 / GitHub 已切到 0.3.23。
