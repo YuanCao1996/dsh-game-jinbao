@@ -78,6 +78,8 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
   const value=cloudContext(memory,request.game,request.match,{eventQuery:!!queryEvents,observationPlan:!!observationPlan,userMemory:!!memoryTools,experience:!!experienceTools});
   if(getActivityEnabled())value.client_context.capabilities.agent_activity_v1=true;
   value.client_context.task={automatic:request.automatic===true,topic:['advice','equipment','praise','chat'].includes(request.topic)?request.topic:'chat',time_critical:request.timeCritical===true}
+    // 自动建议不带聊天区：OCR 出来的“champion/称号”是噪声，模型会当成阵容事实。
+    if(request.automatic===true) delete value.client_context.team_chat;
   // 已选强化的名字单独给一份：服务端按名字查本地索引，把确定的效果文本直接写进提示词，
   // 这样即使模型自己不检索（问法含糊、检索失败），播报也不会写成「效果文本未收录」。
   value.client_context.owned_augments=(value.current_match_state?.owned_augments??[])

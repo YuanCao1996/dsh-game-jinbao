@@ -42,7 +42,7 @@ test('automatic build task is debounced, rate limited, uses enemy items and all 
  assert.match(calls[0].question,/无尽之刃/);assert.match(calls[0].question,/"confirmedAugments":\["甲","乙"\]/);
  s.me.items.push({name:'法师之靴'});resolve('过期建议');await new Promise(r=>setImmediate(r));assert.notEqual(s.equipment,'过期建议');
  coach.tick();time+=100;coach.tick();assert.equal(calls.length,1);time+=900;coach.tick();assert.equal(calls.length,2);
- resolve('下一件优先购买推荐装备');await new Promise(r=>setImmediate(r));assert.equal(s.equipment,'下一件优先购买推荐装备');
+ resolve('下一件优先购买无尽之刃');await new Promise(r=>setImmediate(r));assert.equal(s.equipment,'下一件优先购买无尽之刃');
  time+=2000;coach.tick();assert.equal(calls.length,2,'unchanged equipment never repeats model calls');
  s.me.items.push({name:'灭世者的死亡之帽'});coach.tick();time+=1000;coach.tick();assert.equal(calls.length,3);
  s=initialOverlayState();resolve('跨局旧建议');await new Promise(r=>setImmediate(r));assert.notEqual(s.equipment,'跨局旧建议');coach.close();
@@ -70,7 +70,7 @@ test('live overlay automatically updates equipment through the shared Agent brid
   {kind:'augment_picked',who:'self',name:'已拥有强化'},{kind:'augment_offer',roll:1,options:['甲','乙','丙']}];
  await writeFile(join(dir,'logs/live.jsonl'),logs.map(e=>JSON.stringify({game:'lol',t:++at,...e})).join('\n')+'\n');
  const calls=[];const service=await createOverlayService({stateDir:dir,pollMs:10,equipmentDebounceMs:30,equipmentCooldownMs:1000,
-  agentChat:async q=>{calls.push(q);return '下一件优先购买装备甲，暂按强化乙考虑。';},
+  agentChat:async q=>{calls.push(q);return '下一件优先购买无尽之刃，暂按强化乙考虑。';},
   search:async q=>({results:q.filter?._type==='augments'?[{data:row('乙',1)}]:[]})});t.after(service.close);
  for(let i=0;i<200&&!service.view().equipment.includes('下一件优先购买');i++)await new Promise(r=>setTimeout(r,10));
  assert.match(service.view().equipment,/下一件优先购买/);assert.match(service.view().equipment,/待确认的强化推测/);
@@ -80,7 +80,7 @@ test('live overlay automatically updates equipment through the shared Agent brid
 
 test('enemy inventory changes during generation do not discard every equipment answer; last useful plan remains visible',async()=>{
  let time=10000,resolve;const s=initialOverlayState();Object.assign(s,{game:'lol',match:'one',matchStartedAt:1,at:time,me:{champion:'安妮',items:[{name:'残疫'}]},enemies:[{champion:'锐雯',items:[{name:'无尽之刃'}]}]});
- const coach=createEquipmentCoach({getState:()=>s,now:()=>time,debounceMs:0,cooldownMs:0,save:async()=>{},agentChat:()=>new Promise(r=>resolve=r)});coach.tick();s.enemies[0].items.push({name:'水银之靴'});resolve('优先购买法穿装备');await new Promise(r=>setImmediate(r));assert.equal(s.equipment,'优先购买法穿装备');assert.match(s.equipmentStatus,/敌方装备已变化/);coach.tick();assert.equal(s.equipment,'优先购买法穿装备');coach.close();resolve('后续建议');
+ const coach=createEquipmentCoach({getState:()=>s,now:()=>time,debounceMs:0,cooldownMs:0,save:async()=>{},agentChat:()=>new Promise(r=>resolve=r)});coach.tick();s.enemies[0].items.push({name:'水银之靴'});resolve('优先购买虚空之杖');await new Promise(r=>setImmediate(r));assert.equal(s.equipment,'优先购买虚空之杖');assert.match(s.equipmentStatus,/敌方装备已变化/);coach.tick();assert.equal(s.equipment,'优先购买虚空之杖');coach.close();resolve('后续建议');
 });
 
 test('a loading game with both teams asks once for a full six-item plan',async()=>{

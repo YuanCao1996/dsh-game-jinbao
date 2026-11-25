@@ -1,5 +1,7 @@
 ﻿import {rankedAugments,offerNames} from './augment-ranking.mjs';
 import {isCompletedItem} from '../lol-companion/item-policy.mjs';
+import {lineupOf,adviceNameIssues,describeIssues} from '../dsh-coach-server/lib/advice-names.js';
+import {unknownItemMentions} from '../cloud-desktop/item-name-verify.mjs';
 
 export function trackAugmentRound(state,event,previousOwned) {
   if(event.kind==='augment_offer'){
@@ -77,6 +79,17 @@ export function equipmentContext(state){
       .map(r=>({round:r.id,name:r.assumed||r.recommended,reason:r.assumed?'倒计时默认推测，尚未经本人确认':'未确认选择，按本轮当前候选中英雄适配排名最高项推测'}))};
 }
 
+function equipmentAdviceProblem(state,text){
+ try{
+  const issues=adviceNameIssues(text,lineupOf(state));
+  if(issues.unknown.length||issues.aliased.length)return 'champion:'+describeIssues(issues);
+ }catch{}
+ const rows=[...(state?.me?.items??[]),...(state?.allies??[]).flatMap(player=>player?.items??[]),...(state?.enemies??[]).flatMap(player=>player?.items??[])];
+ const names=rows.map(item=>typeof item==='string'?item:String(item?.name??'')).filter(Boolean);
+ const itemProblem=unknownItemMentions(text,names);
+ return itemProblem?'item:'+itemProblem:'';
+}
+
 export function createEquipmentCoach({getState,agentChat,save,onAdvice=()=>{},canRequest=()=>true,now=Date.now,debounceMs=2000,cooldownMs=30000,openingRetryMs=15000}){
   let pending='',since=0,lastAt=-Infinity,lastDone='',busy=false,closed=false,retryAt=0,lastConfirmed='';
    // 对局是否还活着要看游戏时间有没有推进：state.at 只要采集器还在写快照就是新鲜的，
@@ -90,6 +103,8 @@ export function createEquipmentCoach({getState,agentChat,save,onAdvice=()=>{},ca
    void agentChat({game:current.game,match,question,topic:'equipment',automatic:true}).then(async answer=>{
     const now= getState();if(closed||now.ended||now.match!==match||now.matchStartedAt!==started)return;
     if(typeof answer!=='string'||!answer.trim())return;const text=answer.trim().slice(0,4000);
+    const problem=equipmentAdviceProblem(now,text);
+    if(problem){now.equipmentStatus='建议含未确认名称，已拦截';onFailure();return;}
     if(reason==='opening')now.openingBuild=text;
     await onAdvice(now,text,reason);await save();onSuccess();
    }).catch(()=>{onFailure();}).finally(()=>{busy=false;});
@@ -130,6 +145,8 @@ export function createEquipmentCoach({getState,agentChat,save,onAdvice=()=>{},ca
         const current=getState();
         if(closed||current.ended||current.match!==match||current.matchStartedAt!==started||current.game!==state.game||ownFacts(equipmentContext(current))!==ownFacts(facts))return;
         if(typeof answer==='string'&&answer.trim()){
+  const problem=equipmentAdviceProblem(current,answer.trim());
+  if(problem){current.equipmentStatus='建议含未确认名称，已拦截';return;}
    if(fullBuild&&/无需换装|不需要换装|不用换装|保持.{0,4}六件|没有.{0,4}替换/.test(answer)){current.equipmentStatus='六件成装，暂不换装';return;}
    if(fullBuild)await onAdvice(current,answer.trim().slice(0,4000),'purchase');
    current.equipment=answer.trim().slice(0,4000);current.equipmentAssumptions=facts.assumedAugments;current.equipmentStatus=decisionKey(current,equipmentContext(current))===key?'':'敌方装备已变化，稍后更新建议';lastDone=key;lastConfirmed=confirmedKey;if(!current.equipmentStatus)await onAdvice(current,current.equipment);await save();}
