@@ -104,9 +104,21 @@ const unknownNames=new Set();
       // text that looks like a card name as an unverified candidate and report the gap once.
       // Category labels sit under every card name and would otherwise pass as unverified names.
       const LABELS=new Set(['重型','力量','速度','功能','复原力','伤害','法术','生命','攻击','防御','综合','辅助','护盾','冷却','暴击','移动','韧性','鞭挞','护甲','魔抗','金币','治疗','减速','加速','持续','叠加',// 以下是被 OCR 从界面其他区域读到的通用词，曾把「装备」当成卡名塞进候选：
- '装备','物品','商店','属性','符文','天赋','技能','召唤师','回城','购买','出售','面板','详情','关闭','选择','强化']);
+ '装备','物品','商店','属性','符文','天赋','技能','召唤师','回城','购买','出售','面板','详情','关闭','选择','强化','己方','敌方','我方','友方','己方伤害']);
 /** 名字能否被完整拆成两个以上已知标签（例如「伤害功能」= 伤害+功能，「速度复原力」= 速度+复原力）。
  *  这类字符串是卡面类别标签被 OCR 粘在一起，不是强化名。 */
+/** 卡面标签被 OCR 截断/粘连（如「复原力伤」「己方伤害」）时不能再当卡名。
+ *  只对未收录候选生效，已经命中的正式卡名不受影响。 */
+function isLabelFragment(text){
+ if(!text)return false;
+ for(const label of LABELS){
+  if(!text.startsWith(label))continue;
+  const rest=text.slice(label.length);
+  if(!rest)return true;
+  if(rest.length<=2&&[...LABELS].some(other=>other.startsWith(rest[0])))return true;
+ }
+ return false;
+}
 function isLabelMerge(text){
  if(!text||text.length<4)return false;
  let reach=new Array(text.length+1).fill(0);reach[0]=1;
@@ -124,12 +136,16 @@ function isLabelMerge(text){
        // 形近字已在 resolveName 里唯一纠正过的卡，不能再按原始 OCR 文本上报未收录：
        // 实测「可武器」被纠正成「可靠武器」后，词表缺口日志里仍记了一条「可武器」。
        if(resolveName(line.text))continue;
+       // 两行标题被 OCR 拆开时（如「升级」+「风暴狂涌」= 升级：风暴狂涌），
+       // 单行本身不在词表里，但已经作为拼接标题命中；不能再把两段当缺卡上报。
+       if(found.some(hit=>hit.slot===line.slot&&normalize(hit.name)!==normalize(line.text)&&normalize(hit.name).includes(normalize(line.text))))continue;
        const text=normalize(line.text);
        // 实测候选里混进过玩家名（大乱斗李无敌、一一一恶犬许…）。未收录名字必须更短、
        // 且不含聊天/名号特征，否则宁可报缺卡。
-       if(!/^[\u4e00-\u9fa5]{2,6}$/.test(text)||LABELS.has(text))continue;
+       // 未收录的 2 字文本几乎都是界面标签/残字；正式 2 字强化名会走 catalog 精确命中。
+       if(!/^[\u4e00-\u9fa5]{3,6}$/.test(text)||LABELS.has(text))continue;
        if(/大乱斗|无敌|恶犬|先生|小姐|哥哥|姐姐|爸爸|玩家|队友/.test(text))continue;
-       if(isLabelMerge(text))continue;
+       if(isLabelMerge(text)||isLabelFragment(text))continue;
        if(!unverified.some(row=>row.slot===line.slot&&row.name===text))unverified.push({...line,name:text,unverified:true});
       }
       // 实测一局里冒出 85 个「未收录卡名」：面板带里还夹着界面文字，兜底太宽松会把它们
