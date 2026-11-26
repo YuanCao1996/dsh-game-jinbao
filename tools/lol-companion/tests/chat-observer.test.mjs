@@ -168,3 +168,57 @@ test('「你们」这类他人措辞不会被当成自己', () => {
   assert.equal(events.length, 1);
   assert.notEqual(events[0].who, 'self');
 });
+
+// 自定义/人机/克隆局允许双方同英雄。真实对局 2026-11-26 第二局：本人和队友都是深渊巨口，
+// 队友的「更万用的瞄准镜」被按英雄名算到本人头上，进入本局已选，模型随后据此推荐了错误出装。
+test('同英雄队友的质变公告不会被算到自己头上', () => {
+  const events = [];
+  const observer = createChatObserver(['更万用的瞄准镜', '风暴狂涌'], (event) => events.push(event));
+  observer.setCatalog({ champions: [{ name: '深渊巨口', alias: 'KogMaw' }], items: [] });
+  observer.observe({
+    available: true, foreground: true, width: 1920, height: 1080,
+    lines: [{ box: poly(20, 700, 380, 22), text: 'Noble#1234（深渊巨口）已质变了 更万用的瞄准镜' }],
+  }, {
+    gameSeconds: 88,
+    me: { champion: '深渊巨口', championAlias: 'KogMaw', riotId: 'myself#0001' },
+    allies: [{ champion: '深渊巨口', riotId: 'Noble#1234' }],
+    enemies: [],
+  });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'augment_mutate');
+  assert.notEqual(events[0].who, 'self');
+});
+
+test('重名英雄没有本人证据时保持未知', () => {
+  const events = [];
+  const observer = createChatObserver(['更万用的瞄准镜', '风暴狂涌'], (event) => events.push(event));
+  observer.setCatalog({ champions: [{ name: '深渊巨口', alias: 'KogMaw' }], items: [] });
+  observer.observe({
+    available: true, foreground: true, width: 1920, height: 1080,
+    lines: [{ box: poly(20, 700, 380, 22), text: '深渊巨口 已质变了 更万用的瞄准镜' }],
+  }, {
+    gameSeconds: 88,
+    me: { champion: '深渊巨口', championAlias: 'KogMaw', riotId: 'myself#0001' },
+    allies: [{ champion: '深渊巨口', riotId: 'Noble#1234' }],
+    enemies: [],
+  });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].who, 'unknown');
+});
+
+test('重名英雄的主语是「你」时仍归自己', () => {
+  const events = [];
+  const observer = createChatObserver(['更万用的瞄准镜', '风暴狂涌'], (event) => events.push(event));
+  observer.setCatalog({ champions: [{ name: '深渊巨口', alias: 'KogMaw' }], items: [] });
+  observer.observe({
+    available: true, foreground: true, width: 1920, height: 1080,
+    lines: [{ box: poly(20, 700, 380, 22), text: '你 已质变了 风暴狂涌' }],
+  }, {
+    gameSeconds: 88,
+    me: { champion: '深渊巨口', championAlias: 'KogMaw', riotId: 'myself#0001' },
+    allies: [{ champion: '深渊巨口', riotId: 'Noble#1234' }],
+    enemies: [],
+  });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].who, 'self');
+});

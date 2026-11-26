@@ -1,7 +1,8 @@
-﻿import { humanizeChampions, lineupOf, adviceNameIssues, describeIssues } from '../dsh-coach-server/lib/advice-names.js';
+import { humanizeChampions, lineupOf, adviceNameIssues, describeIssues } from '../dsh-coach-server/lib/advice-names.js';
 import { condenseAdvice, stripSources, noiseBroadcast, adviceSimilarity, fitPromptBudget } from './advice-text.mjs';
 import{mkdir,appendFile,writeFile,rename}from'node:fs/promises';import{join}from'node:path';
-import{fixItemNames,unknownItemMentions}from'./item-name-verify.mjs';
+import{fixItemNames,unknownItemMentions,ITEM_NAMES}from'./item-name-verify.mjs';
+import{readFileSync}from'node:fs';
 import{stateCoachingTrigger,buildLolCoachingPlan,createAdviceValidity,adviceIsValid}from'../dsh-coach-server/lib/lol-coaching-plan.js';
 import{HIGH_THREAT_AUGMENTS}from'../dsh-onboarding/progress-events.mjs';
 import{createCoachScheduler}from'./coach-scheduler.mjs';
@@ -12,11 +13,24 @@ function contextItemNames(c){
  const rows=[...(c?.me?.items??[]),...(c?.allies??[]).flatMap(player=>player?.items??[]),...(c?.enemies??[]).flatMap(player=>player?.items??[])];
  return rows.map(item=>typeof item==='string'?item:String(item?.name??'')).filter(Boolean);
 }
+const COMPONENT_ITEM_NAMES=new Set(JSON.parse(readFileSync(new URL('../lol-companion/item-components.json',import.meta.url),'utf8')));
+const escapeRegExp=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 function aliveCounts(c){
  const self=String(c?.me?.champion??'');
  const count=people=>(Array.isArray(people)?people:[]).filter(p=>p?.dead!==true&&String(p?.champion??'')!==self).length;
  if(typeof c?.me?.dead!=='boolean')return{};
  return{alliesAlive:count(c?.allies)+(c.me.dead===true?0:1),enemiesAlive:count(c?.enemies)};
+}
+// 播报出口的购买对象校验：只允许成装，不允许散件/组件，也不允许把强化名当装备推荐。
+export function purchaseAdviceProblem(text,current){
+ const source=String(text??'');
+ const components=[...COMPONENT_ITEM_NAMES].sort((a,b)=>b.length-a.length);
+ const component=components.find(name=>name.length>=2&&source.includes(name)&&![...ITEM_NAMES].some(full=>full!==name&&full.includes(name)&&source.includes(full)));
+ if(component)return 'component:'+component;
+ const augments=[...(current?.ownedAugments??[]),...(current?.offers??[]).map(offer=>offer?.name??offer),...(current?.augmentRounds??[]).flatMap(round=>round?.options??[])].filter(Boolean);
+ const verbs='(?:下一件|下件|优先|先买|先做|直接|补|合成|买|做|出|走|拿|用|转|换|改成|换成)';
+ for(const name of new Set(augments)){if(new RegExp(verbs+'(?:一件|一个|个|把|件)?\\s*'+escapeRegExp(name)).test(source))return 'augment:'+name;}
+ return '';
 }
 // 人数差跨过 ±2 视为配合窗口开/关；与 lol-coaching-plan.js 里的判定保持同一口径。
 function coordinationEdge(side,previous){
@@ -221,7 +235,7 @@ const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItem
    // 久别回来 / 来得少了 / 节日：开场那一条的语气不一样，但不解释原因、不抱怨第二遍。
    if(plan.stage==='opening'&&absenceTone)try{const tone=await absenceTone();if(tone?.hintText)diaryHint+='\n（'+String(tone.hintText).slice(0,80)+'。只在这一句里透一点情绪，不要说原因，也不要重复第二遍。）';}catch{}
    // 刚说过的话：既用来在提示词里要求「别重复」，也用来兜住几乎逐字重复的兜底过滤。
-   let actionable=message+'\n'+workflow+'这是口头播报，要像真人在语音里说话：每条至少带一个语气助词（啦、呀、呢、哦、嘛、吧、啊），最多两个，别每句都加；整条播报最多一个叹词，放在最带情绪那句的开头——顺利或赢团用嘿嘿、嘻嘻、哇塞，失误或被反杀用啊这、哎呦、天呐；中娅、出装、活命这类紧急提醒不加叹词，但仍带一个语气助词；避免书面语与长定语句；播报只讲成装，不要提散件/组件装备、不要播报购买散件；不要用「第一次」「首次」开头播报。像这样说话：别急呀，等兵线过来再打哦；哎呀这波亏了，回头补个人头嘛。这是战况即时播报：分成 2~3 个短句，每句不超过 20 字，用换行分开——先说现在做什么，再补一句为什么或注意什么；像边想边说，不必一次说全。不要复述时钟、等级、比分、KDA或整套装备清单；不播报「我方N人已就位/到齐」这类人数清点，不写泛泛的注意走位/配合队友。不编造冷却、价格、排名或未知技能状态；缺资料时依据已确认事实给保守建议，避免用整段工具错误说明占据正文。没核实的东西不要写进播报：不出现「待统计、待确认、未知、未查到」这类占位词，缺资料就换一个站得住的说法，实在没有就不提这件事。未确认可购买时，把装备建议安排在下一次可购买时，不说现在先买再上线；不以英雄总胜率解释单件装备强度，省略未核验百分比；不把召唤物挡路说成能够阻断位移，不断言未经核验的技能交互。"'+diaryHint+(()=>{
+   let actionable=message+'\n'+workflow+'这是口头播报，要像真人在语音里说话：每条至少带一个语气助词（啦、呀、呢、哦、嘛、吧、啊），最多两个，别每句都加；整条播报最多一个叹词，放在最带情绪那句的开头——顺利或赢团用嘿嘿、嘻嘻、哇塞，失误或被反杀用啊这、哎呦、天呐；中娅、出装、活命这类紧急提醒不加叹词，但仍带一个语气助词；避免书面语与长定语句；播报只讲成装，不要提散件/组件装备、不要播报购买散件；不要用「第一次」「首次」开头播报。像这样说话：别急呀，等兵线过来再打哦；哎呀这波亏了，回头补个人头嘛。这是战况即时播报：分成 2~3 个短句，每句不超过 20 字，用换行分开——先说现在做什么，再补一句为什么或注意什么；像边想边说，不必一次说全。不要复述时钟、等级、比分、KDA或整套装备清单；不播报「我方N人已就位/到齐」这类人数清点，不写泛泛的注意走位/配合队友。不编造冷却、价格、排名或未知技能状态；缺资料时依据已确认事实给保守建议，避免用整段工具错误说明占据正文。没核实的东西不要写进播报：不出现「待统计、待确认、未知、未查到」这类占位词，缺资料就换一个站得住的说法，实在没有就不提这件事。未确认可购买时，把装备建议安排在下一次可购买时，不说现在先买再上线；不以英雄总胜率解释单件装备强度，省略未核验百分比；不把召唤物挡路说成能够阻断位移，不断言未经核验的技能交互。装备建议只能来自可购买的成装，不提散件/组件；强化不是商店物品，不要建议购买或合成强化。"'+diaryHint+(()=>{
    const last=recentAdvice();
    return last?"\n刚才你已经说过：「"+last.slice(0,60)+"」。这次只补充新信息，不要重复同一句建议；没有新东西就说得更具体（买什么、去哪、别做什么），别换个说法讲同一件事。这条提示只给你自己看，播报里不要提「刚才说过」「上次」。":"";
   })();

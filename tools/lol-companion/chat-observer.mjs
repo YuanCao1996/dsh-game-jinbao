@@ -90,6 +90,16 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
         const explicit=championsInText(beforeVerb).at(-1);
         const champion=explicit??message.champion??(selfSubject&&ownName?ownName:null);
         const time=message.time??null;
+        // 同一英雄可能同时出现在双方阵容里（自定义/克隆/人机常见）。只看英雄名会把
+        // 队友的「XXX（深渊巨口）已质变了…」算到本人头上，污染本局已选并让模型按错误强化出装。
+        // 只有出现明确的本人证据（主语「你」或说话人是本人）才认 self；否则归为 other。
+        const ownChampion=normalized(state.me?.champion);
+        const selfName=normalized(state.me?.riotId??state.me?.summonerName??'');
+        const roster=[state.me,...(state.allies??[]),...(state.enemies??[])].filter(Boolean);
+        const duplicateOwnChampion=!!ownChampion&&roster.filter(player=>normalized(player.champion)===ownChampion).length>1;
+        const selfSpeaker=!!message.speaker&&!!selfName&&normalized(message.speaker)===selfName;
+        const otherPlayerNamed=roster.some(player=>[player.riotId,player.summonerName].filter(Boolean).map(normalized).some(playerName=>playerName!==selfName&&normalized(raw).includes(playerName)));
+        const selfEvidence=selfSubject||selfSpeaker;
         // 队友/自己的聊天与信号：解析器已经分出说话人，直接上报，不参与海克斯归属推断。
  if(message.kind==='team_chat'||message.kind==='ping'){
   const chatText=message.kind==='ping'?'点了信号':String(message.content??'').trim().slice(0,160);
@@ -140,10 +150,14 @@ export function createChatObserver(augmentNames,emit,{now=Date.now}={}){
           if(last!==undefined&&at-last<window)continue;
           seen.set(key,at);
           if(seen.size>512)seen.delete(seen.keys().next().value);
-          if(message.kind==='purchase')emit({kind:'chat_events',gameTime:state.gameTime,events:[{kind:'purchase',champion,time,item:name,itemRaw:message.itemRaw??null,itemId:message.itemId??null,itemUnresolved:!name}]});
-          else emit({kind:'augment_mutate',augment:augments.get(normalized(name)).name,champion,
-            who:ambiguousNames?'unknown':champion?(champion===ownName?'self':'other'):'unknown',
-            source:'log-confirmed',confidence:effectiveTold?'high':'low',time,gameTime:state.gameTime});
+          if(message.kind==='purchase'){emit({kind:'chat_events',gameTime:state.gameTime,events:[{kind:'purchase',champion,time,item:name,itemRaw:message.itemRaw??null,itemId:message.itemId??null,itemUnresolved:!name}]});continue;}
+          const championIsSelf=!!champion&&champion===ownName;
+          // 重名英雄没有明确本人证据时，不能认 self（可能把队友的强化算进来）。
+          const own=championIsSelf&&!ambiguousNames&&(selfEvidence||(!duplicateOwnChampion&&!otherPlayerNamed));
+          const attributionUnknown=duplicateOwnChampion&&!selfEvidence&&!otherPlayerNamed;
+          emit({kind:'augment_mutate',augment:augments.get(normalized(name)).name,champion,
+            who:ambiguousNames||attributionUnknown?'unknown':!champion?'unknown':own?'self':'other',
+            source:'log-confirmed',confidence:effectiveTold?'high':'low',verb:effectiveTold,time,gameTime:state.gameTime});
         }
       }
     },

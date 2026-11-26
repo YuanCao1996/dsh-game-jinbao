@@ -4,6 +4,14 @@
 import {readFileSync} from 'node:fs';
 
 const CATALOG = JSON.parse(readFileSync(new URL('../lol-companion/item-names.json', import.meta.url), 'utf8'));
+export const ITEM_NAMES = CATALOG;
+// 常见模型误写：只做明确的一对一纠正，避免把正常词改坏。
+const ITEM_ALIASES = new Map([['三项之力', '三相之力']]);
+function applyItemAliases(value) {
+  let output = String(value ?? '');
+  for (const [wrong, right] of ITEM_ALIASES) output = output.split(wrong).join(right);
+  return output;
+}
 const normalize = (value) => String(value ?? '')
   .replace(/\s+/g, '')
   .replace(/[：:·•・.。,，;；、!！?？—－-]/g, '');
@@ -48,7 +56,7 @@ export function createItemNameVerifier(names = CATALOG) {
     if (typeof text !== 'string' || !/[\u4e00-\u9fa5]/.test(text)) return text;
     // 仅在本局真正出现过的装备里纠错；本局没出现过的名字不做额外猜测。
     const context = indexNames(contextNames);
-    if (!context.known.size) return text;
+    if (!context.known.size) return applyItemAliases(text);
     const chars = [...text];
     const replacements = [];
     for (let i = 0; i < chars.length - 1; i += 1) {
@@ -82,7 +90,7 @@ export function createItemNameVerifier(names = CATALOG) {
       }
       if (best) replacements.push(best);
     }
-    if (!replacements.length) return text;
+    if (!replacements.length) return applyItemAliases(text);
     let output = '';
     let cursor = 0;
     for (const replacement of replacements) {
@@ -90,7 +98,7 @@ export function createItemNameVerifier(names = CATALOG) {
       output += chars.slice(cursor, replacement.start).join('') + replacement.name;
       cursor = replacement.end + 1;
     }
-    return output + chars.slice(cursor).join('');
+    return applyItemAliases(output + chars.slice(cursor).join(''));
   }
   return {fix};
 }

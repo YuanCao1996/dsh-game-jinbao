@@ -55,7 +55,9 @@ export function projectProgressEvent(state,event){
     const selfIdentity=identity(state.me.champion);
     const namedSelf=[event.champion,event.championTitle].filter(Boolean).map(identity).includes(selfIdentity)&&!!state.me.champion;
     const identified=isOwn(state,event)||(event.who!=='ally'&&event.who!=='enemy'&&namedSelf);
-    const own=identified&&(confirmed||event.source==='log-confirmed');
+    // 有动词的客户端公告即使 OCR 置信度低也可以入账；没有动词的裸提及永远不算已选。
+    const toldLog=event.source==='log-confirmed'&&(event.verb===true||(event.verb===undefined&&event.confidence==='high'));
+    const own=identified&&(confirmed||toldLog);
     const hero=namedHero(state,event),owner=own?'自己':hero??'归属未确认';
     addProgressEvent(state,JSON.stringify(['augment',event.kind,owner,augment,confirmed]),`海克斯选择：${owner} · ${augment}`,seconds,'augment-selection',event.kind);
     if(own&&!state.ownedAugments.includes(augment))state.ownedAugments.push(augment);
