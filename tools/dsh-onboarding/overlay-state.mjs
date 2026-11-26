@@ -10,6 +10,9 @@ import { readFileSync as readRosterSync } from 'node:fs';
 const lolRoster=(()=>{try{return JSON.parse(readRosterSync(new URL('./lol-roster.json',import.meta.url),'utf8'));}catch{return {};}})();
 // 成装白名单：图标只缓存/显示成装，散件不进界面也不落盘。
 const completedItemIdSet=(()=>{try{return new Set(JSON.parse(readRosterSync(new URL('./completed-item-ids.json',import.meta.url),'utf8')).map(String));}catch{return new Set();}})();
+const itemNameIds=(()=>{try{return JSON.parse(readRosterSync(new URL('./item-name-ids.json',import.meta.url),'utf8'));}catch{return {};}})();
+const escapeItemName=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const itemNamePattern=(()=>{const names=Object.keys(itemNameIds).sort((a,b)=>b.length-a.length).map(escapeItemName);return new RegExp(names.join('|'),'g');})();
 import { WZRY_ADAPTER } from '../dsh-coach-server/lib/adapters/wzry.js';
 import { projectWzryFacts } from '../dsh-coach-server/lib/adapters/wzry-facts.js';
 import { createMatchTracker } from '../dsh-coach-server/lib/match-tracker.js';
@@ -740,17 +743,33 @@ export function overlayView(state, knowledge = {}) {
   const rows = knowledge.rows ?? [];
   const hero = rows.find(row => row._viewKind==='hero' && heroStatMatches(row,me.champion));
   const own = items(state.game==='lol'?list(me.items).filter(isCompletedItem):me.items);
-  // 推荐装备：取资料库首套核心出装里的成装（itemIds 已由服务端给出），只显示成装图标。
+  // 推荐装备：优先读本局最新的六件出装方案（开局规划/海克斯确认后的更新），
+  // 资料库 coreBuilds 只提供 3 件核心装，作为补齐和兜底；两者都只显示成装图标。
   const recommendedItemRows=(()=>{
     if(state.game!=='lol')return [];
-    const build=rows.find(row=>row?._type==='coreBuilds');if(!build)return [];
+    const build=rows.find(row=>row?._type==='coreBuilds');
     const parse=value=>{if(Array.isArray(value))return value;try{const parsed=JSON.parse(value);return Array.isArray(parsed)?parsed:[]}catch{return []}};
-    const ids=parse(build.itemIds),names=parse(build.items),seen=new Set(),result=[];
-    for(let index=0;index<ids.length;index++){
-      const id=String(ids[index]);
-      if(!completedItemIdSet.has(id)||seen.has(id))continue;
-      seen.add(id);result.push({id,name:String(names[index]??'')});
-      if(result.length>=6)break;
+    const fromText=source=>{
+      const found=[],seen=new Set();
+      for(const match of String(source??'').matchAll(itemNamePattern)){
+        const name=match[0],id=itemNameIds[name];
+        if(!id||!completedItemIdSet.has(String(id))||seen.has(name))continue;
+        seen.add(name);found.push({id:String(id),name});
+        if(found.length>=6)break;
+      }
+      return found;
+    };
+    const seen=new Set(),result=[];
+    const append=row=>{
+      if(!row?.id||!completedItemIdSet.has(String(row.id))||seen.has(row.id)||result.length>=6)return;
+      seen.add(row.id);result.push(row);
+    };
+    // 最新 equipment 文本由海克斯确认/装备变化触发，能覆盖开局六件顺序；不足 4 件时继续用开局规划。
+    const live=fromText(state.equipment),opening=fromText(state.openingBuild);
+    for(const row of (live.length>=4?live:opening.length?opening:[]))append(row);
+    if(build){
+      const ids=parse(build.itemIds),names=parse(build.items);
+      for(let index=0;index<ids.length;index++)append({id:String(ids[index]),name:String(names[index]??'')});
     }
     return result;
   })();
@@ -1759,20 +1778,8 @@ async function performRefresh() {
       busy = true;
       const game=state.game||'lol',match = state.match, started = state.matchStartedAt;
       const stillCurrent = () => state.match === match && state.matchStartedAt === started;
-      state.chat = state.chat.filter(row => !row?.streaming);
       const q = { role: 'user', text: question.trim(), origin: metadata.origin === 'phone' ? 'phone' : 'desktop', at: Date.now() }; state.chat.push(q);
-      const streamMessage = { role: 'assistant', text: '', streaming: true, at: Date.now() };
-      state.chat.push(streamMessage);
       state.chat = capOverlayChat(state.chat);
-      let streamFlushAt = 0;
-      const pushStream = text => {
-        if (generation !== askGeneration) return;
-        streamMessage.text = String(text ?? '').slice(0, 4000);
-        streamMessage.at = Date.now();
-        state.chat = capOverlayChat(state.chat);
-        const now = Date.now();
-        if (now - streamFlushAt > 250) { streamFlushAt = now; void flush(); }
-      };
       try {
         await memory.record(state, { kind: 'chat', ...q, gameSeconds: state.gameSeconds }, 'overlay-chat');
         await flush();
@@ -1792,14 +1799,12 @@ async function performRefresh() {
             return run();
           }
         };
-        const answer = await withChatRetry(() => agentChat({ game, match: match || 'waiting', question: q.text, topic:topic??'chat',priority:'manual',timeCritical:true,onProgress:event=>{if(event?.event==='public_text'&&typeof event.text==='string')pushStream(event.text);} }));
+        const answer = await withChatRetry(() => agentChat({ game, match: match || 'waiting', question: q.text, topic:topic??'chat',priority:'manual',timeCritical:true }));
         if(!stillCurrent())throw Object.assign(Error('对局已切换，请在当前对局重新提问'),{status:409});
         if(typeof answer!=='string'||!answer.trim())throw Object.assign(Error('Empty Agent answer'),{status:502});
         const reply=answer.trim();
         if(generation!==askGeneration)return {};
-        streamMessage.text = reply;
-        streamMessage.streaming = false;
-        streamMessage.at = Date.now();
+        state.chat.push({ role: 'assistant', text: reply, at: Date.now() });
         state.chat = capOverlayChat(state.chat);
         state.chatUnreadAt = Date.now();
         await memory.record(state, { kind: 'chat', role: 'assistant', text: reply, gameSeconds: state.gameSeconds }, 'overlay-chat');
@@ -1808,10 +1813,7 @@ async function performRefresh() {
         if(topic==='augments')state.augmentAdvice=text(answer);
         return { answer: reply };
       } catch (e) {
-        if(generation===askGeneration){
-          state.chat = state.chat.filter(row => row !== streamMessage);
-          if(stillCurrent())state.chat.push({ role: 'assistant', text: chatFailureMessage(e), failed:true, at: Date.now() });
-        }
+        if(generation===askGeneration&&stillCurrent())state.chat.push({ role: 'assistant', text: chatFailureMessage(e), failed:true, at: Date.now() });
         throw e;
       } finally { if(generation===askGeneration)busy = false; await flush(); }
     },

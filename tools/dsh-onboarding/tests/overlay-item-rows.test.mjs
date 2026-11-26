@@ -45,3 +45,20 @@ test('enemy equipment events keep hero and completed item ids for icons', () => 
   assert.equal(alert.equipment.hero, '锐雯');
   assert.deepEqual(overlayView(state).thread.find((row) => row.equipment)?.equipment.items, [{id: '3031', name: '无尽之刃'}]);
 });
+
+test('开局六件规划显示为六个成装图标', () => {
+  const state = stateWithRoster();
+  state.openingBuild = '六件顺序：1 卢登的回声 2 法师之靴 3 影焰 4 灭世者的死亡之帽 5 中娅沙漏 6 虚空之杖';
+  const view = overlayView(state, {rows: [{
+    _type: 'coreBuilds', champion: '安妮', itemIds: '[6655,3020,4645]', items: '["卢登的回声","法师之靴","影焰"]',
+  }]});
+  assert.deepEqual(view.recommendedItemRows.map((row) => row.name), ['卢登的回声', '法师之靴', '影焰', '灭世者的死亡之帽', '中娅沙漏', '虚空之杖']);
+});
+
+test('海克斯更新后的六件方案优先于开局规划', () => {
+  const state = stateWithRoster();
+  state.openingBuild = '开局：卢登的回声、法师之靴、影焰、灭世者的死亡之帽、中娅沙漏、虚空之杖';
+  state.equipment = '六件顺序：卢登的回声、法师之靴、影焰、灭世者的死亡之帽、虚空之杖、中娅沙漏';
+  const view = overlayView(state, {rows: []});
+  assert.deepEqual(view.recommendedItemRows.map((row) => row.name), ['卢登的回声', '法师之靴', '影焰', '灭世者的死亡之帽', '虚空之杖', '中娅沙漏']);
+});

@@ -1,4 +1,4 @@
-﻿import {rankedAugments,offerNames} from './augment-ranking.mjs';
+import {rankedAugments,offerNames} from './augment-ranking.mjs';
 import {isCompletedItem} from '../lol-companion/item-policy.mjs';
 import {lineupOf,adviceNameIssues,describeIssues} from '../dsh-coach-server/lib/advice-names.js';
 import {unknownItemMentions} from '../cloud-desktop/item-name-verify.mjs';
@@ -139,7 +139,7 @@ export function createEquipmentCoach({getState,agentChat,save,onAdvice=()=>{},ca
       if(!canRequest()&&!urgent){state.equipmentStatus=lastDone?'低频更新中，已有出装建议仍可参考':'等待低频自动分析';return;}
       busy=true;lastAt=now();
       const match=state.match,started=state.matchStartedAt;
-      let question='【自动出装建议任务】请结合当前装备、敌方各英雄装备、自己所有已确认海克斯，以及下列明确标注为推测的强化，更新出装建议。先给下一件优先购买的装备，再给后续顺序和针对性调整理由。推测强化必须写成“暂按…考虑，待确认”，不得宣称已拥有；所有已确认强化都要参与取舍。没有可信排名时不要编造推测。播报不要提散件/组件装备，只讲成装，也不要播报购买散件；如果有成装已经拥有散件，不要重复提醒合成这件成装，直接讲下一件成装。不要重复列出敌方装备明细或购买事件。玩法与装备数值不确定时调用工具查证。只用 coach_reply 提交不超过600字的最终建议。\n【装备决策事实 JSON】\n'+JSON.stringify(facts);
+      let question='【自动出装建议任务】请结合当前装备、敌方各英雄装备、自己所有已确认海克斯，以及下列明确标注为推测的强化，更新出装建议。先给下一件优先购买的装备，再给后续顺序和针对性调整理由。推测强化必须写成“暂按…考虑，待确认”，不得宣称已拥有；所有已确认强化都要参与取舍。没有可信排名时不要编造推测。播报不要提散件/组件装备，只讲成装，也不要播报购买散件；如果有成装已经拥有散件，不要重复提醒合成这件成装，直接讲下一件成装。不要重复列出敌方装备明细或购买事件。玩法与装备数值不确定时调用工具查证。最后必须附一行「六件顺序：1 名称 2 名称 3 名称 4 名称 5 名称 6 名称」，只列成装；海克斯会改变取舍时要按当前已确认海克斯调整。只用 coach_reply 提交不超过600字的最终建议。\n【装备决策事实 JSON】\n'+JSON.stringify(facts);
   if(fullBuild)question='【满装替换评估】当前已经买满六件成装。不要建议新增装备；只有确实需要替换时才说明：换掉哪一件、换成什么、为什么。若当前六件就是最优，只回复四个字：无需换装。不要提散件/组件。\n【对局事实 JSON】\n'+JSON.stringify({hero:state.me.champion,currentItems:ownCompleted,enemies:facts.enemies,confirmedAugments:facts.confirmedAugments,assumedAugments:facts.assumedAugments});
       void agentChat({game:state.game,match,question,topic:'equipment',automatic:true,...(urgent?{urgent:true}:{})}).then(async answer=>{
         const current=getState();
