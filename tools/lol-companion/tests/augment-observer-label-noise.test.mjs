@@ -15,7 +15,7 @@ test('两行标题「升级 / 风暴狂涌」按拼接名命中，不再报未�
     cardLayout: 'stacked-title-regions', method: 'card-strip-fast',
     titleLines: [
       {text: '升级', slot: 0, x: 300, y: 350},
-      {text: '风暴狂涌', slot: 0, x: 362, y: 351},
+      {text: '风暴狂涌', slot: 0, x: 362, y: 350},
       {text: '伤害', slot: 0, x: 360, y: 380},
       {text: '有始有终', slot: 1, x: 500, y: 350},
       {text: '伤害功能', slot: 1, x: 520, y: 380},
@@ -48,6 +48,8 @@ test('卡面标签残片不再当作未收录卡名', () => {
       {text: '己方伤害', slot: 1, x: 520, y: 382},
       {text: '歌利亚巨人', slot: 2, x: 700, y: 350},
       {text: '复原力伤', slot: 2, x: 720, y: 382},
+      {text: '伤害任务', slot: 0, x: 310, y: 400},
+      {text: '伤軎任务', slot: 2, x: 710, y: 400},
     ],
     lines: [],
   });

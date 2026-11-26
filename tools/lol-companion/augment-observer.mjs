@@ -88,7 +88,9 @@ const unknownNames=new Set();
       // lines in the same card; never fuzzy-match an arbitrary description.
       for(const a of lines)for(const b of lines){
         if(a.source!==b.source||(a.source==='title'&&a.slot!==b.slot))continue;
-        if(b.y<=a.y||b.y-a.y>frame.height*0.07||Math.abs(a.x-b.x)>frame.width*0.07)continue;
+        // OCR 可能把同一行标题拆成左右两段（例如「升级」+「风暴狂涌」），两段 y 完全相等；
+        // 只要求横向顺序，不再要求 b.y 严格大于 a.y。
+        if(b.x<=a.x||Math.abs(b.y-a.y)>frame.height*0.07)continue;
         const hit=resolveName(a.text+b.text);
         if(hit)found.push({...a,name:hit.name,fuzzy:!hit.exact});
       }
@@ -104,7 +106,7 @@ const unknownNames=new Set();
       // text that looks like a card name as an unverified candidate and report the gap once.
       // Category labels sit under every card name and would otherwise pass as unverified names.
       const LABELS=new Set(['重型','力量','速度','功能','复原力','伤害','法术','生命','攻击','防御','综合','辅助','护盾','冷却','暴击','移动','韧性','鞭挞','护甲','魔抗','金币','治疗','减速','加速','持续','叠加',// 以下是被 OCR 从界面其他区域读到的通用词，曾把「装备」当成卡名塞进候选：
- '装备','物品','商店','属性','符文','天赋','技能','召唤师','回城','购买','出售','面板','详情','关闭','选择','强化','己方','敌方','我方','友方','己方伤害']);
+ '装备','物品','商店','属性','符文','天赋','技能','召唤师','回城','购买','出售','面板','详情','关闭','选择','强化','己方','敌方','我方','友方','己方伤害','任务']);
 /** 名字能否被完整拆成两个以上已知标签（例如「伤害功能」= 伤害+功能，「速度复原力」= 速度+复原力）。
  *  这类字符串是卡面类别标签被 OCR 粘在一起，不是强化名。 */
 /** 卡面标签被 OCR 截断/粘连（如「复原力伤」「己方伤害」）时不能再当卡名。
@@ -116,6 +118,11 @@ function isLabelFragment(text){
   const rest=text.slice(label.length);
   if(!rest)return true;
   if(rest.length<=2&&[...LABELS].some(other=>other.startsWith(rest[0])))return true;
+ }
+ for(const label of LABELS){
+  if(!text.endsWith(label))continue;
+  const before=text.slice(0,-label.length);
+  if(!before||before.length<=2)return true;
  }
  return false;
 }
