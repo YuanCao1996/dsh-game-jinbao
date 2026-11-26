@@ -74,7 +74,7 @@ export function cloudContext(memory,game,match,{eventQuery=false,observationPlan
 export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgress=()=>{},capture,queryEvents,observationPlan,memoryTools,experienceTools,onObservation,
  getActivityEnabled=()=>false,serviceBaseUrl='https://api.jinbaoai.top',apiPrefix='/desktop/agent',deviceId='default',fetchImpl=fetch,pollMs=800,timeoutMs=90000}){
  if(!['/desktop/agent','/desktop/agent-preview'].includes(apiPrefix))throw Error('Invalid Agent route');
- const service=serviceUrl(serviceBaseUrl);const lifetime=new AbortController(),teardown=new AbortController();let busy=false,settled=Promise.resolve(),finish=()=>{},wireRevision=0,wireKey='',wireValue,waitForCancellation=false;
+ const service=serviceUrl(serviceBaseUrl);const lifetime=new AbortController(),teardown=new AbortController();let busy=false,settled=Promise.resolve(),finish=()=>{},wireRevision=0,wireKey='',wireValue,waitForCancellation=false,activeAbort=null,activeTask=null,activeToken=null,activeGeneration=0;
  function transportContext(memory,request){
   const value=cloudContext(memory,request.game,request.match,{eventQuery:!!queryEvents,observationPlan:!!observationPlan,userMemory:!!memoryTools,experience:!!experienceTools});
   if(getActivityEnabled())value.client_context.capabilities.agent_activity_v1=true;
@@ -111,13 +111,15 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
     while(busy&&Date.now()<waitUntil){try{await settled;}catch{}}
     if(busy){const error=fail(409,'Cloud Agent is busy');error.code='agent_busy';throw error;}
   }
+  const generation=++activeGeneration;
+  const taskAbort=new AbortController();activeAbort=taskAbort;activeTask=null;activeToken=null;
   busy=true;
   settled=new Promise(resolve=>{finish=resolve;});
-  let task,token,terminal=false;const signal=AbortSignal.any([lifetime.signal,AbortSignal.timeout(timeoutMs)]);
+  let task,token,terminal=false;const signal=AbortSignal.any([lifetime.signal,taskAbort.signal,AbortSignal.timeout(timeoutMs)]);
   const current=()=>isCurrent(request.game,request.match);
   const progress=event=>onProgress({...event,game:request.game,match:request.match,topic:request.topic,requestId:request.activityId});
   try{
-   token=await getToken();if(!token)throw fail(401,'Login required');if(!current())throw fail(409,'Match changed');
+   token=await getToken();activeToken=token;if(!token)throw fail(401,'Login required');if(!current())throw fail(409,'Match changed');
    const session='desktop-'+createHash('sha256').update(JSON.stringify([deviceId,request.game,request.match])).digest('hex');
    const context=transportContext(await getContext(request.game,request.match),request);
    const message=agentQuestion(request);
@@ -126,7 +128,7 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
     try{created=await call('/tasks',token,{session_id:session,message,context},signal,key);break;}
     catch(error){if(error.status||signal.aborted||attempt)throw error;}
    }
-   if(!/^[a-f0-9-]{32,36}$/.test(created.task_id??''))throw fail(502,'Invalid task');task=created.task_id;
+   if(!/^[a-f0-9-]{32,36}$/.test(created.task_id??''))throw fail(502,'Invalid task');task=created.task_id;activeTask=task;
    // 手动提问的玩家在屏幕前等结果：503/504 这类上游故障多试一次就够，
    // 否则一次提问要等三轮 20 秒（实测 2026-11-12 23:32 那条提问等了 61 秒才失败）。
    // 后台自动任务机会成本低，仍保留两次。
@@ -206,7 +208,7 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
     }
     await sleep(getActivityEnabled()?Math.min(pollMs,500):pollMs,undefined,{signal});
    }
-  }catch(error){if(signal.aborted&&!lifetime.signal.aborted)throw fail(504,'Agent analysis timed out');throw error;}finally{
+  }catch(error){if(taskAbort.signal.aborted&&!lifetime.signal.aborted){const preempted=fail(409,'Agent preempted');preempted.code='agent_preempted';throw preempted;}if(signal.aborted&&!lifetime.signal.aborted)throw fail(504,'Agent analysis timed out');throw error;}finally{
    if(task&&!terminal&&token){
     try{
      let receipt=await call('/tasks/'+task+'/cancel',token,{},AbortSignal.timeout(5000));
@@ -221,7 +223,7 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
      }
     }catch{}
    }
-   busy=false;finish();
+   if(generation===activeGeneration){busy=false;activeAbort=null;activeTask=null;activeToken=null;finish();}else finish();
   }
- },busy:()=>busy,abortRetirement(){teardown.abort();},async close({reason}={}){waitForCancellation=reason==='preempt';if(!waitForCancellation)teardown.abort();lifetime.abort();await settled;}};
+ },busy:()=>busy,abortRetirement(){teardown.abort();},cancelCurrent(){waitForCancellation=true;try{activeAbort?.abort();}catch{}if(activeTask&&activeToken)void call('/tasks/'+activeTask+'/cancel',activeToken,{},AbortSignal.timeout(3000)).catch(()=>{});return settled.catch(()=>{});},async close({reason}={}){waitForCancellation=reason==='preempt';if(!waitForCancellation)teardown.abort();lifetime.abort();await settled;}};
 }

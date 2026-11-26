@@ -43,9 +43,7 @@ export function createRuntimeRouter({getMode,factories,isCurrent=()=>true,maxQue
    const epoch=generation;active=task;
    try{
     if(retiring)emit(task,'task_waiting_handoff');
-    if(!manual(task.request)){
-      await retirement;
-    }
+    await retirement;
     if(epoch!==generation||closed)throw failure('调用方式已切换');
     emit(task,'task_started');
     const next=await getMode();if(epoch!==generation||closed)throw failure('调用方式已切换');if(next==='demo'||!factories[next])throw failure('当前未启用模型服务');
@@ -69,8 +67,17 @@ export function createRuntimeRouter({getMode,factories,isCurrent=()=>true,maxQue
     if(index<0)return Promise.reject(failure('请求较多，请稍后重试'));
     const [displaced]=queue.splice(index,1);emit(displaced,'task_cancelled');displaced.reject(failure('已优先处理手动请求','agent_preempted'));
    }
-   // 玩家最新提问优先于上一轮手动提问：新问题抢占，旧回答丢弃。
-  if(manual(request)&&active){active.interrupted=true;generation++;const previous=instance;instance=null;mode='';if(previous)void retire(previous,'preempt').catch(()=>{});}
+   // 玩家最新提问优先于上一轮手动提问：先取消旧任务，尽量复用同一个云会话。
+  if(manual(request)&&active){
+    active.interrupted=true;
+    const reusable=instance&&typeof instance.cancelCurrent==='function';
+    if(reusable){
+      retiring=true;
+      const closing=Promise.resolve().then(()=>instance.cancelCurrent()).catch(()=>{});
+      const fence=Promise.allSettled([retirement,closing]).then(()=>{if(retirement===fence)retiring=false;});
+      retirement=fence;
+    }else{generation++;const previous=instance;instance=null;mode='';if(previous)void retire(previous,'preempt').catch(()=>{});}
+  }
    return new Promise((resolve,reject)=>{const task={request:{...request,activityId:randomUUID()},resolve,reject};queue.push(task);emit(task,'task_queued');void drain();});
   },async close(){closed=true;await reset();}};
 }
