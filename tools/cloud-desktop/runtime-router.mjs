@@ -1,7 +1,7 @@
 // One native Agent turn at a time. Manual chat precedes queued background work.
 import {randomUUID} from 'node:crypto';
 export function createRuntimeRouter({getMode,factories,isCurrent=()=>true,maxQueue=4,onEvent=()=>{}}){
- let active=null,instance=null,opening=null,mode='',generation=0,closed=false,draining=false,retiring=false,retirement=Promise.resolve();const queue=[],retiringInstances=new Set();
+ let active=null,instance=null,opening=null,mode='',generation=0,closed=false,draining=false,retiring=false,retirement=Promise.resolve(),manualPreemptRetirement=false;const queue=[],retiringInstances=new Set();
  const failure=(message,code)=>Object.assign(Error(message),{status:409,...(code?{code}:{})});
  // 把 HTTP 状态翻译成可读原因：过去失败一律记成 code=other，玩家只看到「分析失败」，
  // 分不清是服务端故障、限流还是登录失效（2026-11-12 那三条 503 就是这样丢掉的）。
@@ -42,8 +42,11 @@ export function createRuntimeRouter({getMode,factories,isCurrent=()=>true,maxQue
    if(!isCurrent(task.request.game,task.request.match)){emit(task,'task_stale');task.reject(failure('对局已切换'));continue;}
    const epoch=generation;active=task;
    try{
-    if(retiring)emit(task,'task_waiting_handoff');
-    await retirement;
+    if(retiring){
+      emit(task,'task_waiting_handoff');
+      if(manual(task.request)&&manualPreemptRetirement){manualPreemptRetirement=false;}
+      else await retirement;
+    }
     if(epoch!==generation||closed)throw failure('调用方式已切换');
     emit(task,'task_started');
     const next=await getMode();if(epoch!==generation||closed)throw failure('调用方式已切换');if(next==='demo'||!factories[next])throw failure('当前未启用模型服务');
@@ -72,7 +75,7 @@ export function createRuntimeRouter({getMode,factories,isCurrent=()=>true,maxQue
     active.interrupted=true;
     const reusable=instance&&typeof instance.cancelCurrent==='function';
     if(reusable){
-      retiring=true;
+      retiring=true;manualPreemptRetirement=true;
       const closing=Promise.resolve().then(()=>instance.cancelCurrent()).catch(()=>{});
       const fence=Promise.allSettled([retirement,closing]).then(()=>{if(retirement===fence)retiring=false;});
       retirement=fence;
