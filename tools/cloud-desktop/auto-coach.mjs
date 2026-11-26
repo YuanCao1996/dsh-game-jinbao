@@ -29,6 +29,18 @@ export function createCloudCoach({stateDir,view,getContext,agent,enabled=()=>tru
  const advised=[];
  function rememberAdvice(text,stage){advised.push({text:String(text??""),at:now(),stage:String(stage??"")});while(advised.length>8)advised.shift();}
  // 播报人名硬校验：只能提本局双方名单里的英雄；编出来的英雄/同一英雄两种叫法直接不发。
+// 名单外英雄不整条丢弃：只删除提到它的句子，保留其余可用建议。
+function stripUnknownChampionSentences(text,current){
+ try{
+  const issues=adviceNameIssues(text,lineupOf(current));
+  const unknown=issues.unknown??[];
+  if(!unknown.length)return {text,stripped:0};
+  const parts=String(text).split(/(?<=[。！？!?；;\n])/);
+  const kept=parts.filter(part=>!unknown.some(name=>part.includes(name)));
+  return {text:kept.join('').trim(),stripped:parts.length-kept.length};
+ }catch{return {text,stripped:0};}
+}
+
 function championNameProblem(text,current){
  try{
   const issues=adviceNameIssues(text,lineupOf(current));
@@ -131,8 +143,11 @@ let deathTurns=0;
     const situationTextRaw=condenseAdvice(stripSources(String(answer)));
 const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItemNames(current));
     if(noiseBroadcast(situationText)){note(v,'skip','roster_noise',{stage:'situation'});return;}
- const situationNameProblem=championNameProblem(situationText,current);
+ const situationNameClean=stripUnknownChampionSentences(situationText,current);
+ const situationNameProblem=championNameProblem(situationNameClean.text,current);
  if(situationNameProblem){note(v,'skip','champion_name_rejected',{stage:'situation',detail:situationNameProblem});return;}
+ if(situationNameClean.stripped){note(v,'strip','champion_name_sentence',{stage:'situation',count:situationNameClean.stripped});situationText=situationNameClean.text;}
+ if(!situationText.trim()){note(v,'skip','champion_name_all_stripped',{stage:'situation'});return;}
  const situationItemProblem=unknownItemMentions(situationText,contextItemNames(current));
  if(situationItemProblem){note(v,'skip','item_name_rejected',{stage:'situation',detail:situationItemProblem});return;}
     await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:'situation',dimension:'now',broadcast:situationText,validity});rememberAdvice(situationText,'situation');await published(v,{stage:'situation'});store={signature,lastAt:now(),lastValidity:validity};return;
@@ -228,10 +243,13 @@ const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItem
     note(v,'coach_late_published',undefined,{stage:plan.stage});
    }
    if(typeof answer!=='string'||!answer.trim())throw Error('Empty automatic reply');
-   const stagedText=fixItemNames(humanizeChampions(condenseAdvice(stripSources(String(answer)))),contextItemNames(current));
+   let stagedText=fixItemNames(humanizeChampions(condenseAdvice(stripSources(String(answer)))),contextItemNames(current));
    if(noiseBroadcast(stagedText)){note(v,'skip','roster_noise',{stage:plan.stage});return;}
- const stagedNameProblem=championNameProblem(stagedText,current);
+ const stagedNameClean=stripUnknownChampionSentences(stagedText,current);
+ const stagedNameProblem=championNameProblem(stagedNameClean.text,current);
  if(stagedNameProblem){note(v,'skip','champion_name_rejected',{stage:plan.stage,detail:stagedNameProblem});return;}
+ if(stagedNameClean.stripped){note(v,'strip','champion_name_sentence',{stage:plan.stage,count:stagedNameClean.stripped});stagedText=stagedNameClean.text;}
+ if(!stagedText.trim()){note(v,'skip','champion_name_all_stripped',{stage:plan.stage});return;}
  const stagedItemProblem=unknownItemMentions(stagedText,contextItemNames(current));
  if(stagedItemProblem){note(v,'skip','item_name_rejected',{stage:plan.stage,detail:stagedItemProblem});return;}
    // 几乎逐字重复的兜底：提示词已经要求换说法，这里只拦「换个标点又播一遍」。

@@ -1,4 +1,7 @@
 import {isCompletedItem} from '../lol-companion/item-policy.mjs';
+import {readFileSync} from 'node:fs';
+const AUGMENT_EFFECTS=(()=>{try{return JSON.parse(readFileSync(new URL('../lol-companion/augment-effects.json',import.meta.url),'utf8'));}catch{return[];}})();
+const augmentEffect=name=>{const hit=AUGMENT_EFFECTS.find(row=>row?.name===name);return hit?String(hit.desc||hit.tooltip||'').slice(0,160):'';};
 import {recordChoice} from './choice-reactions.mjs';
 const clean=value=>typeof value==='string'?value.trim().slice(0,120):'';
 export function progressSeconds(value,fallback=null){
@@ -65,14 +68,9 @@ export function projectProgressEvent(state,event){
    const selections=state.augmentSelections??(state.augmentSelections=[]);
    const key=JSON.stringify([event.kind,heroId,augment,seconds]);
    if(!selections.some(row=>row.key===key)){
-    selections.push({key,at:Date.now(),gameSeconds:seconds,hero:String(heroTitle),side,augment,confirmed,source:String(event.source??'')});
+    selections.push({key,at:Date.now(),gameSeconds:seconds,hero:String(heroTitle),side,augment,confirmed,source:String(event.source??''),effect:augmentEffect(augment)});
     state.augmentSelections=selections.slice(-24);
-    // 敌方高威胁强化：像敌方关键成装一样立刻喊一句。
-    if(side==='enemy'&&HIGH_THREAT_AUGMENTS.has(augment)){
-     const alertText='敌方'+String(heroTitle||'敌人')+'选了'+augment+'，要小心这个强化！';
-     const recent=(state.broadcasts??[]).some(row=>row&&row.text===alertText&&Date.now()-Number(row.at||0)<120000);
-     if(!recent)state.broadcasts=[...(state.broadcasts??[]),{at:Date.now(),text:alertText,priority:3,localAlert:true,expiresAt:Date.now()+15000}].slice(-12);
-    }
+
    }
   }
     // A countdown-default pick is what the player actually ended up with, even though it

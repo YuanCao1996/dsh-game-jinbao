@@ -15,7 +15,7 @@ import { projectWzryFacts } from '../dsh-coach-server/lib/adapters/wzry-facts.js
 import { createMatchTracker } from '../dsh-coach-server/lib/match-tracker.js';
 import { rankedAugments, augmentLine, offerNames } from './augment-ranking.mjs';
 import { TIEBREAK_QUESTION, tiebreakPick } from './vision-tiebreak.mjs';
-import { projectProgressEvent,observeEquipment,addProgressEvent,progressSeconds } from './progress-events.mjs';
+import { projectProgressEvent,observeEquipment,addProgressEvent,progressSeconds,HIGH_THREAT_AUGMENTS } from './progress-events.mjs';
 import { createGameMemory } from '../dsh-coach-server/lib/game-memory.js';
 import { normalizeLolMode } from '../dsh-coach-server/lib/game-mode-prompt.js';
 import {trackAugmentRound,updateAugmentRecommendations,createEquipmentCoach} from './equipment-context.mjs';
@@ -1342,7 +1342,27 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
     refreshTask=(async()=>{do{refreshQueued=false;await performRefresh();}while(refreshQueued&&!closed);})().finally(()=>{refreshTask=null;});
     return refreshTask;
   }
-  async function performRefresh() {
+  async function enrichEnemyAugmentSelections(){
+ const pending=(state.augmentSelections??[]).filter(row=>row&&row.side==='enemy'&&!row.rankChecked);
+ for(const row of pending.slice(-2)){
+  row.rankChecked=true;
+  try{
+   const result=await search({game:'lol',query:String(row.hero??''),filter:{_type:'augments'},limit:10});
+   const hit=(result?.results??[]).map(item=>item?.data).find(data=>data&&data.name===row.augment);
+   if(hit){row.rank=Number(hit.rank)>0?Number(hit.rank):null;row.tier=String(hit.tier??'');row.effect=row.effect||String(hit.desc??hit.effect??'').slice(0,160);}
+  }catch{}
+  if(row.alerted)continue;
+  const high=HIGH_THREAT_AUGMENTS.has(row.augment);
+  if(!high&&!(row.rank&&row.rank<=20))continue;
+  row.alerted=true;
+  const rankText=row.rank?('排名第'+row.rank):'排名靠前';
+  const text='敌方'+String(row.hero||'敌人')+'选了'+row.augment+'，'+rankText+'，注意提防';
+  if(!(state.broadcasts??[]).some(item=>item&&item.text===text))state.broadcasts=[...(state.broadcasts??[]),{at:Date.now(),text,priority:3,localAlert:true,expiresAt:Date.now()+15000}].slice(-12);
+ }
+}
+
+async function performRefresh() {
+ void enrichEnemyAugmentSelections();
     const selecting=state.phase==='ChampSelect';
     const champion = state.me.champion;
     const game = state.game;
