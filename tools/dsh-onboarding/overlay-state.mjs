@@ -1759,8 +1759,20 @@ async function performRefresh() {
       busy = true;
       const game=state.game||'lol',match = state.match, started = state.matchStartedAt;
       const stillCurrent = () => state.match === match && state.matchStartedAt === started;
+      state.chat = state.chat.filter(row => !row?.streaming);
       const q = { role: 'user', text: question.trim(), origin: metadata.origin === 'phone' ? 'phone' : 'desktop', at: Date.now() }; state.chat.push(q);
+      const streamMessage = { role: 'assistant', text: '', streaming: true, at: Date.now() };
+      state.chat.push(streamMessage);
       state.chat = capOverlayChat(state.chat);
+      let streamFlushAt = 0;
+      const pushStream = text => {
+        if (generation !== askGeneration) return;
+        streamMessage.text = String(text ?? '').slice(0, 4000);
+        streamMessage.at = Date.now();
+        state.chat = capOverlayChat(state.chat);
+        const now = Date.now();
+        if (now - streamFlushAt > 250) { streamFlushAt = now; void flush(); }
+      };
       try {
         await memory.record(state, { kind: 'chat', ...q, gameSeconds: state.gameSeconds }, 'overlay-chat');
         await flush();
@@ -1780,12 +1792,14 @@ async function performRefresh() {
             return run();
           }
         };
-        const answer = await withChatRetry(() => agentChat({ game, match: match || 'waiting', question: q.text, topic:topic??'chat',priority:'manual',timeCritical:true }));
+        const answer = await withChatRetry(() => agentChat({ game, match: match || 'waiting', question: q.text, topic:topic??'chat',priority:'manual',timeCritical:true,onProgress:event=>{if(event?.event==='public_text'&&typeof event.text==='string')pushStream(event.text);} }));
         if(!stillCurrent())throw Object.assign(Error('对局已切换，请在当前对局重新提问'),{status:409});
         if(typeof answer!=='string'||!answer.trim())throw Object.assign(Error('Empty Agent answer'),{status:502});
         const reply=answer.trim();
         if(generation!==askGeneration)return {};
-        state.chat.push({ role: 'assistant', text: reply, at: Date.now() });
+        streamMessage.text = reply;
+        streamMessage.streaming = false;
+        streamMessage.at = Date.now();
         state.chat = capOverlayChat(state.chat);
         state.chatUnreadAt = Date.now();
         await memory.record(state, { kind: 'chat', role: 'assistant', text: reply, gameSeconds: state.gameSeconds }, 'overlay-chat');
@@ -1794,7 +1808,10 @@ async function performRefresh() {
         if(topic==='augments')state.augmentAdvice=text(answer);
         return { answer: reply };
       } catch (e) {
-        if(generation===askGeneration&&stillCurrent())state.chat.push({ role: 'assistant', text: chatFailureMessage(e), failed:true, at: Date.now() });
+        if(generation===askGeneration){
+          state.chat = state.chat.filter(row => row !== streamMessage);
+          if(stillCurrent())state.chat.push({ role: 'assistant', text: chatFailureMessage(e), failed:true, at: Date.now() });
+        }
         throw e;
       } finally { if(generation===askGeneration)busy = false; await flush(); }
     },
