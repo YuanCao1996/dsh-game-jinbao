@@ -7,8 +7,8 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 
 // Separate preview artifact: never changes stable release metadata or update feeds.
-export async function buildPreview({root,out,runtime=process.execPath}) {
- const updateVersion='0.3.23',version=updateVersion+'-standalone-preview.1';
+export async function buildPreview({root,out,runtime=process.execPath,nodeAgentPreview=false}) {
+ const updateVersion='0.3.25',version=updateVersion+'-standalone-preview.1';
  const files=new Set();
  async function include(name) {
   const path=resolve(root,name),local=relative(root,path);
@@ -66,7 +66,7 @@ export async function buildPreview({root,out,runtime=process.execPath}) {
     return out;
   })()),
   'tools/team-room/page.html','tools/team-room/page.css','tools/team-room/page.mjs',
-  'tools/dsh-coach-server/capture-game.ps1','tools/lol-companion/capture-augments.ps1','tools/lol-companion/augment-names.json',
+  'tools/dsh-coach-server/capture-game.ps1','tools/lol-companion/capture-augments.ps1','tools/lol-companion/augment-names.json','tools/lol-companion/augment-effects.json',
 // Spawned as its own process by the collector on every augment offer, so the
 // module walk above cannot see it either. Without it the pick detector is dead.
 'tools/lol-companion/card-watch.ps1',
@@ -89,18 +89,22 @@ export async function buildPreview({root,out,runtime=process.execPath}) {
  const releaseNotes=await readFile(new URL('./release-notes.txt',import.meta.url),'utf8').catch(()=>'独立桌面版 '+updateVersion);
  await writeFile(join(out,'tools/dsh-onboarding/release-notes.json'),JSON.stringify({version:version+' (独立预览)',notes:releaseNotes.trim()}));
  const compiler=join(process.env.SystemRoot??'C:/Windows','Microsoft.NET/Framework64/v4.0.30319/csc.exe');
- await promisify(execFile)(compiler,['/nologo','/target:winexe','/optimize+','/reference:System.Windows.Forms.dll','/out:'+join(out,'jinbao.exe'),join(root,'tools/cloud-desktop/Launcher.cs')],{windowsHide:true});
+ const compilerArgs=['/nologo','/target:winexe','/optimize+','/reference:System.Windows.Forms.dll',...(nodeAgentPreview?['/define:JINBAO_SINGLE_ACCOUNT_PILOT']:[]),'/out:'+join(out,'jinbao.exe'),join(root,'tools/cloud-desktop/Launcher.cs')];
+ await promisify(execFile)(compiler,compilerArgs,{windowsHide:true});
  // Old signed-update verifiers require this filename. Keep only an inert
  // comment during migration; neither launcher nor CMD ever executes it.
  await writeFile(join(out,'start-preview.vbs'),'Rem Compatibility marker only. Start Jinbao.exe. No executable statements.\r\n');
  await writeFile(join(out,'开始使用.cmd'),'@echo off\r\nstart "" "%~dp0jinbao.exe"\r\n');
  await writeFile(join(out,'README.md'),[
   '# 金宝云端预览版','',
+  ...(nodeAgentPreview?[
+   '> 单账号灰度候选包：仅已授权账号可以使用；真实模型调用会消耗该账号的正式额度。请勿转发此测试包。',
+   '此测试包使用独立数据目录 %LOCALAPPDATA%\\Jinbao\\single-account-pilot，不复用旧安装数据。首次启动请在设置网页使用获准的邮箱登录。','']:[]),
   '## 开始使用','',
   '1. 先退出其他金宝悬浮窗，将压缩包完整解压到新文件夹。',
   '2. 双击“开始使用.cmd”，悬浮窗和设置网页会自动打开。',
   '3. 官方服务默认自动尝试已开放的免登录体验名额；也可使用邮箱登录。进入游戏即可，无需安装 Node.js 或 DSH Desktop。',
-  '4. 更新预览包时，确认退出旧窗口后，从新文件夹启动。登录保存在当前用户的 .jinbao-cloud-preview 目录中，同一 Windows 用户无需因换包重新登录（凭据有效时）。','',
+  ...(nodeAgentPreview?['4. 更新测试包时，先退出当前悬浮窗，再从新文件夹启动。此包的登录状态与普通版分开保存。']:['4. 更新预览包时，确认退出旧窗口后，从新文件夹启动。登录保存在当前用户的 .jinbao-cloud-preview 目录中，同一 Windows 用户无需因换包重新登录（凭据有效时）。']),'',
   '## 悬浮窗操作','',
   '- 设置 → 直播展示：可开启智能体过程，仅在大框战况页显示；默认关闭。',
   '- 设置 → 显示与播报：大框、窄条、字幕、横向滚动或静默小球。',
@@ -129,7 +133,7 @@ export async function buildPreview({root,out,runtime=process.execPath}) {
   '设置页支持检查、后台下载和安装独立桌面版更新，对局中不会安装。签名与文件校验失败时继续使用原版本，新版启动失败会回退。此包使用独立更新通道，不会安装旧版 DSH 插件包。','',
   '真实对局仍待验收。此包未正式发布，正式版继续使用原入口。',''
  ].join('\n'));
- const report={version,updateVersion,preview:true,runtime:'standalone',requiresDshDesktop:false,localModeRequiresInstalledDsh:true,bundledRuntime:true,externalPackages:0,adbIncluded:false,files:files.size+10};
+ const report={version,updateVersion,preview:true,singleAccountPilot:nodeAgentPreview,runtime:'standalone',requiresDshDesktop:false,localModeRequiresInstalledDsh:true,bundledRuntime:true,externalPackages:0,adbIncluded:false,files:files.size+10};
  await writeFile(join(out,'preview-manifest.json'),JSON.stringify(report,null,2));
  // 快捷方式必须在生成清单之前做：这个脚本会往包里写 jinbao.ico，
  // 清单之后写就成了「多余文件」，更新校验 verifyPackage 会直接拒绝整包（0.2.37 踩过）。
@@ -149,8 +153,10 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
  assertReleaseRuntime(process.version);
  if(process.platform!=='win32')throw Error('Windows preview build requires Windows');
  const root=fileURLToPath(new URL('../../',import.meta.url));
- if(!process.argv[2])throw Error('Supply a new output directory');
- const out=resolve(process.argv[2]);
- console.log(JSON.stringify(await buildPreview({root,out})));
+ const cliArgs=process.argv.slice(2),outArg=cliArgs.find(value=>!value.startsWith('--'));
+ if(!outArg)throw Error('Supply a new output directory');
+ if(cliArgs.some(value=>value!==outArg&&value!=='--node-agent-preview'))throw Error('Unknown preview build option');
+ const out=resolve(outArg),nodeAgentPreview=cliArgs.includes('--node-agent-preview');
+ console.log(JSON.stringify(await buildPreview({root,out,nodeAgentPreview})));
 }
 
