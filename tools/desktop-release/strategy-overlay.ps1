@@ -230,6 +230,7 @@ $window=[Windows.Markup.XamlReader]::Load((New-Object Xml.XmlNodeReader $xaml))
 $controls=@{}
 foreach($name in @('MainBorder','OpacitySlider','OpacityText','Expanded','Header','TitleText','TimeText','SummaryText','LauncherText','ActionButton','Tabs','PageScroll','PageText','ChatPanel','QuestionBox','SendButton','Footer','HintText','SettingsButton','CollapseButton','CloseButton','Bubble','BubbleBall','BubbleBadge','BubbleBadgeText')){$controls[$name]=$window.FindName($name)}
 foreach($name in @('RichContent','ComposerPlaceholder','ModeButton','LatestMessageButton','ChatStatusText')){$controls[$name]=$window.FindName($name)}
+  try{[Windows.Input.InputMethod]::SetIsInputMethodEnabled($controls.QuestionBox,$true)}catch{}
 $script:scrollPositions=@{};$script:scrollFollow=@{}
  # 布局改造新增的控件也必须显式注册，否则运行时拿到的是 $null（状态点会静默不更新）。
 foreach($name in @('StatusDot','StatusText','ComposerActions')){$controls[$name]=$window.FindName($name)}

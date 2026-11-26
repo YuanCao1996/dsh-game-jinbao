@@ -170,6 +170,15 @@ function championLabel(state, name) {
   return '';
 }
 
+// 聊天数组同时装：玩家可见对话 + 隐藏的队友 OCR 聊天。
+// 以前统一 slice(-50)，队友刷屏会把玩家的问题/回复挤出界面，看起来像“没回复”。
+function capOverlayChat(chat){
+ const list=Array.isArray(chat)?chat:[];
+ const visible=list.filter(row=>row&&row.hidden!==true).slice(-50);
+ const hidden=list.filter(row=>row&&row.hidden===true).slice(-30);
+ return [...visible,...hidden].sort((a,b)=>(Number(a?.at)||0)-(Number(b?.at)||0));
+}
+
 export function applyOverlayEvent(state, event, file, {continueStart=false}={}) {
  // 识别盲区是诊断事件，不进入事件页，但它是经验提炼要用的真事实，这里自己计数。
  if(event&&event.kind==='augment_capture_blind'){state.captureBlind=(Number(state.captureBlind)||0)+1;return state;}
@@ -406,7 +415,7 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
       const speaker=String(item.speaker??'').slice(0,24)||'队友';
       const who=item.self===true?'你':speaker;
       state.chat.push({role:'user',origin:'team',hidden:true,displayName:speaker,champion:String(item.champion??'').slice(0,24),text,at,self:item.self===true});
-      if(state.chat.length>400)state.chat=state.chat.slice(-300);
+      state.chat=capOverlayChat(state.chat);
       // 有价值的一条：进智能体动态（刷屏由 activity-line 的节流控制）。
       state.activityEvents.push({key:'chat:'+at+':'+text,kind:'chat',time:clock(Number(state.gameSeconds)),text:who+'：'+text});
       state.activityEvents=state.activityEvents.slice(-30);
@@ -1749,7 +1758,7 @@ async function performRefresh() {
       const game=state.game||'lol',match = state.match, started = state.matchStartedAt;
       const stillCurrent = () => state.match === match && state.matchStartedAt === started;
       const q = { role: 'user', text: question.trim(), origin: metadata.origin === 'phone' ? 'phone' : 'desktop', at: Date.now() }; state.chat.push(q);
-      state.chat = state.chat.slice(-50);
+      state.chat = capOverlayChat(state.chat);
       try {
         await memory.record(state, { kind: 'chat', ...q, gameSeconds: state.gameSeconds }, 'overlay-chat');
         await flush();
@@ -1763,9 +1772,9 @@ async function performRefresh() {
             // A timed-out turn may already have run tools. Do not silently submit
             // it again, nor replay a task that the server explicitly marked failed.
             const transient = error?.retryable !== false && status !== 504 &&
-              (status === 503 || /unavailable|upstream/i.test(String(error?.code ?? '')));
+              (status === 503 || status === 401 || status === 403 || /unavailable|upstream/i.test(String(error?.code ?? '')));
             if (!transient || !stillCurrent()) throw error;
-            await new Promise(resolve => setTimeout(resolve, 800));
+            await new Promise(resolve => setTimeout(resolve, status === 401 || status === 403 ? 1600 : 800));
             return run();
           }
         };
@@ -1774,6 +1783,7 @@ async function performRefresh() {
         if(typeof answer!=='string'||!answer.trim())throw Object.assign(Error('Empty Agent answer'),{status:502});
         const reply=answer.trim();
         state.chat.push({ role: 'assistant', text: reply, at: Date.now() });
+        state.chat = capOverlayChat(state.chat);
         await memory.record(state, { kind: 'chat', role: 'assistant', text: reply, gameSeconds: state.gameSeconds }, 'overlay-chat');
         if(topic==='teamfight')state.teamfight=text(answer);
         if(topic==='equipment')state.equipment=text(answer);
