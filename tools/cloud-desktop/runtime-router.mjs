@@ -43,7 +43,10 @@ export function createRuntimeRouter({getMode,factories,isCurrent=()=>true,maxQue
    const epoch=generation;active=task;
    try{
     if(retiring)emit(task,'task_waiting_handoff');
-    await retirement;if(epoch!==generation||closed)throw failure('调用方式已切换');
+    if(!manual(task.request)){
+      await retirement;
+    }
+    if(epoch!==generation||closed)throw failure('调用方式已切换');
     emit(task,'task_started');
     const next=await getMode();if(epoch!==generation||closed)throw failure('调用方式已切换');if(next==='demo'||!factories[next])throw failure('当前未启用模型服务');
     if(!instance||mode!==next){
