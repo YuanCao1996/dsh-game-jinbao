@@ -262,7 +262,7 @@ $script:shortcutHintAt=0
 $script:tab=$PreviewTab
 $script:collapsed=$false
 $script:snapshot=$null
-$script:job=$null
+$script:job=$null;$script:chatSeenAt=0
 $script:dragging=$false
 $script:lastThrough=$null
 $script:lastFocusable=$null
@@ -707,6 +707,13 @@ function Update-State {
   $changed=(!$script:snapshot -or !$script:renderedTab -or [string]$next.($script:tab) -ne [string]$script:snapshot.($script:tab))
   $enteredSelection=$next.phase -eq 'ChampSelect' -and (!$script:snapshot -or $script:snapshot.phase -ne 'ChampSelect')
   $script:snapshot=$next
+  if([double]$next.chatUnreadAt -gt $script:chatSeenAt){
+    if($script:chatSeenAt -eq 0){$script:chatSeenAt=[double]$next.chatUnreadAt}
+    else{
+      $script:chatSeenAt=[double]$next.chatUnreadAt
+      if($script:collapsed -or $script:tab -ne 'advice'){Set-Collapsed $false;Set-Tab 'advice'}
+    }
+  }
   try{Update-ItemStrip}catch{}
    # 海克斯三选一出现时主动弹一次窄条：空闲时条子是收起的，没有这条就不会“弹”。
    try{
@@ -799,7 +806,8 @@ function Update-State {
 }
 function Start-Request([string]$route,[hashtable]$payload){
  if($route -eq 'confirm'){Start-Confirmation $payload;return}
- if($script:job){$controls.HintText.Text='正在处理上一个请求…';return}
+ # 玩家新问题优先：旧请求直接停掉，不阻塞新问题。
+ if($script:job){try{Stop-Job $script:job -ErrorAction SilentlyContinue;Remove-Job $script:job -Force -ErrorAction SilentlyContinue}catch{};$script:job=$null}
  try{
   $url=[IO.File]::ReadAllText((Join-Path $StateDir 'settings-link.txt')).Trim()
   if($url -notmatch '^http://127\.0\.0\.1:[0-9]+/#[a-f0-9]{64}$'){throw 'Invalid local URL'}
@@ -829,7 +837,7 @@ function Start-Request([string]$route,[hashtable]$payload){
 }
 function Send-Question {
  $question=$controls.QuestionBox.Text.Trim()
- if(!$question -or $script:job){return}
+ if(!$question){return}
  $script:pendingBubble=[pscustomobject]@{role='user';text=$question;at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();match=[string]$script:snapshot.match}
  Update-OverlaySurface $true
  $controls.PageScroll.ScrollToEnd()

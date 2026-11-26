@@ -22,9 +22,9 @@ test('manual cloud handoff waits for a terminal worker instead of trusting cance
  finally{release?.();await router.close();}
 });
 
-test('a full manual queue never discards existing user questions',async()=>{
+test('最新的手动提问会抢占上一轮手动回答',async()=>{
  let release;const calls=[];const router=createRuntimeRouter({getMode:()=> 'cloud',maxQueue:1,factories:{cloud:()=>({ask:r=>{calls.push(r.question);return r.question==='active'?new Promise(resolve=>release=resolve):Promise.resolve(r.question);},close:async()=>release?.('closed')})}});
- try{const first=router.ask({topic:'chat',question:'active'});while(!release)await new Promise(r=>setTimeout(r,1));const queued=router.ask({topic:'chat',question:'queued'});await assert.rejects(router.ask({topic:'chat',question:'overflow'}),e=>e.status===409);await assert.rejects(router.ask({topic:'advice',question:'background'}),e=>e.status===409);release('active');assert.equal(await first,'active');assert.equal(await queued,'queued');assert.deepEqual(calls,['active','queued']);}finally{await router.close();}
+ try{const first=router.ask({topic:'chat',question:'active'});while(!release)await new Promise(r=>setTimeout(r,1));const newest=router.ask({topic:'chat',question:'newest'});await assert.rejects(first,e=>e.code==='agent_preempted');assert.equal(await newest,'newest');assert.deepEqual(calls,['active','newest']);}finally{await router.close();}
 });
 
 test('interrupted equipment recommendation retries without the normal failure cooldown',async()=>{

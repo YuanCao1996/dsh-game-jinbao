@@ -645,6 +645,7 @@ export function createOverlayRouter(limit = 64) {
 }
 const personalMemoryState = state => ({...state,
   chat:(state.chat??[]).filter(row=>row.origin!=='viewer'),
+  chatUnreadAt:Number(state.chatUnreadAt)||0,
   broadcasts:(state.broadcasts??[]).filter(row=>!row.viewerReply)});
 const percent = v => Number.isFinite(Number(v)) && v !== null ? Number(v) + '%' : '暂无数据';
 function items(value) {
@@ -1248,7 +1249,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
   let restoredChat;
   try{const saved=JSON.parse(await readFile(join(stateDir,'overlay-chat.json'),'utf8'));if(saved&&Array.isArray(saved.chat))restoredChat=saved;}catch{}
   if(restoredChat&&!restoredChat.game&&!restoredChat.match){state.chat=restoredChat.chat.slice(-50);restoredChat=null;}
-  let knowledge = {}, knowledgeKey = '', refreshTask = null, refreshQueued = false, scanning = false, closed = false, busy = false;
+  let knowledge = {}, knowledgeKey = '', refreshTask = null, refreshQueued = false, scanning = false, closed = false, busy = false, askGeneration = 0;
   // 等待态总榜（performRefresh 里写入，视图直接读，避免被 knowledge 覆盖丢掉）
   let leaderboardData = null;
   let lastIdleLeaderboardAt = 0;
@@ -1752,8 +1753,9 @@ async function performRefresh() {
     confirm:input=>applyConfirmation(input),
     confirmTeamSelection:input=>applyConfirmation(input,true),
     async ask(question, topic, metadata = {}) {
-      if (busy) throw Object.assign(Error('教练正在回复'), { status: 409 });
+      // 玩家提问优先级最高：新问题直接抢占上一轮（上一轮会被 runtime-router 中断）。
       if (typeof question !== 'string' || !question.trim() || question.length > 1000) throw Object.assign(Error('问题格式不正确'), { status: 400 });
+      const generation = ++askGeneration;
       busy = true;
       const game=state.game||'lol',match = state.match, started = state.matchStartedAt;
       const stillCurrent = () => state.match === match && state.matchStartedAt === started;
@@ -1778,21 +1780,23 @@ async function performRefresh() {
             return run();
           }
         };
-        const answer = await withChatRetry(() => agentChat({ game, match: match || 'waiting', question: q.text, topic:topic??'chat',priority:'manual' }));
+        const answer = await withChatRetry(() => agentChat({ game, match: match || 'waiting', question: q.text, topic:topic??'chat',priority:'manual',timeCritical:true }));
         if(!stillCurrent())throw Object.assign(Error('对局已切换，请在当前对局重新提问'),{status:409});
         if(typeof answer!=='string'||!answer.trim())throw Object.assign(Error('Empty Agent answer'),{status:502});
         const reply=answer.trim();
+        if(generation!==askGeneration)return {};
         state.chat.push({ role: 'assistant', text: reply, at: Date.now() });
         state.chat = capOverlayChat(state.chat);
+        state.chatUnreadAt = Date.now();
         await memory.record(state, { kind: 'chat', role: 'assistant', text: reply, gameSeconds: state.gameSeconds }, 'overlay-chat');
         if(topic==='teamfight')state.teamfight=text(answer);
         if(topic==='equipment')state.equipment=text(answer);
         if(topic==='augments')state.augmentAdvice=text(answer);
         return { answer: reply };
       } catch (e) {
-        if(stillCurrent())state.chat.push({ role: 'assistant', text: chatFailureMessage(e), failed:true, at: Date.now() });
+        if(generation===askGeneration&&stillCurrent())state.chat.push({ role: 'assistant', text: chatFailureMessage(e), failed:true, at: Date.now() });
         throw e;
-      } finally { busy = false; await flush(); }
+      } finally { if(generation===askGeneration)busy = false; await flush(); }
     },
     async close() { closed = true; search.close(); snapshotSearch?.close(); equipmentCoach.close(); clearInterval(timer); await writes.catch(() => {}); await memory.flush(); },
   };

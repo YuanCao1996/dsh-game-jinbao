@@ -66,7 +66,8 @@ export function createRuntimeRouter({getMode,factories,isCurrent=()=>true,maxQue
     if(index<0)return Promise.reject(failure('请求较多，请稍后重试'));
     const [displaced]=queue.splice(index,1);emit(displaced,'task_cancelled');displaced.reject(failure('已优先处理手动请求','agent_preempted'));
    }
-   if(manual(request)&&active&&!manual(active.request)){active.interrupted=true;const previous=instance;generation++;instance=null;mode='';void retire(previous,'preempt').catch(()=>{});}
+   // 玩家最新提问优先于上一轮手动提问：新问题抢占，旧回答丢弃。
+  if(manual(request)&&active){active.interrupted=true;generation++;const previous=instance;instance=null;mode='';if(previous)void retire(previous,'preempt').catch(()=>{});}
    return new Promise((resolve,reject)=>{const task={request:{...request,activityId:randomUUID()},resolve,reject};queue.push(task);emit(task,'task_queued');void drain();});
   },async close(){closed=true;await reset();}};
 }
