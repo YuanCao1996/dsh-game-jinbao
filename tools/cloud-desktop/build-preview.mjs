@@ -8,7 +8,10 @@ import {promisify} from 'node:util';
 
 // Separate preview artifact: never changes stable release metadata or update feeds.
 export async function buildPreview({root,out,runtime=process.execPath,nodeAgentPreview=false}) {
- const updateVersion='0.3.25',version=updateVersion+'-standalone-preview.1';
+ const updateVersion=process.env.JINBAO_PREVIEW_BASE_VERSION??'0.3.32';
+ const previewRevision=process.env.JINBAO_PREVIEW_REVISION??'2';
+ if(!/^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(updateVersion)||!/^\d{1,4}$/.test(previewRevision))throw Error('Invalid standalone preview version');
+ const version=updateVersion+'-standalone-preview.'+previewRevision;
  const files=new Set();
  async function include(name) {
   const path=resolve(root,name),local=relative(root,path);
@@ -89,8 +92,13 @@ export async function buildPreview({root,out,runtime=process.execPath,nodeAgentP
  const releaseNotes=await readFile(new URL('./release-notes.txt',import.meta.url),'utf8').catch(()=>'独立桌面版 '+updateVersion);
  await writeFile(join(out,'tools/dsh-onboarding/release-notes.json'),JSON.stringify({version:version+' (独立预览)',notes:releaseNotes.trim()}));
  const compiler=join(process.env.SystemRoot??'C:/Windows','Microsoft.NET/Framework64/v4.0.30319/csc.exe');
- const compilerArgs=['/nologo','/target:winexe','/optimize+','/reference:System.Windows.Forms.dll',...(nodeAgentPreview?['/define:JINBAO_SINGLE_ACCOUNT_PILOT']:[]),'/out:'+join(out,'jinbao.exe'),join(root,'tools/cloud-desktop/Launcher.cs')];
- await promisify(execFile)(compiler,compilerArgs,{windowsHide:true});
+ const compilerArgs=['/nologo','/utf8output','/target:winexe','/optimize+','/reference:System.Windows.Forms.dll',...(nodeAgentPreview?['/define:JINBAO_SINGLE_ACCOUNT_PILOT']:[]),'/out:'+join(out,'jinbao.exe'),join(root,'tools/cloud-desktop/Launcher.cs')];
+ try {
+  await promisify(execFile)(compiler,compilerArgs,{windowsHide:true,encoding:'utf8'});
+ } catch (error) {
+  const details=[error.stdout,error.stderr].filter(Boolean).join('\n').trim() || error.message;
+  throw Error('金宝启动器构建失败：\n'+details);
+ }
  // Old signed-update verifiers require this filename. Keep only an inert
  // comment during migration; neither launcher nor CMD ever executes it.
  await writeFile(join(out,'start-preview.vbs'),'Rem Compatibility marker only. Start Jinbao.exe. No executable statements.\r\n');

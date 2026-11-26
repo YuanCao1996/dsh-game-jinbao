@@ -20,6 +20,7 @@ import{createExternalLogSource}from'./log-source.mjs';
 import{createUserMemory}from'./user-memory.mjs';
 import{createAgentActivity}from'../agent-activity/activity.mjs';
 import{createShutdown,notifyRestart}from'./shutdown.mjs';
+import{createNodePreviewRuntime}from'./node-preview-runtime.mjs';
 import{createOverlaySupervisor}from'./overlay-supervisor.mjs';
 import{acquireInstanceLock,releaseInstanceLock,publishSettingsUrl}from'../shared/instance-lock.mjs';
 import{createDiagnostics}from'./diagnostics.mjs';
@@ -75,13 +76,18 @@ const FAIL_REASON={
  other:'原因未知，可导出诊断记录反馈',
 };
 const onProgress=event=>{diagnostics.accept(event);activity.accept(event); // 任务失败时把错误码也带给动态面板，便于区分超时/限流/模型错误。
+ if(event.event==='archive_attention'||event.event==='archive_ready'){
+  if(isCurrent(event.game,event.match)&&activity.isEnabled())activity.note({topic:'chat',label:event.event==='archive_ready'?'对话已保存':event.reason==='context_changed'?'对局状态已变化，对话保存待确认':'对话保存延迟，正在重试'});
+  return;
+ }
  if(event.event==='task_failed')activity.accept({...event,label:'分析失败('+(FAIL_REASON[event.code]||event.code||event.error||'未知')+')'});
 if(['generic_observation','public_text','budget_check','model_reserved','model_permission'].includes(event.event))return;return createAgentStatus(stateDir,event.game,event.match)(['completed','task_completed','task_cancelled','task_stale'].includes(event.event)?'complete':event.event==='task_failed'?'error':event.event==='tool_start'?'tool':'start',event.name);};
 // 私有经验：云端 agent 通过回调在本机读写，数据不出本机（与 BYOK 同一套语义）。
 const experienceToolkit=createExperienceToolkit({dir:stateDir,player:String(process.env.JINBAO_PLAYER_ID||'local')});
 const experienceTools=experienceCallback(experienceToolkit);
+const nodePreview=createNodePreviewRuntime({enabled:args.includes('--node-agent-preview'),stateDir,getView:()=>setup?.view(),getMode:()=>setup?.config().mode,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value,isCurrent,onProgress});
 const rawAgent=createRuntimeRouter({getMode:()=>setup?.config().mode??'cloud',isCurrent,onEvent:onProgress,factories:{
- cloud:()=>createCloudAgent({getActivityEnabled:activity.isEnabled,apiPrefix:'/desktop/agent-preview',deviceId:stateDir,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),experienceTools,onProgress,memoryTools:userMemory.execute,observationPlan:args=>observation.plan(args)}),
+ cloud:()=>{const legacy=createCloudAgent({getActivityEnabled:activity.isEnabled,apiPrefix:'/desktop/agent-preview',deviceId:stateDir,getToken:async()=>(await credentials.resolve('JINBAO_SERVICE_TOKEN'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),experienceTools,onProgress,memoryTools:userMemory.execute,observationPlan:args=>observation.plan(args)});return nodePreview?nodePreview.wrap(legacy):legacy;},
  byok:()=>createLocalAgent({stateDir,getConfig:()=>setup.config(),getKey:async()=>(await credentials.resolve('JINBAO_USER_MODEL_API_KEY'))?.value,getContext:context,queryEvents,isCurrent,capture,onObservation:value=>observation.feedback(value),onProgress,getActivityEnabled:activity.isEnabled,memoryTools:userMemory.execute,search:query=>setup.search(query),webSearch:createWebSearch(),observationPlan:args=>observation.plan(args)}),
 }});
 // 日记：一天最多一篇，只在没有进行中的对局时写；写不成就是这天没写，不留占位。
@@ -109,8 +115,10 @@ setup=await createSetupServer({credentials,stateDir,port,storage,cloudAgent:agen
 const version=JSON.parse(await readFile(join(root,'package.json'),'utf8')).version+' (独立预览)';
 // Reuse the server's existing IP-based trial seats. A remembered login or an
 // explicit local-mode choice always wins; exhausted seats fall back to email UI.
-const loginTask=!args.includes('--headless')?setup.ensureTrialLogin().catch(()=>{}):Promise.resolve();
-await writeFile(join(stateDir,'launcher-state.json'),JSON.stringify({phase:'cloud-preview',version,updatedAt:Date.now()}));
+const loginTask=!nodePreview&&!args.includes('--headless')?setup.ensureTrialLogin().catch(()=>{}):Promise.resolve();
+// Launcher status is informational. A stale lock or Windows file-sharing race
+// must not abort the entire desktop startup before the settings UI is ready.
+await writeFile(join(stateDir,'launcher-state.json'),JSON.stringify({phase:'cloud-preview',version,updatedAt:Date.now()})).catch(()=>{});
 
 // 磁盘维护：启动后 30 秒跑一次，之后每天一次（只删过期/可再生数据）。
 const storageSweep=()=>storage.cleanup('all').then(result=>{if(result.freedBytes>0)console.log(JSON.stringify({event:'storage_cleanup',freedBytes:result.freedBytes}));}).catch(()=>{});
@@ -122,6 +130,7 @@ const diaryTimer=setInterval(()=>void diary.tick(),10*60*1000);setTimeout(()=>vo
 const speechTimer=setInterval(()=>speech.tick(),500);
 const diagnosticsTimer=setInterval(()=>void diagnostics.tick(),2000);
 const observationTimer=setInterval(()=>{void observation.tick();void logSource.tick();},500);
+const nodePreviewTimer=nodePreview?setInterval(()=>void nodePreview.tick().catch(()=>{}),2000):null;
 // 独立版与插件版共享一把 UI 所有权锁：先启动的一方拥有悬浮窗与语音，后来者降级。
 // 端口其实不冲突（本进程的设置端口是随机的，教练也在进程内），冲突的是"谁在屏幕上说话"。
 const instanceLock=acquireInstanceLock({line:'standalone',stateDir});
@@ -144,8 +153,8 @@ if(!args.includes('--headless')&&!secondaryLock){
 console.log(JSON.stringify({standalone:true,requiresDshDesktop:false,stateDir,port:setup.port,collecting:!!supervisor}));
 if(process.connected)process.send({action:'ready'});
 const stop=createShutdown({
- quiesce:()=>{if(interval)clearInterval(interval);if(coachTimer)clearInterval(coachTimer);if(overlayTimer)clearInterval(overlayTimer);void overlay?.close();clearInterval(stopTimer);clearInterval(heartbeat);clearInterval(diagnosticsTimer);clearInterval(speechTimer);clearInterval(diaryTimer);clearInterval(updateTimer);clearInterval(observationTimer);setup.stopAccepting();},
- steps:[['overlay',()=>overlay?.close()],['coach',()=>coach?.close()],['speech',()=>speech.close()],['agent',()=>agent.close()],['memory',()=>userMemory.close()],['collectors',()=>supervisor?.close()],['updates',()=>updates.close()],['observation',()=>observation.close()],['logs',()=>logSource.close()],['installer',()=>nativeInstaller.close()],['login',()=>loginTask],['settings',()=>setup.close()],['usage-outbox',()=>teamUsageOutbox?.close()],['cache-reports',()=>teamCacheReports?.close()],['team-cache',()=>teamCacheStore?.close()],['activity',()=>activity.close()],['diagnostics',()=>diagnostics.close()],['instance-lock',()=>releaseInstanceLock()],['instance',()=>instance.close()]],
+ quiesce:()=>{if(interval)clearInterval(interval);if(coachTimer)clearInterval(coachTimer);if(overlayTimer)clearInterval(overlayTimer);if(nodePreviewTimer)clearInterval(nodePreviewTimer);void overlay?.close();clearInterval(stopTimer);clearInterval(heartbeat);clearInterval(diagnosticsTimer);clearInterval(speechTimer);clearInterval(diaryTimer);clearInterval(updateTimer);clearInterval(observationTimer);setup.stopAccepting();},
+ steps:[['overlay',()=>overlay?.close()],['coach',()=>coach?.close()],['speech',()=>speech.close()],['agent',()=>agent.close()],['node-preview',()=>nodePreview?.close()],['memory',()=>userMemory.close()],['collectors',()=>supervisor?.close()],['updates',()=>updates.close()],['observation',()=>observation.close()],['logs',()=>logSource.close()],['installer',()=>nativeInstaller.close()],['login',()=>loginTask],['settings',()=>setup.close()],['usage-outbox',()=>teamUsageOutbox?.close()],['cache-reports',()=>teamCacheReports?.close()],['team-cache',()=>teamCacheStore?.close()],['activity',()=>activity.close()],['diagnostics',()=>diagnostics.close()],['instance-lock',()=>releaseInstanceLock()],['instance',()=>instance.close()]],
  complete:async({failed})=>{try{await writeFile(join(stateDir,'shutdown-state.json'),JSON.stringify({at:Date.now(),state:failed.length?'completed_with_errors':'completed',failedSteps:failed}),{mode:0o600});await notifyRestart({requested:restartRequested,failed,connected:process.connected,send:(...values)=>process.send(...values)});}finally{process.exit(failed.length?1:0);}}
 });
 const stopTimer=setInterval(()=>void access(join(stateDir,'overlay-stopped')).then(stop).catch(()=>{}),500);

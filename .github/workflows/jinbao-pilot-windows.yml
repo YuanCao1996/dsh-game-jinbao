@@ -1,0 +1,74 @@
+name: Jinbao single-account Windows pilot
+
+on:
+  push:
+    branches:
+      - codex/single-account-pilot-ci
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      JINBAO_SKIP_SHORTCUT: '1'
+      JINBAO_PREVIEW_BASE_VERSION: '0.3.32'
+      JINBAO_PREVIEW_REVISION: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - name: Build and verify the candidate
+        shell: pwsh
+        run: |
+          $name = 'jinbao-single-account-pilot-0.3.32-preview2'
+          $package = Join-Path $env:RUNNER_TEMP $name
+          node tools/cloud-desktop/build-preview.mjs $package --node-agent-preview
+          if ($LASTEXITCODE -ne 0) { throw 'Windows candidate build failed' }
+
+          $metadata = Get-Content -LiteralPath (Join-Path $package 'preview-manifest.json') -Raw | ConvertFrom-Json
+          if (-not $metadata.singleAccountPilot -or $metadata.version -ne '0.3.32-standalone-preview.2') {
+            throw 'Unexpected candidate build metadata'
+          }
+          $manifest = Get-Content -LiteralPath (Join-Path $package 'manifest.json') -Raw | ConvertFrom-Json
+          if ($manifest.files.path -notcontains 'jinbao.exe' -or $manifest.files.path -notcontains 'runtime/node.exe') {
+            throw 'Launcher or runtime missing from the manifest'
+          }
+          $archive = Join-Path $env:RUNNER_TEMP "$name.zip"
+          [IO.Compression.ZipFile]::CreateFromDirectory($package, $archive)
+          $zip = [IO.Compression.ZipFile]::OpenRead($archive)
+          try {
+            $fileCount = @($zip.Entries | Where-Object Name).Count
+            if ($fileCount -ne $manifest.files.Count + 1 -or -not $zip.GetEntry('manifest.json')) {
+              throw 'ZIP inventory mismatch'
+            }
+            foreach ($file in $manifest.files) {
+              $entry = $zip.GetEntry($file.path)
+              if (-not $entry -or $entry.Length -ne $file.bytes) { throw "ZIP file missing or incomplete: $($file.path)" }
+              $stream = $entry.Open()
+              try {
+                $hash = (Get-FileHash -InputStream $stream -Algorithm SHA256).Hash
+                if ($hash -ine $file.sha256) { throw "ZIP file hash mismatch: $($file.path)" }
+              } finally {
+                $stream.Dispose()
+              }
+            }
+          } finally {
+            $zip.Dispose()
+          }
+          $sha = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  $name.zip" | Set-Content -LiteralPath "$archive.sha256" -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jinbao-single-account-pilot-0.3.32-preview2
+          path: |
+            ${{ runner.temp }}/jinbao-single-account-pilot-0.3.32-preview2.zip
+            ${{ runner.temp }}/jinbao-single-account-pilot-0.3.32-preview2.zip.sha256
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0

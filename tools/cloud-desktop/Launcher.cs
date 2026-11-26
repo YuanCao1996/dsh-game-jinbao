@@ -20,9 +20,16 @@ internal static class JinbaoLauncher
             ProcessStartInfo start = new ProcessStartInfo();
             start.FileName = runtime;
             start.Arguments = "\"" + entry + "\" --collect --coach";
+#if JINBAO_SINGLE_ACCOUNT_PILOT
+            string pilotState = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Jinbao", "single-account-pilot");
+            if (pilotState.IndexOf('"') >= 0 || pilotState.IndexOf('\n') >= 0 || pilotState.IndexOf('\r') >= 0)
+                throw new ArgumentException("状态目录格式不正确。");
+            start.Arguments += " --node-agent-preview --state \"" + pilotState + "\"";
+#endif
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--headless") start.Arguments += " --headless";
+                else if (args[i] == "--node-agent-preview") start.Arguments += " --node-agent-preview";
                 else if (args[i] == "--team-rooms") start.Arguments += " --team-rooms";
                 else if (args[i] == "--team-byok-host") start.Arguments += " --team-byok-host";
                 else if (args[i] == "--state" && i + 1 < args.Length)

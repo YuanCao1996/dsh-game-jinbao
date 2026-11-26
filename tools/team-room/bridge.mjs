@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createTeamClient, mentionsRoomMentor, updateAdviceStatuses, adviceStatusLabel, teamAccessLoss, roomProgressStatus } from './client.mjs';
@@ -65,7 +65,24 @@ export async function createTeamBridge({ stateDir, serviceBaseUrl, getToken, get
   let closed = false, timer, running = null, nextAttempt = 0, accessGeneration = 0, mutation = Promise.resolve(), io = Promise.resolve();
   const atomic = (file, value) => {
     const encoded = JSON.stringify(value);
-    const job = io.catch(() => {}).then(async () => { await writeFile(file + '.tmp', encoded, { mode: 0o600 }); await rename(file + '.tmp', file); });
+    const job = io.catch(() => {}).then(async () => {
+      const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+      try {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            await writeFile(temporary, encoded, { mode: 0o600, flag: 'wx' });
+            await rename(temporary, file);
+            return;
+          } catch (error) {
+            await rm(temporary, { force: true }).catch(() => {});
+            if (attempt >= 5 || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code)) throw error;
+            await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
+          }
+        }
+      } finally {
+        await rm(temporary, { force: true }).catch(() => {});
+      }
+    });
     io = job; return job;
   };
   const persist = () => atomic(settingsFile, settings);
@@ -306,7 +323,9 @@ export async function createTeamBridge({ stateDir, serviceBaseUrl, getToken, get
     });
     mutation = job.catch(() => {}); return job;
   };
-  await flush();
+  // Team chat is optional. A transient Windows file lock must not prevent the
+  // rest of the desktop assistant and overlay from starting; the poll retries.
+  await flush().catch(() => {});
   timer = setInterval(() => { void tick().catch(() => {}); }, pollMs); timer.unref();
   if (settings.activeRoomId) void tick().catch(() => {});
   const stopAccepting = () => { closed = true; clearInterval(timer); publisher.reset(); host?.quiesce(); };
