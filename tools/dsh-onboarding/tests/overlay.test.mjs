@@ -119,3 +119,16 @@ test('offline logs populate all factual pages without model traffic; split UTF8 
  assert.equal(service.view().gameTime,'09:21');assert.match(service.view().equipment,/焚天/);
  assert.equal(JSON.parse(await readFile(join(dir,'overlay-state.json'),'utf8')).gameTime,'09:21');
 });
+
+test('队伍 OCR 聊天只显示英雄常用名，不显示玩家名或称号',()=>{
+  const state=initialOverlayState();
+  state.allies=[{champion:'影流之镰 凯隐'}];
+  applyOverlayEvent(state,{game:'lol',kind:'chat_events',events:[{kind:'team_chat',speaker:'玩家甲',champion:'影流之镰 凯隐',text:'先打前排'}]});
+  const row=state.chat.at(-1);
+  assert.equal(row.displayName,'凯隐');
+  assert.equal(row.champion,'凯隐');
+  assert.ok(state.activityEvents.at(-1).text.startsWith('凯隐：'));
+  applyOverlayEvent(state,{game:'lol',kind:'chat_events',events:[{kind:'team_chat',speaker:'玩家乙',champion:'',text:'等我'}]});
+  assert.equal(state.chat.at(-1).displayName,'队友');
+  assert.ok(!state.activityEvents.at(-1).text.includes('玩家乙'));
+});

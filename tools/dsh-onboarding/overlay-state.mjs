@@ -153,6 +153,13 @@ function settlePendingPick(state,reason){
 
 // 播报里提到击杀对象时用英雄名，而不是对方召唤师名：先用名单里的 name/riotId 找到人，
 // 再取他的英雄；认不出来才退回原名（宁可不写，也别写错英雄）。
+function shortChampionName(value) {
+  const name = commonChampionName(String(value ?? '').trim());
+  if (!name) return '';
+  const parts = name.split(/\s+/).filter(Boolean);
+  return parts.length > 1 ? parts.slice(1).join(' ') : name;
+}
+
 function championLabel(state, name) {
   const norm = value => String(value ?? '').split('#')[0].trim();
   const target = norm(name);
@@ -164,11 +171,11 @@ function championLabel(state, name) {
   for (const row of rows) {
     if (!matches(row)) continue;
     const champion = String(row.champion ?? '').trim();
-    if (champion && champion !== '未知英雄') return commonChampionName(champion);
+    if (champion && champion !== '未知英雄') return shortChampionName(champion);
   }
   if (matches(state.me)) {
     const champion = String(state.me?.champion ?? '').trim();
-    if (champion) return commonChampionName(champion);
+    if (champion) return shortChampionName(champion);
   }
   return '';
 }
@@ -417,9 +424,10 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
     if(item?.kind==='team_chat'){
      const text=String(item.text??'').trim();
      if(text){
-      const speaker=String(item.speaker??'').slice(0,24)||'队友';
-      const who=item.self===true?'你':speaker;
-      state.chat.push({role:'user',origin:'team',hidden:true,displayName:speaker,champion:String(item.champion??'').slice(0,24),text,at,self:item.self===true});
+      const speaker=String(item.speaker??'').slice(0,24);
+      const champion=shortChampionName(item.champion)||championLabel(state,speaker)||'';
+      const who=champion||(item.self===true?'你':'队友');
+      state.chat.push({role:'user',origin:'team',hidden:true,displayName:who,champion,text,at,self:item.self===true});
       state.chat=capOverlayChat(state.chat);
       // 有价值的一条：进智能体动态（刷屏由 activity-line 的节流控制）。
       state.activityEvents.push({key:'chat:'+at+':'+text,kind:'chat',time:clock(Number(state.gameSeconds)),text:who+'：'+text});
@@ -428,8 +436,8 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
      continue;
     }
     if(item?.kind==='ping'){
-     const pingName=String(item.champion??'').slice(0,24)||(item.self===true?'你':'队友');
-     state.chat.push({role:'user',origin:'team',hidden:true,displayName:pingName,champion:String(item.champion??'').slice(0,24),text:'点了信号',at,self:item.self===true,ping:true});
+     const pingName=shortChampionName(item.champion)||championLabel(state,String(item.speaker??''))||(item.self===true?'你':'队友');
+     state.chat.push({role:'user',origin:'team',hidden:true,displayName:pingName,champion:pingName,text:'点了信号',at,self:item.self===true,ping:true});
      if(state.chat.length>400)state.chat=state.chat.slice(-300);
      state.activityEvents.push({key:'ping:'+at+':'+pingName,kind:'chat',time:clock(Number(state.gameSeconds)),text:pingName+' 点了信号'});
      state.activityEvents=state.activityEvents.slice(-30);
