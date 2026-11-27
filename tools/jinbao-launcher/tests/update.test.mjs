@@ -144,3 +144,12 @@ test('native portable entry routes to a verified new version and falls back when
   await exec(ps,args,{windowsHide:true,timeout:30000});assert.equal(await readFile(join(f.stateDir,'ran-version.txt'),'utf8'),'1.0.0');
   assert.equal(JSON.parse(await readFile(join(f.stateDir,'updates/rejected.json'))).version,'2.0.0');
 });
+
+test('rejected update can be retried from the settings button',async()=>{
+  const f=await fixture();await mkdir(join(f.stateDir,'updates'),{recursive:true});await writeFile(join(f.stateDir,'updates','rejected.json'),JSON.stringify({version:'2.0.0'}));
+  const updater=createUpdater(f.options);await updater.check();
+  assert.equal(JSON.parse(await readFile(join(f.stateDir,'updates/status.json'),'utf8')).state,'failed');
+  await updater.retry();
+  assert.equal(JSON.parse(await readFile(join(f.stateDir,'updates/status.json'),'utf8')).state,'ready');
+  assert.ok(await updater.prepared());
+});

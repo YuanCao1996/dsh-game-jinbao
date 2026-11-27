@@ -5,6 +5,7 @@ import { createAnnotations, ANNOTATION_TAGS } from './annotations.mjs';
 import { createHighlights, matchFolder } from './highlights.mjs';
 import { createBilibiliDanmaku, createViewerFilter } from '../lol-companion/danmaku-bridge.mjs';
 import { viewerReply } from '../lol-companion/viewer-reply.mjs';
+import { createAudienceResponder } from '../lol-companion/audience-agent.mjs';
 import http from 'node:http';
 import { experienceRoute, experienceListPayload, correctRequest, publicLibraryRoute, publicQueryParams, publicUpsertBody, mdEditRoute, mdEditBody } from "./experience-routes.mjs";
 import { createPublicLibrary } from "../dsh-coach-server/lib/public-library.mjs";
@@ -39,7 +40,7 @@ const same=(a,b)=>typeof a==='string'&&a.length===b.length&&timingSafeEqual(Buff
 const send=(res,status,value,headers)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...(headers??{})});res.end(JSON.stringify(value));};
 const error=status=>Object.assign(Error('setup operation failed'),{status});
 async function body(req,max=512*1024,onBytes){const declared=Number(req.headers['content-length']);if(Number.isFinite(declared)&&declared>max){onBytes?.(declared);req.resume();throw error(413);}let size=0;const chunks=[];for await(const c of req){size+=c.length;onBytes?.(size);if(size>max)throw error(413);chunks.push(c);}try{const b=JSON.parse(Buffer.concat(chunks));if(!b||typeof b!=='object'||Array.isArray(b))throw 0;return b;}catch{throw error(400);}}
-export async function createSetupServer({credentials,stateDir,port=3084,coachPort=3081,serviceBaseUrl='https://api.jinbaoai.top',fetchImpl=fetch,cloudAgent,localAgent,runtimeId,prepareModel,onModelChange,updateController,observation,nativeInstaller,logSource,userMemory,activity,diagnostics,speech,diary,canAutoRequest,teamRooms=false,teamHostPreview=false,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError=false,teamCacheError=false,storage,danmakuFactory=createBilibiliDanmaku}) {
+export async function createSetupServer({credentials,stateDir,port=3084,coachPort=3081,serviceBaseUrl='https://api.jinbaoai.top',fetchImpl=fetch,cloudAgent,localAgent,runtimeId,prepareModel,onModelChange,updateController,observation,nativeInstaller,logSource,userMemory,activity,diagnostics,speech,diary,canAutoRequest,teamRooms=false,teamHostPreview=false,teamCacheStore,teamCacheReports,teamUsageOutbox,teamUsageError=false,teamCacheError=false,storage,danmakuFactory=createBilibiliDanmaku,audienceAgent=null}) {
  if(!Number.isInteger(coachPort)||coachPort<1||coachPort>65535)throw Error('Invalid coach port');
  const coachOrigin='http://127.0.0.1:'+coachPort;
  const service=serviceUrl(serviceBaseUrl),nonce=randomBytes(32).toString('hex');
@@ -90,7 +91,9 @@ try{
   streamState.status = 'idle';
   streamState.lastError = '';
   let streamBridge = null;
-  let streamMetrics={received:0,accepted:0,filtered:0,replied:0,logErrors:0,lastReceivedAt:null,lastFilterReason:''};
+  let streamRoomRenewTimer = null;
+  const audienceResponder=createAudienceResponder({agent:audienceAgent});
+  let streamMetrics={received:0,accepted:0,filtered:0,replied:0,logErrors:0,lastReceivedAt:null,lastFilterReason:'',lastReplySource:''};
   let streamStartRevision = 0;
   const viewerFilter = createViewerFilter({ trigger: streamState.trigger || 'at' });
   const saveStream = async next => {
@@ -102,7 +105,10 @@ try{
     await writeFile(streamFile + '.tmp', JSON.stringify(persisted), { mode: 0o600 });
     await rename(streamFile + '.tmp', streamFile);
   };
-  const stopStream = async () => {
+  const stopStream = async ({unbind=false}={}) => {
+    audienceResponder.bind('');
+    clearInterval(streamRoomRenewTimer);streamRoomRenewTimer=null;
+    if(unbind)await audienceResponder.configureRoom('');
     const revision = ++streamStartRevision;
     const previous = streamBridge;
     streamBridge = null;
@@ -128,9 +134,14 @@ try{
     } catch { return {}; }
   };
   const startStream = async () => {
-    if (!streamState.enabled || !streamState.roomId) { await stopStream(); return; }
+    if (!streamState.enabled || !streamState.roomId) { await stopStream({unbind:true});return; }
     const revision = await stopStream();
     if(revision !== streamStartRevision) return;
+    audienceResponder.bind(streamState.roomId);
+    const roomId=String(streamState.roomId);
+    void audienceResponder.configureRoom(streamState.reply===false?'':roomId).then(result=>{
+      if(revision===streamStartRevision)streamState.audienceRoomBound=result.configured===true;
+    });
     streamMetrics={received:0,accepted:0,filtered:0,replied:0,logErrors:0,lastReceivedAt:null,lastFilterReason:''};
     const bridge = danmakuFactory({
       roomId: String(streamState.roomId),
@@ -159,16 +170,27 @@ try{
         const latestView=overlay?.view?.();
         if(streamBridge!==bridge||!streamState.enabled||(latestView?.match||null)!==boundMatch||(latestView?.game||'lol')!==boundGame)return;
         if (streamState.reply === false) return;
-        const answer = viewerReply(message.text, streamFacts(), at);
+        const selectedRole=speech?.role?.()??'jinbao';
+        const response=await audienceResponder.reply(message.text,{...latestView,viewerFacts:{...latestView?.viewerFacts,...streamFacts()}},selectedRole);
+        if(streamBridge!==bridge||!streamState.enabled||(overlay?.view?.()?.match||null)!==boundMatch
+          ||(overlay?.view?.()?.game||'lol')!==boundGame||(speech?.role?.()??'jinbao')!==selectedRole)return;
+        const answer = response?.text;
         if (!answer) return;
         const reply = {
           game: boundGame,match:boundMatch,viewerMessageId,t: Date.now(), kind: 'viewer_reply', broadcast: answer,
           viewerReply: true, noSpeech: true, user: row.user, question: message.text,
         };
-        try { await appendFile(join(stateDir, 'logs', 'coach_broadcasts.jsonl'), JSON.stringify(reply) + '\n', { mode: 0o600 });streamMetrics.replied++; } catch {streamMetrics.logErrors++;}
+        try { await appendFile(join(stateDir, 'logs', 'coach_broadcasts.jsonl'), JSON.stringify(reply) + '\n', { mode: 0o600 });streamMetrics.replied++;streamMetrics.lastReplySource=response.source==='agent'?'agent':'local'; } catch {streamMetrics.logErrors++;}
       },
     });
     streamBridge = bridge;
+    if(streamState.reply!==false){
+      streamRoomRenewTimer=setInterval(()=>{
+        if(streamBridge!==bridge||!streamState.enabled)return;
+        void audienceResponder.configureRoom(String(streamState.roomId));
+      },45*60*1000);
+      streamRoomRenewTimer.unref?.();
+    }
     try { await bridge.start(); }
     catch (error) { if(streamBridge === bridge){streamState.status = 'error'; streamState.lastError = String(error?.message ?? error).slice(0, 120);} }
   };
@@ -619,8 +641,12 @@ if(detailUrl.pathname==='/api/highlights'&&req.method==='GET'){send(res,200,{ena
      send(res,status,{error:safe});return;
     }
    }
+   if(req.url==='/api/stream/recover'&&req.method==='POST'){
+    if(Object.keys(await body(req,1024)).length)throw error(400);
+    send(res,200,await audienceResponder.recover());return;
+   }
    if(req.url==='/api/stream'&&req.method==='GET'){
-    send(res,200,{enabled:streamState.enabled,roomId:streamState.roomId,trigger:streamState.trigger,showNick:streamState.showNick,reply:streamState.reply,status:streamState.status,lastError:streamState.lastError,metrics:{...streamMetrics}});
+    send(res,200,{enabled:streamState.enabled,roomId:streamState.roomId,trigger:streamState.trigger,showNick:streamState.showNick,reply:streamState.reply,status:streamState.status,lastError:streamState.lastError,metrics:{...streamMetrics},audienceAgent:audienceResponder.status()});
     return;
    }
    if(req.url==='/api/stream'&&req.method==='POST'){
@@ -813,7 +839,7 @@ if(input.clickThrough!==undefined&&typeof input.clickThrough!=='boolean')throw e
     });send(res,202,{message:'已安排更新。金宝会先退出，请保存工作并正常退出 DSH，随后将自动重新启动。'});return;
    }
    if(req.url==='/api/update/check'){
-    if(updateController){void updateController.check();send(res,202,{message:'正在检查独立桌面版更新…'});return;}
+    if(updateController){void (updateController.retry?updateController.retry():updateController.check());send(res,202,{message:'正在检查独立桌面版更新…'});return;}
     if(cloudAgent){send(res,409,{error:'云端预览包暂不接收正式版更新。'});return;}
     let launcher;try{launcher=JSON.parse(await readFile(join(stateDir,'launcher-state.json'),'utf8'));}catch{}
     if(!launcher||Date.now()-launcher.updatedAt>30000||['stopped','error','legacy-active'].includes(launcher.phase)){send(res,409,{error:'金宝启动器未运行，请双击“开始使用”后再检查更新。'});return;}
@@ -956,6 +982,6 @@ if(input.clickThrough!==undefined&&typeof input.clickThrough!=='boolean')throw e
  renewTimer.unref?.();
  let httpClosing;
  const stopAccepting=()=>{accepting=false;team?.stopAccepting();if(!httpClosing){httpClosing=new Promise(resolve=>server.close(()=>resolve()));server.closeAllConnections();}};
- const stopSetup=createShutdown({quiesce:stopAccepting,steps:[['renewal',()=>{clearInterval(renewTimer);}],['item_icons',()=>{clearInterval(itemIconPrefetch.timer);}],['commands',()=>mutation],['stream',stopStream],['phone',()=>phoneSync.close()],['team',()=>team?.close()],['memories',()=>memories.close()],['overlay',()=>overlay.close()],['http',()=>httpClosing]]});
+ const stopSetup=createShutdown({quiesce:stopAccepting,steps:[['renewal',()=>{clearInterval(renewTimer);}],['item_icons',()=>{clearInterval(itemIconPrefetch.timer);}],['commands',()=>mutation],['stream',()=>stopStream({unbind:true})],['audience_agent',()=>audienceResponder.close()],['phone',()=>phoneSync.close()],['team',()=>team?.close()],['memories',()=>memories.close()],['overlay',()=>overlay.close()],['http',()=>httpClosing]]});
  return {url,settingsLinkSaved,port:server.address().port,stopAccepting,view:overlay.view,config:()=>({...config}),ensureTrialLogin:()=>locked(async()=>{if(config.mode!=='cloud'||await resolve('cloud'))return;await acceptCloud(await remote('/desktop/auth/ip/register',null,{}));}),search:async query=>{const token=await resolve('cloud');if(!token)throw error(401);return remote('/site/search',token,query);},close:async()=>{if((await stopSetup()).failed.length)throw Error('setup_shutdown_failed');}};
 }

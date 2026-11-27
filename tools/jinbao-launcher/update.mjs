@@ -202,7 +202,7 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
     try { await link(source,target); } catch { await copyFile(source,target); }
   }
   return {
-    async check(signal) {
+    async check(signal, { force = false } = {}) {
       if (busy) return;
       busy = true; let archive, staging, patchDirectory,phase='checking',currentVersion,targetVersion;
       try {
@@ -216,10 +216,11 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
         if (compareVersions(release.version,current.version) <= 0) {
           await status({state:'current',version:current.version,currentVersion,notes:release.notes,message:'已是最新版本 '+current.version}); return;
         }
-        const rejected = await readJson(join(updates,'rejected.json'));
-        if (rejected?.version === release.version) {
-          await status({state:'failed',version:current.version,message:'上次更新未能启动，已保留原版本，等待修复版本'}); return;
-        }
+      const rejected = await readJson(join(updates,'rejected.json'));
+      if (rejected?.version === release.version) {
+        if (!force) { await status({state:'failed',version:current.version,message:'上次更新未能启动，已保留原版本；点击「重试更新」可重新下载并安装。'}); return; }
+        await unlink(join(updates,'rejected.json')).catch(()=>{});
+      }
         const pending = await receipt('pending').catch(()=>null);
         if (pending && compareVersions(pending.release.version,release.version) >= 0) {
           await status({state:'ready',version:pending.release.version,currentVersion,notes:pending.release.notes,message:'新版 '+pending.release.version+' 已就绪，可在方便时安装'}); return;
@@ -318,7 +319,11 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
         busy=false;
       }
     },
-    async resolve() {
+    async retry() {
+    await unlink(join(updates,'rejected.json')).catch(()=>{});
+    return this.check(undefined,{force:true});
+  },
+  async resolve() {
       const current=JSON.parse(await readFile(join(root,'manifest.json'),'utf8'));
       for(const name of ['pending','active','previous']) {
         try {
