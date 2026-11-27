@@ -2,7 +2,9 @@ import {mkdir,writeFile,rename} from 'node:fs/promises';import {join} from 'node
 import {createUpdater} from '../jinbao-launcher/update.mjs';
 export function createStandaloneUpdates({root,stateDir,restart,updater=createUpdater({root,stateDir,channel:'standalone'}),now=Date.now}){
  const lifetime=new AbortController();let checking=null,applying=false;
- return{check(){if(!checking)checking=updater.check(lifetime.signal).finally(()=>{checking=null;});return checking;},
+ const run=method=>{if(!checking)checking=method().finally(()=>{checking=null;});return checking;};
+  return{check(){return run(()=>updater.check(lifetime.signal));},
+  retry(){return run(()=>updater.retry());},
   async apply(view){
    if(applying)throw Object.assign(Error('Update busy'),{status:409,code:'update_busy'});
    if(view.match&&!view.ended&&(view.gameTime!=='等待对局'||view.phase==='ChampSelect')&&now()-view.updatedAt<30000)throw Object.assign(Error('Game active'),{status:409,code:'update_game_active'});

@@ -843,6 +843,8 @@ if(input.clickThrough!==undefined&&typeof input.clickThrough!=='boolean')throw e
     if(cloudAgent){send(res,409,{error:'云端预览包暂不接收正式版更新。'});return;}
     let launcher;try{launcher=JSON.parse(await readFile(join(stateDir,'launcher-state.json'),'utf8'));}catch{}
     if(!launcher||Date.now()-launcher.updatedAt>30000||['stopped','error','legacy-active'].includes(launcher.phase)){send(res,409,{error:'金宝启动器未运行，请双击“开始使用”后再检查更新。'});return;}
+    // 用户主动点「重试更新」时清除启动失败标记，否则同一版本会被 rejected 永久挡住。
+    await rm(join(stateDir,'updates/rejected.json'),{force:true}).catch(()=>{});
     const path=join(stateDir,'launcher-control.json');await writeFile(path+'.tmp',JSON.stringify({action:'check-update',at:Date.now()}));await rename(path+'.tmp',path);
     send(res,202,{message:'已请求检查更新，下载完成后下次启动生效。'});return;
    }
