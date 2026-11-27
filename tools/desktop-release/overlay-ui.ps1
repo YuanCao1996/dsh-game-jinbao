@@ -439,6 +439,12 @@ if(!$controls.RichContent){return}
 # 事件已并入智能体动态面板（空闲时显示本局事件），不再保留底部事件行。
  # 卡片只属于“战况”页：之前不判标签页，切到海克斯/胜率仍显示上次的回答，
  # 还把页面正文 Visibility 设为 Collapsed，导致海克斯页看起来“内容不对”。
+ if($script:tab -eq 'advice' -and $script:streamPreviewText){
+    $streamCard=New-Object Windows.Controls.Border
+   $streamCard.Background=New-OverlaySurfaceBrush '#2B3A4A';$streamCard.BorderBrush='#3C5064';$streamCard.BorderThickness=1;$streamCard.CornerRadius=10;$streamCard.Padding=12;$streamCard.Margin='0,0,0,10'
+   $streamLabel=New-OverlayLabel ([string]$script:streamPreviewText) $font '#E8EEF5';$streamLabel.TextWrapping='Wrap';$streamCard.Child=$streamLabel
+   $controls.RichContent.Children.Add($streamCard)|Out-Null
+ }
  $rich=$script:tab -eq 'advice' -and $controls.RichContent.Children.Count -gt 0 -and $controls.PlayersTable.Visibility -ne 'Visible' -and -not $script:leaderboardActive
  $controls.RichContent.Visibility=if($rich){'Visible'}else{'Collapsed'}
  if($rich){$controls.PageText.Visibility='Collapsed'}
