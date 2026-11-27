@@ -1,4 +1,4 @@
-import { commonChampionName } from '../dsh-coach-server/lib/advice-names.js';
+import { commonChampionName, humanizeChampions } from '../dsh-coach-server/lib/advice-names.js';
 import {activityLine} from './activity-line.mjs';
 import { condenseAdvice, stripSources } from '../cloud-desktop/advice-text.mjs';
 import { hextechLeaderboardPage, heroLeaderboardPage, topRuneId, leaderboardRowData } from './leaderboard-pages.mjs';
@@ -154,10 +154,10 @@ function settlePendingPick(state,reason){
 // 播报里提到击杀对象时用英雄名，而不是对方召唤师名：先用名单里的 name/riotId 找到人，
 // 再取他的英雄；认不出来才退回原名（宁可不写，也别写错英雄）。
 function shortChampionName(value) {
-  const name = commonChampionName(String(value ?? '').trim());
-  if (!name) return '';
-  const parts = name.split(/\s+/).filter(Boolean);
-  return parts.length > 1 ? parts.slice(1).join(' ') : name;
+ const name=String(value??'').trim();
+ if(!name)return '';
+ const parts=name.split(/\s+/).filter(Boolean);
+ return parts.length>1?parts.slice(1).join(' '):name;
 }
 
 function championLabel(state, name) {
@@ -732,20 +732,55 @@ export const withEventFallback=(activity,state)=>activityLine(activity??{support
 const needsStrip=value=>typeof value==='string'&&/https?:\/\/|来源|\*\*|`/.test(value);
 // 视图字段里既有字符串也有对象数组（thread 就是 [{role,text,...}]），
 // 只遍历顶层字符串会漏掉数组里的正文——实测战况页因此还显示「来源 + 链接」。
-const stripDeep=value=>{
- if(typeof value==='string')return needsStrip(value)?stripSources(value):value;
- if(Array.isArray(value))return value.map(stripDeep);
+const displayNameAliases=state=>{
+ const list=[];
+ const add=(raw,champion)=>{
+  const common=shortChampionName(champion);
+  const value=String(raw??'').trim();
+  if(!common||value.length<2)return;
+  for(const name of [value,value.split('#')[0].trim()]){
+   if(name.length<2||list.some(item=>item.name===name))continue;
+   if(name.toLowerCase()===common.toLowerCase())continue;
+   list.push({name,common});
+  }
+ };
+ for(const player of [state?.me,...(state?.allies??[]),...(state?.enemies??[]),...(state?.bench??[])]){
+  if(!player?.champion)continue;
+  add(player.riotId,player.champion);
+  add(player.summonerName,player.champion);
+  add(player.name,player.champion);
+  const full=String(player.champion??'').trim(),short=shortChampionName(full);
+  if(short&&full&&full!==short){
+   list.push({name:full,common:short});
+   const title=full.split(/\s+/)[0];
+   if(title.length>=2&&title!==short)list.push({name:title,common:short});
+  }
+ }
+ return list.sort((a,b)=>b.name.length-a.name.length);
+};
+const sanitizeDisplay=(value,aliases)=>{
+ let text=String(value);
+ for(const {name,common} of aliases)if(text.includes(name))text=text.split(name).join(common);
+ return text;
+};
+const stripDeep=(value,aliases)=>{
+ if(typeof value==='string'){
+  const stripped=needsStrip(value)?stripSources(value):value;
+  return sanitizeDisplay(stripped,aliases);
+ }
+ if(Array.isArray(value))return value.map(item=>stripDeep(item,aliases));
  if(value&&typeof value==='object'){
   const out={};
-  for(const [key,item] of Object.entries(value))out[key]=stripDeep(item);
+  for(const [key,item] of Object.entries(value))out[key]=stripDeep(item,aliases);
   return out;
  }
  return value;
 };
 // 导出供用例直接验证（避免只靠人工看界面）。
-export const stripViewSources=view=>{
+export const stripViewSources=(view,state=null)=>{
+ const aliases=displayNameAliases(state);
  const out={};
- for(const [key,value] of Object.entries(view))out[key]=stripDeep(value);
+ for(const [key,value] of Object.entries(view))out[key]=stripDeep(value,aliases);
  return out;
 };
 export function overlayView(state, knowledge = {}) {
@@ -809,7 +844,7 @@ const playerRows = players.map(p => {
     const r=rows.find(row=>row._viewKind==='hero'&&heroStatMatches(row,p.champion));
     const rate=r?.winRate!=null&&r.winRate!==''?Number(r.winRate):NaN;
     const winRate=Number.isFinite(rate)&&rate>=0&&rate<=100?rate:null;
-    return {side:p.side,champion:p.champion||'未知英雄',winRate,
+    return {side:p.side,champion:shortChampionName(p.champion)||'未知英雄',winRate,
       winRateText:winRate!==null?`${Number(winRate.toFixed(2))}%`:'暂无数据',tierText:tierText(r?.tier)};
   }).sort((a,b)=>(b.winRate??-1)-(a.winRate??-1));
   const roster=playerRows.map(p=>`${p.side} ${p.champion} · ${p.winRateText} · ${p.tierText}`);
@@ -1333,7 +1368,7 @@ export async function createOverlayService({ stateDir, agentChat, agentImage, se
    const idle=idleLeaderboard();
    // 胜率页默认渲染的是英雄表格；空闲总榜是文本，需要显式告诉渲染层改用文本。
    const built=stripViewSources({...overlayView(state,knowledge),...(idle??{}),playersIsLeaderboard:!!idle?.players,
-    agentActivity:withEventFallback(activity?.snapshot?.(state),state)});
+    agentActivity:withEventFallback(activity?.snapshot?.(state),state)},state);
    // 正文开头的“对局 12:56 · 英雄 · Lv · KDA · 金币”这行已经并入智能体动态那条，
    // 再留在正文里就变成上下两行重复（实测被指出是重复占位）。
    if(built&&typeof built.advice==='string')built.advice=built.advice.replace(/^对局 [^\n]*\n+/,'');

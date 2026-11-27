@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initialOverlayState, applyOverlayEvent, overlayView, clock, createOverlayService } from '../overlay-state.mjs';
+import { initialOverlayState, applyOverlayEvent, overlayView, clock, createOverlayService, stripViewSources } from '../overlay-state.mjs';
 import { stateEvent, createRosterStats } from '../../lol-companion/collector-state.mjs';
 import { createSetupServer } from '../server.mjs';
 
@@ -131,4 +131,13 @@ test('队伍 OCR 聊天只显示英雄常用名，不显示玩家名或称号',(
   applyOverlayEvent(state,{game:'lol',kind:'chat_events',events:[{kind:'team_chat',speaker:'玩家乙',champion:'',text:'等我'}]});
   assert.equal(state.chat.at(-1).displayName,'队友');
   assert.ok(!state.activityEvents.at(-1).text.includes('玩家乙'));
+});
+
+test('所有视图文本把玩家名替换为英雄常用名并去掉称号',()=>{
+  const state=initialOverlayState();
+  state.allies=[{champion:'影流之镰 凯隐',riotId:'PlayerA#123',name:'PlayerA'}];
+  const view=stripViewSources({chat:'PlayerA：影流之镰 凯隐 先上',thread:[{text:'等 PlayerA'}]},state);
+  assert.ok(!JSON.stringify(view).includes('PlayerA'));
+  assert.ok(!JSON.stringify(view).includes('影流之镰'));
+  assert.ok(JSON.stringify(view).includes('凯隐'));
 });
