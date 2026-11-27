@@ -1,5 +1,5 @@
 import { createHash, randomUUID, verify } from 'node:crypto';
-import { readFile, writeFile, mkdir, rename, open, unlink, readdir, lstat, rm, link, copyFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, open, unlink, readdir, lstat, rm, link, copyFile, cp } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
@@ -48,6 +48,13 @@ export function verifyRelease(envelope, publicKey, channel='legacy') {
     const base=app.base;
     if(!base||typeof base!=='object'||base.path!=='runtime/node.exe'||
        !Number.isSafeInteger(base.bytes)||base.bytes<=0||base.bytes>MAX_ARCHIVE||!sha(base.sha256)) throw Error('Invalid release metadata');
+  }
+  if(release.patch!==undefined){
+  const patch=release.patch,sha=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+  if(!patch||typeof patch!=='object'||Array.isArray(patch)||
+  patch.url!==`https://api.jinbaoai.top/downloads/${directory}/v${release.version}/jinbao-desktop-windows-patch.zip`||
+  !Number.isSafeInteger(patch.bytes)||patch.bytes<=0||patch.bytes>MAX_ARCHIVE||!sha(patch.sha256)||
+  !/^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(patch.baseVersion)||!sha(patch.baseManifestSha256)) throw Error('Invalid release metadata');
   }
   return release;
 }
@@ -148,6 +155,35 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
     return {root:directory,envelope,release};
   }
   // 本地运行时与这一版发布声明完全一致时只下载应用层；否则老实下全量包。
+  async function patchPlanFor(release,current) {
+  const patch=release.patch;
+  if(!patch||typeof patch!=='object')return null;
+  if(patch.baseVersion!==current.version)return null;
+  try {
+  const bytes=await readFile(join(resolve(root),'manifest.json'));
+  return digest(bytes)===patch.baseManifestSha256?patch:null;
+  } catch { return null; }
+  }
+  async function applyPatch(patchDirectory,staging) {
+  const bytes=await readFile(join(patchDirectory,'patch-manifest.json'));
+  if(bytes.length>2*1024*1024)throw Error('Invalid patch manifest');
+  const patch=JSON.parse(bytes);
+  if(typeof patch.baseVersion!=='string'||typeof patch.version!=='string')throw Error('Invalid patch manifest');
+  const files=Array.isArray(patch.files)?patch.files:[],removed=Array.isArray(patch.removed)?patch.removed:[];
+  if(files.length>5000||removed.length>5000)throw Error('Invalid patch manifest');
+  await cp(resolve(root),staging,{recursive:true});
+  for(const item of files){
+  if(!safeRelative(item.path)||!Number.isSafeInteger(item.bytes)||item.bytes<0||!/^[a-f0-9]{64}$/.test(item.sha256))throw Error('Unsafe patch entry');
+  const source=join(patchDirectory,item.path),target=join(staging,item.path);
+  if((await lstat(source)).size!==item.bytes||digest(await readFile(source))!==item.sha256)throw Error('Patch file mismatch');
+  await mkdir(dirname(target),{recursive:true});await copyFile(source,target);
+  }
+  for(const path of removed){
+  if(!safeRelative(path))throw Error('Unsafe patch removal');
+  await rm(join(staging,path),{force:true,recursive:true});
+  }
+  return patch;
+  }
   async function appPlanFor(release) {
     const app=release.app;
     if(!app||typeof app!=='object')return null;
@@ -168,7 +204,7 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
   return {
     async check(signal) {
       if (busy) return;
-      busy = true; let archive, staging,phase='checking',currentVersion,targetVersion;
+      busy = true; let archive, staging, patchDirectory,phase='checking',currentVersion,targetVersion;
       try {
         const current = JSON.parse(await readFile(join(root,'manifest.json'),'utf8'));
         currentVersion=current.version;
@@ -192,11 +228,12 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
         if (active && compareVersions(active.release.version,release.version) >= 0) {
           await status({state:'ready',version:active.release.version,currentVersion,notes:active.release.notes,message:'新版 '+active.release.version+' 已就绪，可在方便时安装'}); return;
         }
-        const appPlan=await appPlanFor(release);
-        const target=appPlan??{url:release.url,bytes:release.bytes,sha256:release.sha256};
+        const patchPlan=await patchPlanFor(release,current);
+        const appPlan=patchPlan?null:await appPlanFor(release);
+        const target=patchPlan??appPlan??{url:release.url,bytes:release.bytes,sha256:release.sha256};
         await mkdir(join(updates,'releases'),{recursive:true});
         phase='downloading';
-        await status({state:'downloading',version:release.version,currentVersion,downloadedBytes:0,totalBytes:target.bytes,percent:0,appOnly:appPlan!==null,notes:release.notes,message:'正在后台下载新版 '+release.version});
+        await status({state:'downloading',version:release.version,currentVersion,downloadedBytes:0,totalBytes:target.bytes,percent:0,appOnly:appPlan!==null,patchOnly:patchPlan!==null,notes:release.notes,message:'正在后台下载新版 '+release.version});
         const downloadSignal=AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(15*60*1000)]);
         archive=join(updates,'download-'+randomUUID()+'.zip');
         const started=now();let count=0,lastProgress=0;let hash=createHash('sha256');
@@ -247,8 +284,18 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
         staging=join(updates,'staging-'+randomUUID());
         phase='extracting';
         await status({state:'extracting',version:release.version,currentVersion,notes:release.notes,message:'验证通过，正在准备安装文件…'});
+        if(patchPlan){
+        patchDirectory=join(updates,'patch-'+randomUUID());
+        try{
+        await extract(archive,patchDirectory);
+        await applyPatch(patchDirectory,staging);
+        }finally{
+        await rm(patchDirectory,{recursive:true,force:true}).catch(()=>{});
+        }
+        }else{
         await extract(archive,staging);
         if(appPlan)await provideBase(staging,appPlan.base);
+        }
         await verifyPackage(staging,release);
         const destination=join(updates,'releases','v'+release.version);
         try { await rename(staging,destination); }
@@ -256,7 +303,7 @@ export function createUpdater({ root, stateDir, fetchImpl = fetch, publicKey, ex
         await atomicJson(join(updates,'pending.json'),envelope);
         await atomicJson(join(updates,'ready-context.json'),{version:release.version,fromVersion:current.version,notes:release.notes});
         await status({state:'ready',version:release.version,currentVersion,notes:release.notes,message:'新版 '+release.version+' 已就绪，可在方便时安装'});
-      } catch {
+      } catch (error) {
         if(!signal?.aborted){
           const prepared=await receipt('pending').catch(()=>null);
           const usable=prepared&&currentVersion&&compareVersions(prepared.release.version,currentVersion)>0;

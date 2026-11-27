@@ -1,4 +1,4 @@
-import {readFile,writeFile,mkdir,stat} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,stat,copyFile,rm} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {resolve,join,dirname} from 'node:path';
 import {execFile} from 'node:child_process';
@@ -19,7 +19,7 @@ async function pack(source, archive, skip = []) {
   await promisify(execFile)(powershell, args, { windowsHide: true, timeout: 15 * 60 * 1000, maxBuffer: 65536 });
 }
 
-export async function packageRelease({ directory, out, basePath = BASE_PATH }) {
+export async function packageRelease({ directory, out, basePath = BASE_PATH, baseDirectory = null }) {
   const manifestBytes = await readFile(join(directory, 'manifest.json'));
   const manifest = JSON.parse(manifestBytes);
   const base = manifest.files?.find(item => item.path?.toLowerCase() === basePath.toLowerCase());
@@ -30,21 +30,61 @@ export async function packageRelease({ directory, out, basePath = BASE_PATH }) {
   await pack(directory, full);
   await pack(directory, app, [basePath]);
   const fullBytes = await readFile(full), appBytes = await readFile(app);
-  return {
-    version: manifest.version,
-    bytes: fullBytes.length,
-    sha256: digest(fullBytes),
-    manifestSha256: digest(manifestBytes),
-    app: { bytes: appBytes.length, sha256: digest(appBytes), base: { path: basePath, bytes: base.bytes, sha256: base.sha256 } },
+  const feed = {
+  version: manifest.version,
+  bytes: fullBytes.length,
+  sha256: digest(fullBytes),
+  manifestSha256: digest(manifestBytes),
+  app: { bytes: appBytes.length, sha256: digest(appBytes), base: { path: basePath, bytes: base.bytes, sha256: base.sha256 } },
   };
+  if (baseDirectory) {
+  const baseBytes = await readFile(join(baseDirectory, 'manifest.json'));
+  const oldManifest = JSON.parse(baseBytes);
+  if (oldManifest.version === manifest.version) throw Error('Patch base equals target version');
+  const oldFiles = new Map((oldManifest.files ?? []).map(item => [String(item.path), item]));
+  const changed = [], removed = [];
+  for (const item of manifest.files ?? []) {
+  const previous = oldFiles.get(item.path);
+  if (!previous || previous.sha256 !== item.sha256 || previous.bytes !== item.bytes) changed.push(item);
+  oldFiles.delete(item.path);
+  }
+  removed.push(...oldFiles.keys());
+  changed.push({ path: 'manifest.json', bytes: manifestBytes.length, sha256: digest(manifestBytes) });
+  const patchDir = join(out, '.patch-src-' + manifest.version);
+  await rm(patchDir, { recursive: true, force: true });
+  await mkdir(patchDir, { recursive: true });
+  for (const item of changed) {
+  const target = join(patchDir, item.path);
+  await mkdir(dirname(target), { recursive: true });
+  await copyFile(join(directory, item.path), target);
+  }
+  const patchManifest = {
+  version: manifest.version,
+  baseVersion: oldManifest.version,
+  files: changed.map(item => ({ path: item.path, bytes: item.bytes, sha256: item.sha256 })),
+  removed,
+  };
+  await writeFile(join(patchDir, 'patch-manifest.json'), JSON.stringify(patchManifest), 'utf8');
+  const patch = join(out, 'jinbao-desktop-windows-patch.zip');
+  await pack(patchDir, patch);
+  const patchBytes = await readFile(patch);
+  await rm(patchDir, { recursive: true, force: true });
+  feed.patch = {
+  baseVersion: oldManifest.version,
+  baseManifestSha256: digest(baseBytes),
+  bytes: patchBytes.length,
+  sha256: digest(patchBytes),
+  };
+  }
+  return feed;
 }
-
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [directory, out] = process.argv.slice(2);
   if (!directory || !out) throw Error('Usage: package-release.mjs <built-directory> <output-directory>');
   if (process.platform !== 'win32') throw Error('Standalone packages are built on Windows');
   if (!(await stat(directory)).isDirectory()) throw Error('Not a directory: ' + directory);
-  const feed = await packageRelease({ directory: resolve(directory), out: resolve(out) });
+  const baseDirectory = process.argv[4] ? resolve(process.argv[4]) : null;
+  const feed = await packageRelease({ directory: resolve(directory), out: resolve(out), baseDirectory });
   await writeFile(join(resolve(out), 'feed-fields.json'), JSON.stringify(feed, null, 2));
   console.log(JSON.stringify(feed, null, 2));
 }
