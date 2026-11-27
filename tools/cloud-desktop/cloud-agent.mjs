@@ -28,7 +28,7 @@ export function cloudContext(memory,game,match,{eventQuery=false,observationPlan
  const c=memory.current;
  if(c&&(c.game!==game||c.match!==match))throw fail(409,'Match changed');
  const compact=value=>typeof value==='string'?value.slice(0,120):value&&typeof value==='object'?Object.fromEntries(['name','id','count','level','ready','cooldown'].filter(k=>['string','number','boolean'].includes(typeof value[k])).map(k=>[k,typeof value[k]==='string'?value[k].slice(0,120):value[k]])):value;
- const player=p=>p?Object.fromEntries(['champion','level','gold','dead','hpPct','k','d','a','items','spells','canShop','respawn'].filter(k=>p[k]!==undefined).map(k=>[k,Array.isArray(p[k])?p[k].slice(0,8).map(compact):compact(p[k])])):undefined;
+ const player=p=>p?Object.fromEntries(['champion','level','gold','dead','hpPct','k','d','a','items','spells','roles','canShop','respawn'].filter(k=>p[k]!==undefined).map(k=>[k,Array.isArray(p[k])?p[k].slice(0,8).map(compact):compact(p[k])])):undefined;
  const equipment=c&&game!=='generic'?equipmentContext({...c,me:c.me??{},enemies:c.enemies??[],ownedAugments:c.ownedAugments??[],augmentRounds:c.augmentRounds??[]}):undefined;
  // 双方十人名单直接注入模型上下文：称号 + 常用名。
  // 以前提示词要求“只用 facts.lineup”，但请求里根本没这个字段，模型只能从
@@ -63,7 +63,7 @@ export function cloudContext(memory,game,match,{eventQuery=false,observationPlan
   team_score:Number.isInteger(c?.me?.teamKills)&&Number.isInteger(c?.me?.enemyKills)?{ally:c.me.teamKills,enemy:c.me.enemyKills}:undefined,
   bench:c?.phase==='ChampSelect'?c?.bench?.slice(0,20):undefined,
   offers:c?.offers?.slice(0,6).map(compact),owned_augments:c?.ownedAugments?.slice(0,12).map(compact),
-  equipment_decision:equipment?{...equipment,currentItems:equipment.currentItems.slice(0,8).map(compact),enemies:equipment.enemies.slice(0,5).map(e=>({hero:String(e.hero??'').slice(0,120),items:e.items.slice(0,8).map(compact)})),unassignedEnemyItems:equipment.unassignedEnemyItems.slice(0,8).map(compact),confirmedAugments:equipment.confirmedAugments.slice(0,12).map(compact),assumedAugments:equipment.assumedAugments.slice(0,6)}:undefined},
+  equipment_decision:equipment?{...equipment,currentItems:equipment.currentItems.slice(0,8).map(compact),enemies:equipment.enemies.slice(0,5).map(e=>({hero:String(e.hero??'').slice(0,120),roles:Array.isArray(e.roles)?e.roles.slice(0,3):[],skills:Array.isArray(e.skills)?e.skills.slice(0,2):[],summonerSpells:Array.isArray(e.summonerSpells)?e.summonerSpells.slice(0,2):[],items:e.items.slice(0,8).map(compact),augments:Array.isArray(e.augments)?e.augments.slice(0,4):[]})),unassignedEnemyItems:equipment.unassignedEnemyItems.slice(0,8).map(compact),enemyAugments:equipment.enemyAugments.slice(0,8),confirmedAugments:equipment.confirmedAugments.slice(0,12).map(compact),assumedAugments:equipment.assumedAugments.slice(0,6)}:undefined},
   events:eventWindow(c?.events).rows,client_context:{game_id:game,mode:c?.mode??'',capabilities:{event_query_v1:eventQuery,observation_plan_v1:game==='generic'&&observationPlan,user_memory_v1:userMemory,experience_v1:experience},user_memory:{confirmed_preferences:(memory.preferences??[]).slice(-6)},team_chat:(Array.isArray(c?.chat)?c.chat.filter(row=>row&&row.origin==='team'&&row.text).slice(-6).map(row=>({who:String(row.displayName??'').slice(0,24),text:String(row.text).slice(0,80),self:row.self===true})):[]),lineup,facts}};
  const oversized=()=>Buffer.byteLength(JSON.stringify(value))>24000;
  while(oversized()&&value.events.length){value.events.shift();value.client_context.context_reduced=true;}

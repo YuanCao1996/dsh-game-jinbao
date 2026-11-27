@@ -132,7 +132,7 @@ export function clock(seconds) {
 export function initialOverlayState() {
   return { game: null, mode: '', match: null, at: 0, selfIdentityAt: 0, matchStartedAt: 0, gameSeconds: null, ended: false, phase: '',observedMatch:false,
     me: {}, allies: [], enemies: [], bench: [], playerStats: [], enemyItems: [], events: [], equipmentSnapshots:new Map(), activityEvents:[],
-    ownedAugments: [], revealedAugments: [], augmentSelections: [], augmentRounds: [], offers: [], offerRound: null, offerHistory: [], augmentCaptureAvailable: null, augmentCaptureReason: '', equipment: '', equipmentStatus:'', equipmentAssumptions: [], augmentAdvice: '', teamfight: '', broadcasts: [], chat: [],
+    ownedAugments: [], revealedAugments: [], augmentSelections: [], augmentRounds: [], offers: [], offerRound: null, offerHistory: [], augmentCaptureAvailable: null, augmentCaptureReason: '', equipment: '', equipmentPlan: '', equipmentStatus:'', equipmentAssumptions: [], augmentAdvice: '', teamfight: '', broadcasts: [], chat: [],
     agentStatus:'', agentError:'', coachStatus:null, praiseChains:{}, notices:[], noticeWinRate:null,
     // 触发型台词（连杀被终结/五杀被抢/队友挂机/首次上手/连胜）由这里排队，交给 settleExtraMoments 渲染。
     pendingMoments: [], killStreak: 0, allyWatch: {}, firstChampionChecked: false };
@@ -229,6 +229,8 @@ export function applyOverlayEvent(state, event, file, {continueStart=false}={}) 
       state.broadcasts = state.broadcasts.slice(-12);
     }
     if(event.key==='postAugment')state.augmentPlaybook={text:reply.text,at,gameSeconds:state.gameSeconds,owned:JSON.stringify([...state.ownedAugments].sort())};
+    // 云端装备调整只把隐藏的六件顺序交给图标层，不改变播报文案和装备页正文。
+    if(event.equipmentPlan)state.equipmentPlan=String(event.equipmentPlan).slice(0,500);
     return;
   }
   if (!event.game || at < state.at) return;
@@ -765,8 +767,8 @@ export function overlayView(state, knowledge = {}) {
       seen.add(row.id);result.push(row);
     };
     // 最新 equipment 文本由海克斯确认/装备变化触发，能覆盖开局六件顺序；不足 4 件时继续用开局规划。
-    const live=fromText(state.equipment),opening=fromText(state.openingBuild);
-    for(const row of (live.length>=4?live:opening.length?opening:[]))append(row);
+    const plan=fromText(state.equipmentPlan),live=fromText(state.equipment),opening=fromText(state.openingBuild);
+    for(const row of (plan.length>=4?plan:live.length>=4?live:opening.length?opening:[]))append(row);
     if(build){
       const ids=parse(build.itemIds),names=parse(build.items);
       for(let index=0;index<ids.length;index++)append({id:String(ids[index]),name:String(names[index]??'')});

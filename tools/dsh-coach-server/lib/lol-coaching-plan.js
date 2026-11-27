@@ -3,6 +3,8 @@
 import {isCompletedItem} from '../../lol-companion/item-policy.mjs';
 import {eventWindow} from './event-window.mjs';
 import {MAYHEM_CORE,mayhemGuideText} from './aram-mayhem-guide.js';
+import {championKitBrief} from '../../lol-companion/champion-kits.mjs';
+const kitBrief = name => championKitBrief(name, {skills: 2, desc: 55});
 const list = value => Array.isArray(value) ? value : [];
 const names = value => list(value).map(x => typeof x === 'string' ? x : x?.name ?? x?.champion ?? x?.id).filter(Boolean);
 const fingerprint = value => JSON.stringify(value);
@@ -55,8 +57,8 @@ export function stateCoachingTrigger(event, store) {
 }
 
 const TASKS = {
-  death: '刚刚阵亡，利用等待复活时间给两条调整：下次可购买时优先补哪件装备/组件，复活后下一波配合谁、避开什么威胁。结合当前金币、装备、全部已选强化和敌方变化；缺少死亡过程证据不要编造死因或责怪操作。没有商店权限事实时不要断言现在可以买。',
-  purchase: '购买决策窗口：根据现有金币、已拥有装备、全部强化、敌方装备，推荐本次优先一件装备或组件，并说明针对谁、为什么。价格与合成件已随事实给出，直接采用、不要重复检索；事实里没有的才用资料工具，查不到就不要断言买得起。已买的不再重复推荐；播报只讲成装，不要提散件/组件装备，也不要播报购买散件；仅有散件的成装不要重复提醒合成，直接讲下一件成装；canShop未确认则使用“下次可购买时”。',
+  death: '刚刚阵亡，利用等待复活时间给两条调整：优先说明下一件装备与已选海克斯的联动，或针对敌方某英雄/装备的克制理由；复活后下一波配合谁、避开什么威胁。必须参考 facts.enemies 的成装和 facts.enemyKits 的英雄定位/技能，以及 facts.enemyAugments 中已记录的敌方海克斯；没有记录就写未知，不要编造。不要只说“下一件买X”，用“X 搭配你选的A海克斯能发挥…”或“X 能针对敌方Y的…”。没有商店权限事实时不要断言现在可以买。末尾附一行六件顺序供系统更新图标，正文不要念这行。',
+  purchase: '购买决策窗口：必须结合 facts.enemies 的成装、facts.enemyKits 的敌方英雄定位/技能和 facts.enemyAugments 中已记录的敌方海克斯，再结合自己的金币、装备和已选强化，推荐装备并说明针对谁、为什么。敌方海克斯没有记录就写未知，不要编造。不要只说“下一件买X”，用“X 搭配你选的A海克斯能发挥…”或“X 能针对敌方Y的…”句式，并点名依据。价格与合成件已随事实给出，直接采用；已买的不再重复推荐，播报只讲成装，不提散件/组件。canShop未确认则使用“下次可购买时”。末尾附一行六件顺序供系统更新图标，正文不要念这行。',
   enemyChange: '对面装备或强化发生变化：指出新增/变化的具体装备或强化、属于哪位英雄，以及它影响自己的哪种打法。只选择确实会改变决策的威胁，给改目标、进场顺序或出装调整之一；变化不关键就静默。不把装备消失或缺失识别说成新增，不知道归属就明确未知。',
   enemyAugment: '敌方刚拿到高威胁海克斯。用两短句给针对性应对：第一句结合 facts.enemyAugment 的 rank/tier/effect 说明它让对面哪个英雄强在哪；第二句结合该英雄的定位与关键技能，说你接下来怎么调整（先打谁/躲什么/下一件出什么）。英雄技能/定位资料不足时用资料工具核对，查不到就明确说缺口，不编造效果数值，不重复面板。',
   selection: '从我当前英雄和实际可换的备选席中推荐首选与一个备选。结合本模式英雄胜率/强度和队友阵容缺口（前排、开团、清线、伤害类型），说明换或不换的原因；推荐两项本模式可用的召唤师技能及使用目的。不要推荐不在备选席的英雄；敌方未显示就不要猜对手。',
@@ -138,6 +140,14 @@ export function buildLolCoachingPlan(events = [], current = null) {
     })(),
     allies: list(current?.allies ?? roster.allies).map(hero),
     enemies: list(current?.enemies ?? roster.enemies).map(hero),
+    selfKit: kitBrief(me?.champion),
+    enemyKits: list(current?.enemies ?? roster.enemies).map(p => {
+      const champion = String(p?.champion ?? p ?? '');
+      const kit = kitBrief(champion);
+      return kit ? {champion, roles: kit.roles, skills: kit.spells} : {champion};
+    }),
+    enemyAugments: list(current?.augmentSelections).filter(row => row?.side === 'enemy').map(row => ({hero: String(row?.hero ?? ''), augment: String(row?.augment ?? ''), confirmed: row?.confirmed !== false, source: String(row?.source ?? ''), effect: String(row?.effect ?? '').slice(0, 100)})),
+    enemyItems: list(current?.enemies ?? roster.enemies).map(p => ({champion: String(p?.champion ?? p ?? ''), items: list(p?.items).map(item => typeof item === 'string' ? item : item?.name).filter(Boolean)})),
     ownedAugments: current?.ownedAugments ?? s.teamfight?.pickedAugments ?? [],
   enemyAugment: (events.find(e=>e.coachTrigger==='enemyAugment')?.enemyAugment) ?? null,
     // 本局双方名单（称号）：人名只能从这里取，避免编造不存在的英雄。
@@ -237,6 +247,10 @@ export function buildLolCoachingPlan(events = [], current = null) {
     me: facts.me ? { ...facts.me, items: Array.isArray(facts.me.items) ? facts.me.items.slice(-3) : facts.me.items } : facts.me,
     allies: (facts.allies ?? []).slice(0, 4).map(person => ({ champion: person.champion, level: person.level })),
     enemies: (facts.enemies ?? []).slice(0, 5).map(person => ({ ...person, items: Array.isArray(person.items) ? person.items.slice(-2) : person.items })),
+    selfKit: facts.selfKit,
+    enemyKits: (facts.enemyKits ?? []).slice(0, 5),
+    enemyAugments: (facts.enemyAugments ?? []).slice(0, 8),
+    enemyItems: (facts.enemyItems ?? []).slice(0, 5),
     priorOpeningPlan: facts.priorOpeningPlan ? { text: String(facts.priorOpeningPlan.text ?? '').slice(0, 160) } : null,
   recentEquipment: (facts.recentEquipment ?? []).slice(-3),
   userNotes: (facts.userNotes ?? []).slice(-3),
@@ -251,6 +265,8 @@ export function buildLolCoachingPlan(events = [], current = null) {
     '事实与资料分开：缺技能/强化/装备/胜率资料时用资料查询工具；查不到就说明缺口、不编造数据。',
     '人名只用 facts.lineup 的称号，禁本名/简称/别称与名单外英雄；同一英雄只算一次（安妮＝黑暗之女）。',
     '出装只列还没买的成装（facts.me.items 已有的不列）；有 facts.priorOpeningPlan 时必须沿用它，改路线要写明为什么改。',
+    '装备建议必须参考 facts.enemyKits（定位/关键技能）、facts.enemies（成装）和 facts.enemyAugments（已有 OCR/聊天记录）；没有敌方海克斯记录就写未知，不编造。',
+    '播报不要只报「下一件买X」：用「X 搭配你选的 A 海克斯能发挥…」或「X 能针对敌方 Y 的…」句式，并点名依据。',
     '强化点名装备时（钢化你心→心之钢、命运之武器→第一件传说、易损→暴击装），出装顺序与下一件成装要优先安排它并说明理由。',
     '阵亡回合必须点名一件具体装备并给理由，不许说「补个防装」这类方向话。',
     '已阵亡时当前血量是 0：不写「你还剩X%血」、不写回城；提血量写「倒下时是X%」，动作只写「复活后…」。',

@@ -62,3 +62,15 @@ test('海克斯更新后的六件方案优先于开局规划', () => {
   const view = overlayView(state, {rows: []});
   assert.deepEqual(view.recommendedItemRows.map((row) => row.name), ['卢登的回声', '法师之靴', '影焰', '灭世者的死亡之帽', '虚空之杖', '中娅沙漏']);
 });
+
+test('云端装备调整播报会同步六件图标，但不改播报正文', () => {
+  const state = stateWithRoster();
+  applyOverlayEvent(state, {
+    game: 'lol', match: 'icon-match', kind: 'broadcast', key: 'purchase', t: 3,
+    broadcast: '虚空之杖搭配你的法术强化，能压低敌方前排魔抗。',
+    equipmentPlan: '六件顺序：卢登的回声、法师之靴、影焰、灭世者的死亡之帽、虚空之杖、中娅沙漏',
+  }, 'icon-match');
+  const view = overlayView(state, {rows: []});
+  assert.deepEqual(view.recommendedItemRows.map((row) => row.name), ['卢登的回声', '法师之靴', '影焰', '灭世者的死亡之帽', '虚空之杖', '中娅沙漏']);
+  assert.equal(state.broadcasts.at(-1).text, '虚空之杖搭配你的法术强化，能压低敌方前排魔抗。');
+});

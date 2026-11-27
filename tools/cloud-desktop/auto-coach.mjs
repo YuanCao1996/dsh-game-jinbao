@@ -257,7 +257,11 @@ const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItem
     note(v,'coach_late_published',undefined,{stage:plan.stage});
    }
    if(typeof answer!=='string'||!answer.trim())throw Error('Empty automatic reply');
-   let stagedText=fixItemNames(humanizeChampions(condenseAdvice(stripSources(String(answer)))),contextItemNames(current));
+   const rawAnswer=String(answer);
+   // 六件顺序只用于同步悬浮窗图标，不能念进播报；正文/语音只保留建议本身。
+   const equipmentPlan=(()=>{const match=rawAnswer.match(/六件顺序[：:]\s*([^\n]+)/);return match?String(match[0]).slice(0,500):'';})();
+   const spokenAnswer=rawAnswer.replace(/六件顺序[：:][^\n]*\n?/g,'').replace(/\n{3,}/g,'\n\n').trim();
+   let stagedText=fixItemNames(humanizeChampions(condenseAdvice(stripSources(spokenAnswer))),contextItemNames(current));
    if(noiseBroadcast(stagedText)){note(v,'skip','roster_noise',{stage:plan.stage});return;}
  const stagedNameClean=stripUnknownChampionSentences(stagedText,current);
  const stagedNameProblem=championNameProblem(stagedNameClean.text,current);
@@ -268,7 +272,7 @@ const situationText=fixItemNames(humanizeChampions(situationTextRaw),contextItem
  if(stagedItemProblem){note(v,'skip','item_name_rejected',{stage:plan.stage,detail:stagedItemProblem});return;}
    // 几乎逐字重复的兜底：提示词已经要求换说法，这里只拦「换个标点又播一遍」。
    const previousAdvice=recentAdvice(plan.stage),nextAdvice=stagedText.trim();if(previousAdvice.length>=16&&nextAdvice.length>=16&&adviceSimilarity(previousAdvice,nextAdvice)>=0.8){note(v,'skip','duplicate_advice',{stage:plan.stage});return;}
-   await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:plan.stage,priority:['ace','inhib','augment','death','purchase','enemyChange','objective','turret','coordination'].includes(plan.stage)?2:1,dimension:DIMENSION[plan.stage]??'now',broadcast:stagedText,validity});rememberAdvice(stagedText,plan.stage);
+   await publish({at:new Date(now()).toISOString(),source:v.match,game:v.game,match:v.match,kind:'cloud-advice',key:plan.stage,priority:['ace','inhib','augment','death','purchase','enemyChange','objective','turret','coordination'].includes(plan.stage)?2:1,dimension:DIMENSION[plan.stage]??'now',broadcast:stagedText,validity,...(equipmentPlan?{equipmentPlan}:{})});rememberAdvice(stagedText,plan.stage);
    await published(v,{stage:plan.stage});
    // 补发过一次就清掉，避免同一个窗口反复触发。
    if(plan.stage==='coordination')pendingCoordination=null;

@@ -122,7 +122,7 @@ export function createGameMemory(stateDir) {
       const value = cleanGameData({ game: state.game, mode: state.mode, match: state.match, at: state.at, gameplayAt:state.gameplayAt, matchStartedAt: state.matchStartedAt, matchWin: state.matchWin === true ? true : state.matchWin === false ? false : null,
         gameSeconds: state.gameSeconds, ended: state.ended, phase: state.phase, me: state.me,
         allies: state.allies, enemies: state.enemies, bench: state.bench, offers: state.offers,
-        offerHistory: state.offerHistory, ownedAugments: state.ownedAugments, revealedAugments: state.revealedAugments ?? [], augmentRounds:state.augmentRounds,
+        offerHistory: state.offerHistory, ownedAugments: state.ownedAugments, revealedAugments: state.revealedAugments ?? [], augmentRounds:state.augmentRounds, augmentSelections: state.augmentSelections ?? [],
         events: state.events, completedEquipmentEvents:state.completedEquipmentEvents, broadcasts: state.broadcasts, chat: state.chat, knowledge });
       const encoded = JSON.stringify(value);
       if (snapshots.get(key) === encoded) return queue;
