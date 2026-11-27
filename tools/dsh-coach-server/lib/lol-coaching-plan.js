@@ -1,10 +1,10 @@
-﻿// Phase policy is independent of the Agent transport. Polls only wake the Agent
+// Phase policy is independent of the Agent transport. Polls only wake the Agent
 // for a milestone or a material change; dispatch rebuilds facts from live memory.
 import {isCompletedItem} from '../../lol-companion/item-policy.mjs';
 import {eventWindow} from './event-window.mjs';
 import {MAYHEM_CORE,mayhemGuideText} from './aram-mayhem-guide.js';
 import {championKitBrief} from '../../lol-companion/champion-kits.mjs';
-const kitBrief = name => championKitBrief(name, {skills: 2, desc: 55});
+const kitBrief = name => championKitBrief(name, {skills: 4, desc: 45});
 const list = value => Array.isArray(value) ? value : [];
 const names = value => list(value).map(x => typeof x === 'string' ? x : x?.name ?? x?.champion ?? x?.id).filter(Boolean);
 const fingerprint = value => JSON.stringify(value);
