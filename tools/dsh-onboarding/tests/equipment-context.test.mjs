@@ -161,3 +161,14 @@ test('视觉没判出来时，聊天公告把该轮补上（不再需要玩家�
  assert.deepEqual(round.confirmed,['虚幻武器'],'公告补齐了这一轮');
  assert.ok(s.ownedAugments.includes('虚幻武器'),'已选里也有它');
 });
+
+test('failed automatic build requests back off instead of retrying every tick',async()=>{
+  let time=10000,calls=0;const state=initialOverlayState();
+  Object.assign(state,{game:'lol',match:'one',matchStartedAt:1,at:time,phase:'InProgress',me:{champion:'安妮',items:[{id:3118,name:'残疫',completed:true}]},enemies:[{champion:'锐雯',items:[{name:'无尽之刃'}]}]});
+  const coach=createEquipmentCoach({getState:()=>state,now:()=>time,debounceMs:0,cooldownMs:0,save:async()=>{},agentChat:async()=>{calls++;throw Object.assign(Error('agent_request_failed'),{status:503});}});
+  coach.tick();await new Promise(r=>setImmediate(r));assert.equal(calls,1);
+  for(let i=0;i<8;i++){time+=500;coach.tick();await new Promise(r=>setImmediate(r));}
+  assert.equal(calls,1,'失败后不能在下一个 tick 立刻重试');
+  time+=6000;coach.tick();await new Promise(r=>setImmediate(r));assert.equal(calls,2,'退避结束后允许重试');
+  coach.close();
+});

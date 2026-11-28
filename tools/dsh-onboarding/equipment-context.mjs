@@ -108,23 +108,25 @@ function equipmentAdviceProblem(state,text){
 }
 
 export function createEquipmentCoach({getState,agentChat,save,onAdvice=()=>{},canRequest=()=>true,now=Date.now,debounceMs=2000,cooldownMs=30000,openingRetryMs=15000}){
-  let pending='',since=0,lastAt=-Infinity,lastDone='',busy=false,closed=false,retryAt=0,lastConfirmed='';
+  let pending='',since=0,lastAt=-Infinity,lastDone='',busy=false,closed=false,retryAt=0,lastConfirmed='',failures=0,lastAttemptAt=0;
    // 对局是否还活着要看游戏时间有没有推进：state.at 只要采集器还在写快照就是新鲜的，
    // 实测对局结束后 at 仍每分钟更新、gameSeconds 却冻在 08:19。
    let lastClock=null,lastClockAt=0;
   // 阵亡与开局都是"一次性事件"，不是"事实又变了"：它们各自只发一次，不走购买那次
   // 的防抖与冷却，否则玩家阵亡时正好撞上冷却就永远收不到提醒。
   let lastMatch='',opening={match:'',done:false,retryAt:0};
-  const oneShot=(reason,question,{onSuccess=()=>{},onFailure=()=>{}}={})=>{
-   busy=true;const current=getState(),match=current.match,started=current.matchStartedAt;
+  const backoffMs=()=>Math.min(60000,5000*2**Math.min(4,Math.max(0,failures-1)));
+const oneShot=(reason,question,{onSuccess=()=>{},onFailure=()=>{}}={})=>{
+   busy=true;lastAttemptAt=now();const current=getState(),match=current.match,started=current.matchStartedAt;
    void agentChat({game:current.game,match,question,topic:'equipment',automatic:true}).then(async answer=>{
+ failures=0;
     const now= getState();if(closed||now.ended||now.match!==match||now.matchStartedAt!==started)return;
     if(typeof answer!=='string'||!answer.trim())return;const text=answer.trim().slice(0,4000);
     const problem=equipmentAdviceProblem(now,text);
     if(problem){now.equipmentStatus='建议含未确认名称，已拦截';onFailure();return;}
     if(reason==='opening')now.openingBuild=text;
     await onAdvice(now,text,reason);await save();onSuccess();
-   }).catch(()=>{onFailure();}).finally(()=>{busy=false;});
+   }).catch(()=>{failures+=1;lastAt=now();lastAttemptAt=now();retryAt=Math.max(retryAt,now()+backoffMs());opening.retryAt=Math.max(opening.retryAt,now()+Math.max(openingRetryMs,backoffMs()));onFailure();}).finally(()=>{busy=false;});
   };
   return {
     tick(){
@@ -154,11 +156,12 @@ export function createEquipmentCoach({getState,agentChat,save,onAdvice=()=>{},ca
       const confirmedKey=JSON.stringify(facts.confirmedAugments),urgent=lastConfirmed!==''&&confirmedKey!==lastConfirmed;
       if(busy||key===lastDone||now()<retryAt||(!urgent&&(now()-since<debounceMs||now()-lastAt<cooldownMs)))return;
       if(!canRequest()&&!urgent){state.equipmentStatus=lastDone?'低频更新中，已有出装建议仍可参考':'等待低频自动分析';return;}
-      busy=true;lastAt=now();
+      busy=true;lastAt=now();lastAttemptAt=now();
       const match=state.match,started=state.matchStartedAt;
       let question='【自动出装建议任务】请结合当前装备、facts.enemies 中敌方五人的英雄定位、技能、成装和已记录海克斯，以及自己所有已确认海克斯和下列明确标注为推测的强化，更新出装建议。优先说明装备与已选海克斯的联动，或针对敌方某英雄的克制理由；不要只报“下一件买X”。推测强化必须写成“暂按…考虑，待确认”，不得宣称已拥有；所有已确认强化都要参与取舍。没有可信排名时不要编造推测。播报不要提散件/组件装备，只讲成装，也不要播报购买散件；如果有成装已经拥有散件，不要重复提醒合成这件成装，直接讲下一件成装。不要重复列出敌方装备明细或购买事件。敌方海克斯只使用 facts 中已有的 OCR/聊天记录；没有记录就写未知，不得编造敌方已选。玩法与装备数值不确定时调用工具查证。最后必须附一行「六件顺序：1 名称 2 名称 3 名称 4 名称 5 名称 6 名称」，只列成装；海克斯会改变取舍时要按当前已确认海克斯和敌方阵容调整。播报句式优先使用“X 搭配你选择的 A 海克斯可发挥…效果”或“X 可针对敌方 Y 的…”，并点名依据。只用 coach_reply 提交不超过600字的最终建议。\n【装备决策事实 JSON】\n'+JSON.stringify(facts);
   if(fullBuild)question='【满装替换评估】当前已经买满六件成装。不要建议新增装备；只有确实需要替换时才说明：换掉哪一件、换成什么、为什么。若当前六件就是最优，只回复四个字：无需换装。不要提散件/组件。\n【对局事实 JSON】\n'+JSON.stringify({hero:state.me.champion,currentItems:ownCompleted,enemies:facts.enemies,confirmedAugments:facts.confirmedAugments,assumedAugments:facts.assumedAugments});
       void agentChat({game:state.game,match,question,topic:'equipment',automatic:true,...(urgent?{urgent:true}:{})}).then(async answer=>{
+ failures=0;
         const current=getState();
         if(closed||current.ended||current.match!==match||current.matchStartedAt!==started||current.game!==state.game||ownFacts(equipmentContext(current))!==ownFacts(facts))return;
         if(typeof answer==='string'&&answer.trim()){
@@ -170,7 +173,7 @@ export function createEquipmentCoach({getState,agentChat,save,onAdvice=()=>{},ca
       }).catch(error=>{
         const current=getState();
         if(error?.code==='auto_deferred'){lastAt=-Infinity;retryAt=Math.max(now()+3000,Number(error.retryAt)||0);if(!closed&&current.match===match&&!current.ended)current.equipmentStatus='等待低频自动分析';return;}
-        if(!closed&&!current.ended&&current.match===match&&current.matchStartedAt===started){const interrupted=error?.code==='agent_preempted';if(interrupted){lastAt=-Infinity;retryAt=now()+1000;}if(decisionKey(current,equipmentContext(current))===key)current.equipmentStatus=interrupted?'已优先处理手动请求，稍后继续生成出装建议':'出装建议暂未生成，稍后自动重试';}
+        if(!closed&&!current.ended&&current.match===match&&current.matchStartedAt===started){failures+=1;lastAt=now();retryAt=Math.max(retryAt,now()+backoffMs());const interrupted=error?.code==='agent_preempted';if(interrupted){lastAt=-Infinity;retryAt=now()+1000;}if(decisionKey(current,equipmentContext(current))===key)current.equipmentStatus=interrupted?'已优先处理手动请求，稍后继续生成出装建议':'出装建议暂未生成，稍后自动重试';}
       }).finally(()=>{busy=false;});
     },
     close(){closed=true;},
