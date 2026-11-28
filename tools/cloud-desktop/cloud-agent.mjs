@@ -29,7 +29,7 @@ export function cloudContext(memory,game,match,{eventQuery=false,observationPlan
  if(c&&(c.game!==game||c.match!==match))throw fail(409,'Match changed');
  const compact=value=>typeof value==='string'?value.slice(0,120):value&&typeof value==='object'?Object.fromEntries(['name','id','count','level','ready','cooldown'].filter(k=>['string','number','boolean'].includes(typeof value[k])).map(k=>[k,typeof value[k]==='string'?value[k].slice(0,120):value[k]])):value;
  const player=p=>p?Object.fromEntries(['champion','level','gold','dead','hpPct','k','d','a','items','spells','roles','canShop','respawn'].filter(k=>p[k]!==undefined).map(k=>[k,Array.isArray(p[k])?p[k].slice(0,8).map(compact):compact(p[k])])):undefined;
- const equipment=c&&game!=='generic'?equipmentContext({...c,me:c.me??{},enemies:c.enemies??[],ownedAugments:c.ownedAugments??[],augmentRounds:c.augmentRounds??[]}):undefined;
+ const equipment=c&&game!=='generic'?equipmentContext({...c,me:c.me??{},allies:c.allies??[],enemies:c.enemies??[],ownedAugments:c.ownedAugments??[],augmentRounds:c.augmentRounds??[]}):undefined;
  // 双方十人名单直接注入模型上下文：称号 + 常用名。
  // 以前提示词要求“只用 facts.lineup”，但请求里根本没这个字段，模型只能从
  // team_chat 的 OCR 名字里猜，实测因此编出了不在本局的“腕豪/瑟提”。
@@ -100,7 +100,7 @@ export function createCloudAgent({getToken,getContext,isCurrent=()=>true,onProgr
   const retryAfterMs=Math.min(30000,Math.max(1000,Number(response.headers.get('retry-after'))*1000||5000));
   let code='';
   try{const detail=await response.json();if(typeof detail?.code==='string'&&/^[A-Za-z0-9_.-]{1,80}$/.test(detail.code))code=detail.code;}catch{await response.body?.cancel().catch(()=>{});}
-  throw Object.assign(fail(response.status,'Cloud Agent request failed'+(code?': '+code:'')),{retryAfterMs,...(code?{code}:{...(response.status===429?{code:'rate_limited'}:{})})});
+  throw Object.assign(fail(response.status,'Cloud Agent request failed'+(code?': '+code:'')),{retryAfterMs,remoteCode:code,...(code?{code}:{...(response.status===429?{code:'rate_limited'}:{})})});
 }
   return limitedJson(response,256*1024);
  }
