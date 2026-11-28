@@ -850,7 +850,8 @@ const playerRows = players.map(p => {
   const roster=playerRows.map(p=>`${p.side} ${p.champion} · ${p.winRateText} · ${p.tierText}`);
   const weighted=side=>{const result=teamStrength(playerRows,side);return result.value===null?`待补齐 ${result.known}/5`:`${Number(result.value.toFixed(1))}%`;};
   const liveEstimate=state.game==='lol'?liveTeamEstimate(playerRows,{seconds:state.gameSeconds,allyKills:me.teamKills,enemyKills:me.enemyKills,sideSource:me.sideSource}):null;
-  const teamWinRates=state.game==='lol'?(liveEstimate?`局势估计 · 我方胜率${Number(liveEstimate.ally)>=Number(liveEstimate.enemy)?'高于':'低于'}敌方 · 击杀 ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`:`加权样本 · 我方 ${weighted('友')}｜敌方 ${weighted('敌')}`):'';
+  const fmtRate=value=>Number.isFinite(Number(value))?Math.round(Number(value))+'%':'—';
+  const teamWinRates=state.game==='lol'?(liveEstimate?`局势估计 · 我方 ${fmtRate(liveEstimate.ally)} ｜ 敌方 ${fmtRate(liveEstimate.enemy)} · 击杀 ${liveEstimate.allyKills}:${liveEstimate.enemyKills}`:`加权样本 · 我方 ${weighted('友')}｜敌方 ${weighted('敌')}`):'';
 
   const builds = rows.filter(r => r._type === 'coreBuilds').map(r => `${items(r.items)}\n  样本胜率 ${percent(r.winRate)} · 使用率 ${percent(r.pickRate)}`);
   const ranked = rankedAugments(rows, me.champion);

@@ -98,6 +98,13 @@ function Set-DisplayMode([string]$mode){
     Set-Interaction $false
     $window.ResizeMode='NoResize';$controls.Expanded.Visibility='Collapsed';$controls.NarrowPanel.Visibility='Visible';$controls.ResizeGrip.Visibility='Visible';$controls.ResizeGrip.Cursor='SizeWE';$controls.ResizeGrip.Width=14;$controls.ResizeGrip.Height=14;$controls.ResizeGrip.Margin=0
     Set-NarrowMetrics;$window.UpdateLayout();$script:playbackLastTick=Get-PlaybackNow
+  try{
+    $latest=@($script:snapshot.playback)|Select-Object -Last 1
+    if($latest -and [string]$latest.text){
+      Set-HighlightedText $controls.NarrowText ([string]$latest.text)
+      if($script:narrowPetVisible){Set-NarrowBarShown $true}
+    }
+  }catch{}
     if(!$script:activePlayback -and !$script:playbackQueue.Count){
       if(-not ([string]$controls.NarrowText.Text).Trim()){Set-HighlightedText $controls.NarrowText ''}
       $controls.NarrowText.FontSize=[Math]::Max(13,$controls.NarrowText.FontSize)

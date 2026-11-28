@@ -365,7 +365,7 @@ function Playback-Tick {
    # 没有新播报时保留上一条消息的外观；只有真的空着才补占位，别把最后一条擦掉。
    $controls.NarrowText.Width=(Get-NarrowWidth);$controls.NarrowText.TextAlignment=if($script:narrowPetVisible){'Left'}else{'Center'}
    [Windows.Controls.Canvas]::SetTop($controls.NarrowText,0);[Windows.Controls.Canvas]::SetLeft($controls.NarrowText,0)
-   if($script:narrowPetVisible){Set-NarrowBarShown $false}else{Show-NarrowPlaceholder}
+   if($script:narrowPetVisible){if(([string]$controls.NarrowText.Text).Trim()){Set-NarrowBarShown $true}else{Set-NarrowBarShown $false}}else{Show-NarrowPlaceholder}
    $modeClock.Stop();return
   }
   $modeClock.Stop()
@@ -377,7 +377,7 @@ function Playback-Tick {
     $controls.NarrowText.Foreground='#DDE5EE'
     $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null)
     $controls.NarrowCanvas.Opacity=1
-    if($script:narrowPetVisible){Set-NarrowBarShown $false}else{Show-NarrowPlaceholder}
+    if($script:narrowPetVisible){if(([string]$controls.NarrowText.Text).Trim()){Set-NarrowBarShown $true}else{Set-NarrowBarShown $false}}else{Show-NarrowPlaceholder}
    }catch{}
   }
   return
@@ -420,7 +420,7 @@ function Playback-Tick {
    if($script:displayMode -eq 'narrow'){
     try{
      $controls.NarrowCanvas.BeginAnimation([Windows.UIElement]::OpacityProperty,$null);$controls.NarrowCanvas.Opacity=1
-     if($script:narrowPetVisible){Set-NarrowBarShown $false}else{Show-NarrowPlaceholder}
+     if($script:narrowPetVisible){if(([string]$controls.NarrowText.Text).Trim()){Set-NarrowBarShown $true}else{Set-NarrowBarShown $false}}else{Show-NarrowPlaceholder}
     }catch{}
     $modeClock.Stop()
    }else{Set-Collapsed $true -PreserveMode;$modeClock.Stop()}
